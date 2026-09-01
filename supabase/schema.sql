@@ -245,3 +245,45 @@ alter table applications add column if not exists has_receipt boolean
   generated always as (receipt is not null and receipt <> '') stored;
 alter table finance add column if not exists has_receipt boolean
   generated always as (receipt is not null and receipt <> '') stored;
+
+-- ============================================================
+--  가입 승인 시 회비를 '동아리비' 수입 한 줄에 안전하게 더하기
+--  운영진 여러 명이 동시에 승인해도 금액이 덮어써지지 않도록
+--  DB 안에서 행을 잠그고 더한다.
+-- ============================================================
+create or replace function add_fee_income(fee integer)
+returns void
+language plpgsql
+as $$
+declare
+  target finance%rowtype;
+  parts  text[];
+begin
+  select * into target
+    from finance
+   where kind = 'income'
+     and (category like '%동아리비%' or category like '%회비%')
+   order by date desc, created_at desc
+   limit 1
+   for update;
+
+  if not found then
+    insert into finance (date, kind, category, amount, memo)
+    values (current_date, 'income', '동아리비 (1명)', fee, '');
+    return;
+  end if;
+
+  parts := regexp_match(target.category, '^(.*?)\((\d+)\s*명\)\s*$');
+
+  if parts is null then
+    update finance set amount = amount + fee where id = target.id;
+  else
+    update finance
+       set amount   = amount + fee,
+           category = parts[1] || '(' || (parts[2]::int + 1) || '명)'
+     where id = target.id;
+  end if;
+end $$;
+
+revoke all on function add_fee_income(integer) from public, anon;
+grant execute on function add_fee_income(integer) to authenticated;

@@ -209,23 +209,41 @@
       });
     },
 
-    /* 승인 → 구성원 생성 (+ 회비 수입 기록) */
+    /* 승인 → 구성원 생성 (+ 회비 합산)
+       같은 신청서를 두 번 승인해도 구성원이 중복으로 생기지 않는다 */
     async approve(app, opts) {
       opts = opts || {};
-      const member = await DB.members.create({
+      const already = (await DB.members.list()).find(m =>
+        m.application_id === app.id ||
+        (m.name === app.name && String(m.student_id || '') === String(app.student_id || '')));
+
+      const member = already || await DB.members.create({
         name: app.name, student_id: app.student_id, department: app.department, phone: app.phone,
         role: 'member', status: 'active', joined_on: today(), application_id: app.id, memo: ''
       });
       await DB.applications.update(app.id, { status: 'approved', reviewed_at: new Date().toISOString() });
-      if (opts.fee > 0) await DB.addFeeIncome(Number(opts.fee));
-      return member;
+
+      let feeError = null;
+      if (opts.fee > 0 && !already) {
+        try { await DB.addFeeIncome(Number(opts.fee)); }
+        catch (e) { feeError = e.message || '회비를 재정에 더하지 못했어요'; }
+      }
+      return { member, feeError, already: !!already };
     },
     /* 가입비는 새 내역을 만들지 않고 기존 '동아리비' 수입 한 줄에 더한다 */
     async addFeeIncome(fee) {
+      // 운영진 여러 명이 동시에 승인해도 금액이 덮어써지지 않도록 DB 안에서 더한다
+      if (HAS_SB) {
+        try {
+          await rest('rpc/add_fee_income', { method: 'POST', body: { fee }, prefer: 'return=minimal' });
+          return true;
+        } catch (e) { /* 함수가 아직 없으면 아래 방식으로 처리 */ }
+      }
       const rows = await DB.finance.list();
       const pool = rows.filter(f => f.kind === 'income' && /동아리비|회비/.test(f.category || ''));
-      pool.sort((a, b) => String(a.date).localeCompare(String(b.date)) ||
-        String(a.created_at).localeCompare(String(b.created_at)));
+      // 기수가 바뀌어 새 항목을 만들었다면 그 최신 항목에 더한다
+      pool.sort((a, b) => String(b.date).localeCompare(String(a.date)) ||
+        String(b.created_at).localeCompare(String(a.created_at)));
       const row = pool[0];
       if (!row) {
         return DB.finance.create({

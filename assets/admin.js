@@ -351,12 +351,14 @@
       closeSheet();
       const fee = (feeBox && feeBox.classList.contains('on')) ? S.settings.fee : 0;
       try {
-        await DB.approve(a, { fee });
+        const r = await DB.approve(a, { fee });
         await load();
-        toast(a.name + '님을 구성원으로 추가했어요', 'ok');
+        if (r && r.already) toast(a.name + '님은 이미 구성원이라 승인만 처리했어요');
+        else if (r && r.feeError) toast(a.name + '님은 추가했지만 회비는 못 더했어요. 재정에서 확인해주세요', 'err');
+        else toast(a.name + '님을 구성원으로 추가했어요', 'ok');
         await capacityGuard();
         render();
-      } catch (e) { toast(e.message || '승인하지 못했어요', 'err'); }
+      } catch (e) { toast(e.message || '승인하지 못했어요', 'err'); await reload(); }
     });
     on('[data-rej]', () => {
       closeSheet();
@@ -393,10 +395,16 @@
     if (!await confirmSheet('대기 ' + list.length + '건을 모두 승인할까요?',
       '모두 구성원으로 추가되고' + (S.settings.fee && autoFee() ? ', 회비도 동아리비 수입에 합산돼요.' : '요.'), '모두 승인')) return;
     toast('처리 중이에요…');
-    let ok = 0;
-    for (const a of list) { try { await DB.approve(a, { fee: autoFee() ? S.settings.fee : 0 }); ok++; } catch (e) { } }
+    let ok = 0, feeFail = 0;
+    for (const a of list) {
+      try {
+        const r = await DB.approve(a, { fee: autoFee() ? S.settings.fee : 0 });
+        ok++; if (r && r.feeError) feeFail++;
+      } catch (e) { }
+    }
     await load(); await capacityGuard(); render();
-    toast(ok + '명을 구성원으로 추가했어요', 'ok');
+    toast(ok + '명을 구성원으로 추가했어요' + (feeFail ? ' (회비 ' + feeFail + '건은 못 더했어요)' : ''),
+      feeFail ? 'err' : 'ok');
   }
 
   async function capacityGuard() {
