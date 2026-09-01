@@ -418,7 +418,7 @@
       '<button class="chip' + (F.member === k ? ' on' : '') + '" data-m="' + k + '">' + l + '<span class="n">' + counts[k] + '</span></button>').join('');
     $$('#memberChips [data-m]').forEach(b => b.addEventListener('click', () => { F.member = b.dataset.m; renderMembers(); }));
 
-    const sorts = [['name', '이름순'], ['vol', '봉사 많은 순'], ['new', '최근 가입']];
+    const sorts = [['name', '이름순'], ['vol', '봉사 많은 순']];
     $('#memberSort').innerHTML = sorts.map(([k, l]) =>
       '<button type="button" class="' + (F.sort === k ? 'on' : '') + '" data-s="' + k + '">' + l + '</button>').join('');
     $$('#memberSort [data-s]').forEach(b => b.addEventListener('click', () => { F.sort = b.dataset.s; renderMembers(); }));
@@ -429,7 +429,6 @@
     if (q) list = list.filter(m => (m.name + (m.department || '') + (m.student_id || '')).includes(q));
     if (F.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     if (F.sort === 'vol') list.sort((a, b) => volCount(b.id) - volCount(a.id));
-    if (F.sort === 'new') list.sort((a, b) => String(b.joined_on || b.created_at).localeCompare(String(a.joined_on || a.created_at)));
 
     const king = topMember();
     const kingHTML = king ? '<div class="kingbar" data-m2="' + king.m.id + '">' +
