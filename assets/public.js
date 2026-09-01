@@ -60,7 +60,7 @@
     $('#kicker').innerHTML = ic('sprout') + '<span>' + esc(s.generation || '') + ' 부원 모집</span>';
     $('#heroSub').textContent = '아래 폼을 작성해주시면 운영진이 확인 후 승인하겠습니다.';
     $('#feeAmount').textContent = won(s.fee);
-    $('#deptHint').textContent = (s.department || '') + ' 학생 대상이에요.';
+    $('#deptHint').textContent = (s.department || '') + ' 학생 대상이에요. 학번은 숫자만 적어주세요 (예: 25).';
     $('#bankName').textContent = s.bank;
     $('#acctNo').textContent = s.account;
     $('#holderName').textContent = '예금주 ' + s.holder;
@@ -164,6 +164,7 @@
 
     form.addEventListener('input', e => {
       if (e.target.name === 'phone') e.target.value = hyphenPhone(e.target.value);
+      if (e.target.name === 'student_id') e.target.value = e.target.value.replace(/[^0-9]/g, '');
       if (e.target.name === 'motivation') $('#motiveCount').textContent = e.target.value.length;
       clearErr(e.target.closest('.field'));
       progress();
@@ -256,7 +257,7 @@
     $$('.field').forEach(clearErr);
     const bad = [];
     if (!v.name) { setErr('#f-name'); bad.push('#f-name'); }
-    if (!v.student_id) { setErr('#f-student'); bad.push('#f-student'); }
+    if (!/^[0-9]{2,}$/.test(v.student_id)) { setErr('#f-student'); bad.push('#f-student'); }
     if (v.phone.replace(/\D/g, '').length < 10) { setErr('#f-phone', '연락처를 정확히 입력해주세요'); bad.push('#f-phone'); }
     if (v.motivation.length < 10) { setErr('#f-motive'); bad.push('#f-motive'); }
     if (settings.fee && !receipt) { setErr('#f-receipt'); bad.push('#f-receipt'); }
@@ -286,7 +287,7 @@
       localStorage.removeItem(DRAFT);
       localStorage.setItem(APPLIED, JSON.stringify({ name: v.name, at: new Date().toISOString() }));
       $('#doneSummary').innerHTML =
-        row('이름', v.name) + row('학번', v.student_id) + row('학과', v.department) +
+        row('이름', v.name) + row('학번', v.student_id + '학번') + row('학과', v.department) +
         row('연락처', v.phone) + row('신청 시각', fmtDateTime(new Date().toISOString()));
       $('#formWrap').hidden = true;
       $('#doneWrap').hidden = false;

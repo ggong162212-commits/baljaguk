@@ -260,7 +260,7 @@
       avatar(a) +
       '<div class="grow"><div class="nm">' + esc(a.name) +
       '<span class="badge ' + a.status + '">' + ({ pending: '대기', approved: '승인', rejected: '반려' }[a.status]) + '</span></div>' +
-      '<div class="meta">' + esc(a.student_id || '') + ' · ' + esc(a.department || '') + '</div>' +
+      '<div class="meta">' + esc(a.student_id || '') + '학번 · ' + esc(a.department || '') + '</div>' +
       '<div class="sub"><span>' + relTime(a.created_at) + '</span>' +
       (a.receipt ? '<span>입금증 있음</span>' : '<span style="color:var(--danger)">입금증 없음</span>') + '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
@@ -283,7 +283,7 @@
     const body =
       '<div class="row" style="gap:12px;margin-bottom:14px">' + avatar(a, 'lg') +
       '<div><div style="font-family:var(--font-title);font-size:21px">' + esc(a.name) + '</div>' +
-      '<div class="mut sm">' + esc(a.department || '') + ' · ' + esc(a.student_id || '') + '</div>' +
+      '<div class="mut sm">' + esc(a.student_id || '') + '학번 · ' + esc(a.department || '') + '</div>' +
       '<div class="badge ' + a.status + '" style="margin-top:6px">' + ({ pending: '승인 대기', approved: '승인됨', rejected: '반려됨' }[a.status]) + '</div></div></div>' +
       '<div class="card flat" style="margin-bottom:12px">' +
       kv('연락처', esc(phone)) + kv('신청 시각', fmtDateTime(a.created_at)) +
@@ -421,7 +421,7 @@
       '<div class="item" data-m2="' + m.id + '" tabindex="0" role="button">' + avatar(m) +
       '<div class="grow"><div class="nm">' + esc(m.name) +
       (m.role === 'admin' ? '<span class="badge admin">운영진</span>' : '') + '</div>' +
-      '<div class="meta">' + esc(m.student_id || '') + '</div>' +
+      '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
       '<div class="sub"><span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
       '<span>누적 봉사 ' + volCount(m.id) + '회</span></div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
@@ -477,7 +477,7 @@
     const body =
       '<label class="field"><span class="lb">이름</span><input class="input" id="mName" value="' + esc(m.name) + '" placeholder="이름"></label>' +
       '<div class="grid2">' +
-      '<label class="field"><span class="lb">학번</span><input class="input" id="mSid" value="' + esc(m.student_id || '') + '" placeholder="25학번"></label>' +
+      '<label class="field"><span class="lb">학번</span><input class="input" id="mSid" inputmode="numeric" value="' + esc(m.student_id || '') + '" placeholder="25"></label>' +
       '<label class="field"><span class="lb">역할</span><select class="input" id="mRole">' +
       '<option value="member"' + (m.role !== 'admin' ? ' selected' : '') + '>일반회원</option>' +
       '<option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>운영진</option></select></label></div>' +
@@ -502,7 +502,7 @@
     ov.querySelector('[data-save]').onclick = async () => {
       const patch = {
         name: ov.querySelector('#mName').value.trim(),
-        student_id: ov.querySelector('#mSid').value.trim(),
+        student_id: ov.querySelector('#mSid').value.replace(/[^0-9]/g, ''),
         phone: ov.querySelector('#mPhone').value.trim(),
         role: ov.querySelector('#mRole').value,
         department: (S.settings && S.settings.department) || m.department || '',

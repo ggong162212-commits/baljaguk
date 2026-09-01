@@ -73,9 +73,9 @@
 
       <label class="field" id="f-student">
         <span class="lb">학번 <span class="req">*</span></span>
-        <input class="input" name="student_id" inputmode="numeric" placeholder="25학번" maxlength="20" required>
+        <input class="input" name="student_id" inputmode="numeric" pattern="[0-9]*" placeholder="25" maxlength="10" required>
         <span class="hint" id="deptHint"></span>
-        <span class="hint-inline">학번을 입력해주세요</span>
+        <span class="hint-inline">학번을 숫자로 입력해주세요</span>
       </label>
 
       <label class="field" id="f-phone">

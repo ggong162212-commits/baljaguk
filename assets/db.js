@@ -18,13 +18,13 @@
     const m = (name, dept, sid, role, status, joined, phone) =>
       ({ id: uid(), name, department: dept, student_id: sid, phone, role, status, joined_on: joined, emoji: '', memo: '', created_at: new Date().toISOString() });
     const members = [
-      m('김하은', DEPT, '22학번', 'admin', 'active', '2024-03-12', '010-2211-3345'),
-      m('이준영', DEPT, '21학번', 'admin', 'active', '2023-09-05', '010-8842-1190'),
-      m('박서연', DEPT, '23학번', 'member', 'active', '2024-06-18', '010-3320-7781'),
-      m('최민재', DEPT, '24학번', 'member', 'active', '2024-09-01', '010-5567-2214'),
-      m('정예린', DEPT, '22학번', 'member', 'active', '2023-04-22', '010-9901-4432'),
-      m('한지우', DEPT, '24학번', 'member', 'active', '2025-03-04', '010-4412-6678'),
-      m('오세훈', DEPT, '23학번', 'member', 'active', '2025-03-04', '010-7788-1123')
+      m('김하은', DEPT, '22', 'admin', 'active', '2024-03-12', '010-2211-3345'),
+      m('이준영', DEPT, '21', 'admin', 'active', '2023-09-05', '010-8842-1190'),
+      m('박서연', DEPT, '23', 'member', 'active', '2024-06-18', '010-3320-7781'),
+      m('최민재', DEPT, '24', 'member', 'active', '2024-09-01', '010-5567-2214'),
+      m('정예린', DEPT, '22', 'member', 'active', '2023-04-22', '010-9901-4432'),
+      m('한지우', DEPT, '24', 'member', 'active', '2025-03-04', '010-4412-6678'),
+      m('오세훈', DEPT, '23', 'member', 'active', '2025-03-04', '010-7788-1123')
     ];
     const events = [
       { id: uid(), date: d(-21), title: '천보금 보호소 정기봉사', place: '경기 광주 천보금 보호소', start_time: '10:00', note: '견사 청소 · 산책', created_at: new Date().toISOString() },
@@ -36,8 +36,8 @@
     [0, 1, 2, 3, 5].forEach(i => push(events[0].id, members[i].id, 4));
     [0, 1, 2, 6].forEach(i => push(events[1].id, members[i].id, 3));
     const apps = [
-      { id: uid(), created_at: new Date(Date.now() - 864e5).toISOString(), name: '윤소민', student_id: '25학번', department: DEPT, phone: '010-2244-8890', motivation: '어릴 때부터 강아지를 키웠고, 보호소 봉사를 꾸준히 해보고 싶어서 지원합니다.', receipt: '', status: 'pending', note: '', reviewed_at: null },
-      { id: uid(), created_at: new Date(Date.now() - 3600e3 * 5).toISOString(), name: '강태리', student_id: '24학번', department: DEPT, phone: '010-6677-1102', motivation: '유기동물 문제에 관심이 많아 실제로 도움이 되는 활동을 하고 싶습니다.', receipt: '', status: 'pending', note: '', reviewed_at: null }
+      { id: uid(), created_at: new Date(Date.now() - 864e5).toISOString(), name: '윤소민', student_id: '25', department: DEPT, phone: '010-2244-8890', motivation: '어릴 때부터 강아지를 키웠고, 보호소 봉사를 꾸준히 해보고 싶어서 지원합니다.', receipt: '', status: 'pending', note: '', reviewed_at: null },
+      { id: uid(), created_at: new Date(Date.now() - 3600e3 * 5).toISOString(), name: '강태리', student_id: '24', department: DEPT, phone: '010-6677-1102', motivation: '유기동물 문제에 관심이 많아 실제로 도움이 되는 활동을 하고 싶습니다.', receipt: '', status: 'pending', note: '', reviewed_at: null }
     ];
     const fin = [
       { id: uid(), date: d(-40), kind: 'income', category: '2기 동아리비 (7명)', amount: 105000, memo: '', member_id: null, created_at: new Date().toISOString() },
