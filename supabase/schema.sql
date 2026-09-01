@@ -236,3 +236,6 @@ begin
     end;
   end loop;
 end $$;
+
+-- 봉사 장소 기본값 (봉사모임 만들 때 자동으로 채워짐)
+alter table club_settings add column if not exists place text default '천보금 보호소';

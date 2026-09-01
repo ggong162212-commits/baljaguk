@@ -589,7 +589,6 @@
         const joined = S.att.filter(a => a.event_id === ev.id);
         return '<div class="evrow" data-ev="' + ev.id + '"><span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' + ic('paw') + '</span>' +
           '<div class="grow"><div class="tt">' + esc(ev.title) + '</div><div class="mt">' +
-          (ev.start_time ? '<span>' + esc(ev.start_time) + '</span>' : '') +
           (ev.place ? '<span>' + esc(ev.place) + '</span>' : '') +
           '<span>참여 ' + joined.length + '명</span></div></div>' +
           '<div class="faces">' + joined.slice(0, 4).map(a => { const m = byId(S.members, a.member_id); return m ? avatar(m) : ''; }).join('') + '</div>' +
@@ -639,6 +638,14 @@
     };
   }
 
+  const volPlace = () => (S.settings && S.settings.place) || '천보금 보호소';
+  function autoTitle(date, skipId) {
+    const d = new Date(date + 'T00:00:00');
+    const base = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 봉사';
+    const same = S.events.filter(e => e.date === date && e.id !== skipId).length;
+    return same ? base + ' ' + (same + 1) : base;
+  }
+
   function eventSheet(ev) {
     const isNew = !ev;
     ev = ev || { date: F.day, title: '', place: '', start_time: '', note: '' };
@@ -646,13 +653,9 @@
     const picked = new Map(joined.map(a => [a.member_id, Number(a.hours) || 0]));
 
     const body =
-      '<label class="field"><span class="lb">봉사 이름</span>' +
-      '<input class="input" id="eTitle" value="' + esc(ev.title) + '" placeholder="예: 3월 정기봉사"></label>' +
-      '<div class="grid2">' +
-      '<label class="field"><span class="lb">날짜</span><input class="input" type="date" id="eDate" value="' + esc(ev.date) + '"></label>' +
-      '<label class="field"><span class="lb">시작 시간</span><input class="input" type="time" id="eTime" value="' + esc(ev.start_time || '') + '"></label></div>' +
-      '<label class="field"><span class="lb">장소</span><input class="input" id="ePlace" value="' + esc(ev.place || '') + '" placeholder="천보금 보호소"></label>' +
-      '<label class="field"><span class="lb">메모 (선택)</span><input class="input" id="eNote" value="' + esc(ev.note || '') + '" placeholder="준비물, 이동 방법 등"></label>' +
+      '<label class="field"><span class="lb">봉사 날짜</span>' +
+      '<input class="input" type="date" id="eDate" value="' + esc(ev.date) + '">' +
+      '<span class="hint">장소는 ' + esc(volPlace()) + ' 로 저장돼요.</span></label>' +
       '<div class="divider"></div>' +
       '<div class="row between" style="margin-bottom:8px"><b class="sm">참여한 구성원 <span id="pickCount">' + picked.size + '</span>명</b>' +
       '<button class="btn ghost sm" id="pickAll">전체 선택</button></div>' +
@@ -707,12 +710,10 @@
     });
 
     ov.querySelector('[data-save]').onclick = async () => {
+      const date = ov.querySelector('#eDate').value || F.day;
       const patch = {
-        title: ov.querySelector('#eTitle').value.trim() || '봉사모임',
-        date: ov.querySelector('#eDate').value || F.day,
-        start_time: ov.querySelector('#eTime').value || null,
-        place: ov.querySelector('#ePlace').value.trim(),
-        note: ov.querySelector('#eNote').value.trim()
+        title: autoTitle(date, isNew ? null : ev.id),
+        date: date, start_time: null, place: volPlace(), note: ''
       };
       closeSheet();
       try {
@@ -1217,6 +1218,9 @@
       '<label class="field"><span class="lb">한 줄 소개</span><input class="input" id="sTag" value="' + esc(s.tagline || '') + '"></label>' +
       '<label class="field"><span class="lb">소속 학과</span><input class="input" id="sDept" value="' + esc(s.department || '') + '">' +
       '<span class="hint">신청 폼에 안내로 뜨고, 승인된 구성원의 학과로 자동 입력돼요.</span></label>' +
+      '<label class="field"><span class="lb">봉사 장소</span>' +
+      '<input class="input" id="sPlace" value="' + esc(s.place || '천보금 보호소') + '">' +
+      '<span class="hint">봉사모임을 만들 때 이 장소로 자동 저장돼요.</span></label>' +
       '<label class="field"><span class="lb">공지 (선택)</span><textarea class="input" id="sNotice" style="min-height:70px" placeholder="폼 상단에 노란 박스로 보여요">' + esc(s.notice || '') + '</textarea></label>' +
       '<div class="divider"></div>' +
       '<label class="field"><span class="lb">회비</span><input class="input" id="sFee" inputmode="numeric" value="' + num(s.fee) + '"></label>' +
@@ -1257,6 +1261,7 @@
         generation: $('#sGen').value.trim(),
         tagline: $('#sTag').value.trim(),
         department: $('#sDept').value.trim(),
+        place: $('#sPlace').value.trim() || '천보금 보호소',
         notice: $('#sNotice').value.trim(),
         fee: Number(String($('#sFee').value).replace(/[^\d]/g, '')) || 0,
         bank: $('#sBank').value.trim(),

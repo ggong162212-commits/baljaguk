@@ -27,9 +27,9 @@
       m('오세훈', DEPT, '23', 'member', 'active', '2025-03-04', '010-7788-1123')
     ];
     const events = [
-      { id: uid(), date: d(-21), title: '천보금 보호소 정기봉사', place: '경기 광주 천보금 보호소', start_time: '10:00', note: '견사 청소 · 산책', created_at: new Date().toISOString() },
-      { id: uid(), date: d(-7), title: '유기묘 임보처 이동봉사', place: '서울 성북', start_time: '13:00', note: '', created_at: new Date().toISOString() },
-      { id: uid(), date: d(6), title: '3월 정기봉사', place: '천보금 보호소', start_time: '10:00', note: '신입 부원 첫 봉사', created_at: new Date().toISOString() }
+      { id: uid(), date: d(-21), title: '지난달 봉사', place: '천보금 보호소', start_time: null, note: '', created_at: new Date().toISOString() },
+      { id: uid(), date: d(-7), title: '지난주 봉사', place: '천보금 보호소', start_time: null, note: '', created_at: new Date().toISOString() },
+      { id: uid(), date: d(6), title: '다음 봉사', place: '천보금 보호소', start_time: null, note: '', created_at: new Date().toISOString() }
     ];
     const att = [];
     const push = (ev, mem, h) => att.push({ id: uid(), event_id: ev, member_id: mem, hours: h, created_at: new Date().toISOString() });
@@ -57,7 +57,7 @@
     ];
     return {
       campaigns: [camp], donations: dons,
-      settings: Object.assign({ id: 1, form_open: true, form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
+      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
       applications: apps, members, events, attendance: att, finance: fin,
       password: C.DEMO_PASSWORD || '260324'
     };
