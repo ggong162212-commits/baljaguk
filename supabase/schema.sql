@@ -239,3 +239,9 @@ end $$;
 
 -- 봉사 장소 기본값 (봉사모임 만들 때 자동으로 채워짐)
 alter table club_settings add column if not exists place text default '천보금 보호소';
+
+-- 사진은 목록에서 빼고 필요할 때만 받아온다 (있는지 여부만 컬럼으로)
+alter table applications add column if not exists has_receipt boolean
+  generated always as (receipt is not null and receipt <> '') stored;
+alter table finance add column if not exists has_receipt boolean
+  generated always as (receipt is not null and receipt <> '') stored;

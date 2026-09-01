@@ -112,10 +112,10 @@
   }
 
   const enc = encodeURIComponent;
-  function table(name, order) {
+  function table(name, order, cols) {
     if (HAS_SB) {
       return {
-        list: () => rest(name + '?select=*' + (order ? '&order=' + order : '')),
+        list: () => rest(name + '?select=' + (cols || '*') + (order ? '&order=' + order : '')),
         // 비로그인(신청자)은 SELECT 권한이 없으므로 return=minimal 로 넣는다
         create: (o) => session
           ? rest(name, { method: 'POST', body: o, prefer: 'return=representation' }).then(r => (r && r[0]) || o)
@@ -126,7 +126,9 @@
     }
     return {
       list: async () => {
-        const d = demoRead(); const rows = (d[name] || []).slice();
+        const d = demoRead();
+        const rows = (d[name] || []).map(r => (('receipt' in r)
+          ? Object.assign({}, r, { has_receipt: !!r.receipt, receipt: undefined }) : r));
         if (order) {
           const [col, dir] = order.split('.');
           rows.sort((a, b) => String(a[col] ?? '').localeCompare(String(b[col] ?? '')) * (dir === 'desc' ? -1 : 1));
@@ -188,11 +190,14 @@
       }
     },
 
-    applications: table('applications', 'created_at.desc'),
+    // 입금증(receipt)은 목록에서 제외 — 열어볼 때만 따로 받아온다
+    applications: table('applications', 'created_at.desc',
+      'id,created_at,name,student_id,department,phone,motivation,status,note,reviewed_at,has_receipt'),
     members: table('members', 'created_at.asc'),
     events: table('events', 'date.desc'),
     attendance: table('attendance'),
-    finance: table('finance', 'date.desc'),
+    finance: table('finance', 'date.desc',
+      'id,created_at,date,kind,category,amount,memo,member_id,has_receipt'),
     campaigns: table('campaigns', 'created_at.desc'),
     donations: table('donations', 'date.desc'),
 
@@ -302,6 +307,17 @@
       connect();
 
       return () => { stopped = true; clearInterval(timer); clearInterval(hb); try { ws && ws.close(); } catch (e) { } };
+    },
+
+    /* 사진 한 장만 따로 받아오기 */
+    async getReceipt(table, id) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const row = (d[table] || []).find(x => x.id === id);
+        return (row && row.receipt) || '';
+      }
+      const rows = await rest(table + '?select=receipt&id=eq.' + enc(id));
+      return (rows && rows[0] && rows[0].receipt) || '';
     },
 
     resetDemo() { localStorage.removeItem(DKEY); localStorage.removeItem('baljaguk.demoAuth'); },

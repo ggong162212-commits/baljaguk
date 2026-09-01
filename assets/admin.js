@@ -285,7 +285,7 @@
       '<span class="badge ' + a.status + '">' + ({ pending: '대기', approved: '승인', rejected: '반려' }[a.status]) + '</span></div>' +
       '<div class="meta">' + esc(a.student_id || '') + '학번 · ' + esc(a.department || '') + '</div>' +
       '<div class="sub"><span>' + relTime(a.created_at) + '</span>' +
-      (a.receipt ? '<span>입금증 있음</span>' : '<span style="color:var(--danger)">입금증 없음</span>') + '</div></div>' +
+      (a.has_receipt ? '<span>입금증 있음</span>' : '<span style="color:var(--danger)">입금증 없음</span>') + '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('clipboard', F.apply === 'pending' ? '대기 중인 신청이 없어요' : '해당하는 신청이 없어요');
 
@@ -319,7 +319,7 @@
       '<div class="lb" style="font-size:13.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px">지원 동기</div>' +
       '<div class="card flat sm" style="margin-bottom:14px;white-space:pre-wrap">' + esc(a.motivation || '(작성 없음)') + '</div>' +
       '<div class="lb" style="font-size:13.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px">입금증</div>' +
-      (a.receipt ? '<img class="receipt" src="' + a.receipt + '" alt="입금증" data-zoom>'
+      (a.has_receipt ? '<div id="rcBox" class="card flat center mut sm" style="padding:22px">사진 불러오는 중…</div>'
         : '<div class="card flat center mut sm" style="padding:22px">첨부된 입금증이 없어요</div>') +
       (a.status === 'pending'
         ? '<div class="divider"></div>' +
@@ -334,7 +334,15 @@
     const ov = sheet({ title: '신청서', body, noFocus: true });
     const on = (sel, fn) => { const el = ov.querySelector(sel); if (el) el.addEventListener('click', fn); };
     on('[data-copyphone]', () => copy(phone, '연락처를 복사했어요'));
-    on('[data-zoom]', () => window.open(a.receipt, '_blank'));
+    if (a.has_receipt) {
+      DB.getReceipt('applications', a.id).then(src => {
+        const box = ov.querySelector('#rcBox');
+        if (!box || !src) return;
+        box.outerHTML = '<img class="receipt" src="' + src + '" alt="입금증" id="rcImg">';
+        const img = ov.querySelector('#rcImg');
+        if (img) img.addEventListener('click', () => window.open(src, '_blank'));
+      }).catch(() => { const box = ov.querySelector('#rcBox'); if (box) box.textContent = '사진을 불러오지 못했어요'; });
+    }
     const feeBox = ov.querySelector('[data-fee]');
     if (feeBox) feeBox.addEventListener('click', () => {
       feeBox.classList.toggle('on');
@@ -501,7 +509,7 @@
       '<b class="sm">지원 동기</b>' +
       '<span class="mut" style="font-size:12px">' + fmtDate(app.created_at) + ' 신청</span></div>' +
       '<div class="card flat sm" style="white-space:pre-wrap">' + esc(app.motivation) + '</div>' +
-      (app.receipt ? '<button type="button" class="btn ghost sm block" data-receipt style="margin-top:8px">' +
+      (app.has_receipt ? '<button type="button" class="btn ghost sm block" data-receipt style="margin-top:8px">' +
         ic('image') + '<span>입금증 보기</span></button>' : '');
   }
 
@@ -542,7 +550,13 @@
     const ov = sheet({ title: isNew ? '구성원 추가' : m.name, body });
     ov.querySelector('#mPhone').addEventListener('input', e => e.target.value = hyphenPhone(e.target.value));
     const rc = ov.querySelector('[data-receipt]');
-    if (rc) rc.onclick = () => { const a = findApp(m); if (a && a.receipt) window.open(a.receipt, '_blank'); };
+    if (rc) rc.onclick = async () => {
+      const a = findApp(m); if (!a) return;
+      rc.disabled = true;
+      try { const src = await DB.getReceipt('applications', a.id); if (src) window.open(src, '_blank'); }
+      catch (e) { toast('사진을 불러오지 못했어요', 'err'); }
+      rc.disabled = false;
+    };
     ov.querySelector('[data-save]').onclick = async () => {
       const patch = {
         name: ov.querySelector('#mName').value.trim(),
@@ -792,7 +806,7 @@
           ic(f.kind === 'income' ? 'plus' : 'minus') + '</span>' +
           '<div class="grow"><div class="nm">' + esc(f.category || (f.kind === 'income' ? '수입' : '지출')) + '</div>' +
           '<div class="sub"><span>' + fmtDate(f.date) + '</span>' +
-          (f.receipt ? '<span>증빙 있음</span>' : '') + '</div></div>' +
+          (f.has_receipt ? '<span>증빙 있음</span>' : '') + '</div></div>' +
           '<div class="money" style="color:' + (f.kind === 'income' ? 'var(--brand-deep)' : 'var(--pink)') + '">' +
           (f.kind === 'income' ? '+' : '-') + num(f.amount) + '</div></div>';
       }).join('') + '</div>'
@@ -836,14 +850,14 @@
       '<input class="input" type="date" id="fDate" value="' + esc(String(f.date).slice(0, 10)) + '"></label>' +
       '<div class="field"><span class="lb">증빙 사진 <span class="mut" style="font-weight:400">(선택)</span></span>' +
       '<div class="dropzone" id="fDrop" tabindex="0" role="button" aria-label="증빙 사진 첨부">' +
-      '<div id="fIdle"' + (f.receipt ? ' hidden' : '') + '><div class="big">' + ic('image') + '</div>' +
+      '<div id="fIdle"' + (f.has_receipt ? ' hidden' : '') + '><div class="big">' + ic('image') + '</div>' +
       '<div class="sm mut" style="margin-top:4px">영수증·이체 캡처를 올려두면 나중에 확인하기 좋아요</div></div>' +
-      '<div id="fDone"' + (f.receipt ? '' : ' hidden') + '>' +
-      '<img id="fPrev" alt="증빙 사진" src="' + (f.receipt || '') + '">' +
+      '<div id="fDone"' + (f.has_receipt ? '' : ' hidden') + '>' +
+      '<img id="fPrev" alt="증빙 사진">' +
       '<div class="sm mut" style="margin-top:6px">다시 탭하면 바꿀 수 있어요</div></div></div>' +
       '<input type="file" id="fFile" accept="image/*" hidden>' +
       '<button type="button" class="btn ghost sm block" id="fClear" style="margin-top:8px"' +
-      (f.receipt ? '' : ' hidden') + '>사진 지우기</button></div>' +
+      (f.has_receipt ? '' : ' hidden') + '>사진 지우기</button></div>' +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>추가하기</button>'
         : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
@@ -863,7 +877,14 @@
       ov.querySelectorAll('#kSeg button').forEach(x => x.classList.toggle('on', x.dataset.k === kind));
       tags();
     }));
-    let receipt = f.receipt || '';
+    let receipt = '';
+    let receiptLoaded = !f.has_receipt;
+    if (f.has_receipt) {
+      DB.getReceipt('finance', f.id).then(src => {
+        receipt = src || ''; receiptLoaded = true;
+        const img = ov.querySelector('#fPrev'); if (img) img.src = receipt;
+      }).catch(() => { receiptLoaded = true; });
+    }
     const drop = ov.querySelector('#fDrop'), file = ov.querySelector('#fFile'), clr = ov.querySelector('#fClear');
     drop.addEventListener('click', () => file.click());
     drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
@@ -892,8 +913,9 @@
         kind, amount: Number(String(amt.value).replace(/[^\d]/g, '')) || 0,
         category: ov.querySelector('#fCat').value.trim() || (kind === 'income' ? '수입' : '지출'),
         date: ov.querySelector('#fDate').value || dkey(new Date()),
-        memo: '', member_id: null, receipt: receipt || null
+        memo: '', member_id: null
       };
+      if (receiptLoaded) patch.receipt = receipt || null;
       if (!patch.amount) return toast('금액을 입력해주세요', 'err');
       closeSheet();
       try {
