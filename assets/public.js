@@ -2,7 +2,7 @@
    가입 신청 페이지
    ============================================================ */
 (function () {
-  const { $, $$, toast, copy, won, esc, fmtDate, fmtDateTime, hyphenPhone, resizeImage, cheer, debounce } = UI;
+  const { $, $$, toast, copy, won, esc, fmtDate, fmtDateTime, hyphenPhone, normSid, resizeImage, cheer, debounce } = UI;
   const DRAFT = 'baljaguk.draft';
   const APPLIED = 'baljaguk.applied';
   let settings = null, receipt = '', receiptName = '', ctaWatcher = null;
@@ -232,7 +232,7 @@
     const f = $('#applyForm');
     return {
       name: f.name.value.trim(),
-      student_id: f.student_id.value.trim(),
+      student_id: normSid(f.student_id.value),
       department: (settings && settings.department) || '',
       phone: hyphenPhone(f.phone.value.trim()),
       motivation: f.motivation.value.trim(),

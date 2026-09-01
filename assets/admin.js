@@ -3,7 +3,7 @@
    ============================================================ */
 (function () {
   const { $, $$, toast, sheet, closeSheet, confirmSheet, copy, won, num, esc,
-    fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, avatar, downloadCSV,
+    fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [] };
@@ -558,7 +558,7 @@
     ov.querySelector('[data-save]').onclick = async () => {
       const patch = {
         name: ov.querySelector('#mName').value.trim(),
-        student_id: ov.querySelector('#mSid').value.replace(/[^0-9]/g, ''),
+        student_id: normSid(ov.querySelector('#mSid').value),
         phone: ov.querySelector('#mPhone').value.trim(),
         role: ov.querySelector('#mRole').value,
         department: (S.settings && S.settings.department) || m.department || '',

@@ -123,6 +123,15 @@
     if (diff < 86400 * 7) return Math.floor(diff / 86400) + '일 전';
     return fmtDate(v);
   }
+  /* 학번 정규화: 202311584 · 2023 → 23, 25 → 25 */
+  function normSid(v) {
+    const d = String(v || '').replace(/\D/g, '');
+    if (d.length >= 4) {
+      const y = Number(d.slice(0, 4));
+      if (y >= 1990 && y <= 2099) return d.slice(2, 4);
+    }
+    return d;
+  }
   function hyphenPhone(v) {
     const d = String(v || '').replace(/\D/g, '').slice(0, 11);
     if (d.length < 4) return d;
@@ -210,7 +219,7 @@
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
-    copy, won, num, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, esc, avatar,
+    copy, won, num, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar,
     resizeImage, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
   };
 })();
