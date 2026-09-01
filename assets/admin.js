@@ -692,7 +692,9 @@
       '<div class="divider"></div>' +
       '<div class="row between" style="margin-bottom:8px"><b class="sm">참여한 구성원 <span id="pickCount">' + picked.size + '</span>명</b>' +
       '<button class="btn ghost sm" id="pickAll">전체 선택</button></div>' +
-      '<div class="search" style="margin-bottom:8px">' + ic('search') + '<input id="pickSearch" placeholder="이름으로 찾기"></div>' +
+      '<div class="search" style="margin-bottom:8px">' + ic('search') +
+      '<input id="pickSearch" placeholder="이름으로 찾아서 추가"></div>' +
+      '<div id="pickResults"></div>' +
       '<div class="picker" id="picker"></div>' +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>봉사모임 만들기</button>'
@@ -703,32 +705,46 @@
 
     function drawPicker() {
       const q = ov.querySelector('#pickSearch').value.trim();
-      const list = S.members.filter(m => !q || (m.name + (m.department || '')).includes(q));
-      ov.querySelector('#picker').innerHTML = list.length ? list.map(m => {
-        const on = picked.has(m.id);
-        return '<div class="check' + (on ? ' on' : '') + '" data-p="' + m.id + '"><span class="box">' + (on ? ic('check') : '') + '</span>' +
-          avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
-          '<div class="mut" style="font-size:11.5px">' + esc(m.department || '') + ' · 누적 ' + volCount(m.id) + '회</div></div>' +
-          '<span class="hr"><input type="number" min="0" max="24" step="0.5" value="' + (on && picked.get(m.id) ? picked.get(m.id) : '') +
-          '" placeholder="시간" data-h="' + m.id + '" aria-label="' + esc(m.name) + ' 봉사 시간"></span></div>';
-      }).join('') : '<div class="mut sm center" style="padding:14px">찾는 구성원이 없어요</div>';
 
-      ov.querySelectorAll('[data-p]').forEach(el => el.addEventListener('click', e => {
-        if (e.target.tagName === 'INPUT') return;
-        const id = el.dataset.p;
-        if (picked.has(id)) picked.delete(id); else picked.set(id, Number(ov.querySelector('[data-h="' + id + '"]').value) || 0);
+      // 검색 결과 — 검색어가 있을 때만, 아직 안 고른 사람만
+      const res = q ? S.members.filter(m => m.name.includes(q) && !picked.has(m.id)).slice(0, 8) : [];
+      ov.querySelector('#pickResults').innerHTML = q
+        ? (res.length
+          ? '<div class="picker" style="margin-bottom:10px">' + res.map(m =>
+            '<div class="check" data-add-m="' + m.id + '"><span class="box">' + ic('plus') + '</span>' +
+            avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
+            '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번 · 누적 ' + volCount(m.id) + '회</div></div></div>'
+          ).join('') + '</div>'
+          : '<div class="mut sm center" style="padding:10px">찾는 구성원이 없어요</div>')
+        : '';
+
+      // 고른 사람만 아래에 남긴다
+      const chosen = S.members.filter(m => picked.has(m.id));
+      ov.querySelector('#picker').innerHTML = chosen.length ? chosen.map(m =>
+        '<div class="check on" data-p="' + m.id + '"><span class="box">' + ic('check') + '</span>' +
+        avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
+        '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div>' +
+        '<span class="hr"><input type="number" min="0" max="24" step="0.5" value="' + (picked.get(m.id) || '') +
+        '" placeholder="시간" data-h="' + m.id + '" aria-label="' + esc(m.name) + ' 봉사 시간"></span>' +
+        '<button type="button" class="iconbtn" data-rm="' + m.id + '" aria-label="빼기" ' +
+        'style="width:32px;height:32px;border-radius:11px">' + ic('x') + '</button></div>'
+      ).join('') : '<div class="mut sm center" style="padding:14px">위에서 이름을 검색해 참여한 사람을 추가해주세요</div>';
+
+      ov.querySelectorAll('[data-add-m]').forEach(el => el.addEventListener('click', () => {
+        picked.set(el.dataset.addM, 0);
+        ov.querySelector('#pickCount').textContent = picked.size;
+        ov.querySelector('#pickSearch').value = '';
+        drawPicker();
+        ov.querySelector('#pickSearch').focus();
+      }));
+      ov.querySelectorAll('[data-rm]').forEach(el => el.addEventListener('click', e => {
+        e.stopPropagation();
+        picked.delete(el.dataset.rm);
         ov.querySelector('#pickCount').textContent = picked.size;
         drawPicker();
       }));
       ov.querySelectorAll('[data-h]').forEach(inp => inp.addEventListener('input', () => {
-        const id = inp.dataset.h;
-        if (!picked.has(id)) {
-          picked.set(id, 0);
-          ov.querySelector('#pickCount').textContent = picked.size;
-          const row = ov.querySelector('[data-p="' + id + '"]');
-          row.classList.add('on'); row.querySelector('.box').innerHTML = ic('check');
-        }
-        picked.set(id, Number(inp.value) || 0);
+        picked.set(inp.dataset.h, Number(inp.value) || 0);
       }));
     }
     drawPicker();
@@ -1181,15 +1197,22 @@
 
     function drawPick() {
       const q = (ov.querySelector('#dSearch').value || '').trim();
-      const list = S.members.filter(m => !q || m.name.includes(q));
-      ov.querySelector('#dPick').innerHTML = list.length ? list.map(m =>
-        '<div class="check' + (picked === m.id ? ' on' : '') + '" data-m="' + m.id + '">' +
-        '<span class="box">' + (picked === m.id ? ic('check') : '') + '</span>' + avatar(m, 'sm') +
+      const sel = picked ? S.members.filter(m => m.id === picked) : [];
+      const res = q ? S.members.filter(m => m.name.includes(q) && m.id !== picked).slice(0, 8) : [];
+      const row = (m, on) =>
+        '<div class="check' + (on ? ' on' : '') + '" data-m="' + m.id + '">' +
+        '<span class="box">' + (on ? ic('check') : ic('plus')) + '</span>' + avatar(m, 'sm') +
         '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
-        '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div></div>'
-      ).join('') : '<div class="mut sm center" style="padding:12px">구성원이 없어요</div>';
+        '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div></div>';
+      ov.querySelector('#dPick').innerHTML =
+        sel.map(m => row(m, true)).join('') +
+        res.map(m => row(m, false)).join('') +
+        (!sel.length && !q ? '<div class="mut sm center" style="padding:12px">이름을 검색해서 골라주세요</div>' : '') +
+        (q && !res.length ? '<div class="mut sm center" style="padding:10px">찾는 구성원이 없어요</div>' : '');
       ov.querySelectorAll('#dPick [data-m]').forEach(el => el.addEventListener('click', () => {
-        picked = el.dataset.m === picked ? null : el.dataset.m; drawPick();
+        picked = el.dataset.m === picked ? null : el.dataset.m;
+        if (picked) ov.querySelector('#dSearch').value = '';
+        drawPick();
       }));
     }
     function drawWho() {
