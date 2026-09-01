@@ -486,6 +486,25 @@
     return all && Object.assign(all, { label: '누적 참여왕', unit: '누적 봉사' });
   }
 
+  /* 구성원과 연결된 신청서 (승인 후에도 남아 있는 지원 동기) */
+  function findApp(m) {
+    if (!m || !m.id) return null;
+    return (m.application_id ? byId(S.apps, m.application_id) : null) ||
+      S.apps.find(a => a.status === 'approved' && a.name === m.name &&
+        (!m.student_id || a.student_id === m.student_id)) || null;
+  }
+  function memberApplyBlock(m) {
+    const app = findApp(m);
+    if (!app || !app.motivation) return '';
+    return '<div class="divider"></div>' +
+      '<div class="row between" style="margin-bottom:8px">' +
+      '<b class="sm">지원 동기</b>' +
+      '<span class="mut" style="font-size:12px">' + fmtDate(app.created_at) + ' 신청</span></div>' +
+      '<div class="card flat sm" style="white-space:pre-wrap">' + esc(app.motivation) + '</div>' +
+      (app.receipt ? '<button type="button" class="btn ghost sm block" data-receipt style="margin-top:8px">' +
+        ic('image') + '<span>입금증 보기</span></button>' : '');
+  }
+
   function memberSheet(m) {
     const isNew = !m;
     m = m || {
@@ -508,6 +527,7 @@
       '<label class="field"><span class="lb">가입일</span><input class="input" type="date" id="mJoin" value="' + esc((m.joined_on || '').slice(0, 10)) + '"></label>' +
       '<label class="field"><span class="lb">프로필 이모지 (선택)</span><input class="input" id="mEmoji" maxlength="2" value="' + esc(m.emoji || '') + '" placeholder="🐶"></label></div>' +
       '<label class="field"><span class="lb">메모</span><textarea class="input" id="mMemo" style="min-height:70px" placeholder="운영진만 보는 메모">' + esc(m.memo || '') + '</textarea></label>' +
+      (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
         '<div class="divider"></div><div class="row between" style="margin-bottom:8px">' +
         '<b class="sm">봉사 이력 ' + hist.length + '회</b><span class="mut sm">누적 ' + volHours(m.id) + '시간</span></div>' +
@@ -521,6 +541,8 @@
 
     const ov = sheet({ title: isNew ? '구성원 추가' : m.name, body });
     ov.querySelector('#mPhone').addEventListener('input', e => e.target.value = hyphenPhone(e.target.value));
+    const rc = ov.querySelector('[data-receipt]');
+    if (rc) rc.onclick = () => { const a = findApp(m); if (a && a.receipt) window.open(a.receipt, '_blank'); };
     ov.querySelector('[data-save]').onclick = async () => {
       const patch = {
         name: ov.querySelector('#mName').value.trim(),
