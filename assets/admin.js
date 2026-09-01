@@ -766,8 +766,8 @@
           '" style="width:42px;height:42px;border-radius:15px;display:grid;place-items:center">' +
           ic(f.kind === 'income' ? 'plus' : 'minus') + '</span>' +
           '<div class="grow"><div class="nm">' + esc(f.category || (f.kind === 'income' ? '수입' : '지출')) + '</div>' +
-          '<div class="sub"><span>' + fmtDate(f.date) + '</span>' + (f.memo ? '<span>' + esc(f.memo) + '</span>' : '') +
-          '</div></div>' +
+          '<div class="sub"><span>' + fmtDate(f.date) + '</span>' +
+          (f.receipt ? '<span>증빙 있음</span>' : '') + '</div></div>' +
           '<div class="money" style="color:' + (f.kind === 'income' ? 'var(--brand-deep)' : 'var(--pink)') + '">' +
           (f.kind === 'income' ? '+' : '-') + num(f.amount) + '</div></div>';
       }).join('') + '</div>'
@@ -776,12 +776,22 @@
     $$('#finList [data-f2]').forEach(el => el.addEventListener('click', () => finSheet(byId(S.fin, el.dataset.f2))));
     $('#addFin').onclick = () => finSheet(null);
     $('#exportFin').onclick = () => {
-      downloadCSV('발자국_재정_' + dkey(new Date()) + '.csv', ['날짜', '구분', '분류', '금액', '메모', '관련구성원'],
-        S.fin.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).map(f => {
-          const m = f.member_id ? byId(S.members, f.member_id) : null;
-          return [f.date, f.kind === 'income' ? '수입' : '지출', f.category, f.amount, f.memo, m ? m.name : ''];
-        }));
-      toast('장부를 내려받았어요', 'ok');
+      const rows = S.fin.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      let run = 0;
+      const body = rows.map(f => {
+        const amount = Number(f.amount) || 0;
+        run += (f.kind === 'income' ? 1 : -1) * amount;
+        return [f.date, f.kind === 'income' ? '수입' : '지출', f.category,
+          f.kind === 'income' ? amount : '', f.kind === 'expense' ? amount : '',
+          run, f.receipt ? 'O' : ''];
+      });
+      body.push(['합계', '', '',
+        rows.filter(f => f.kind === 'income').reduce((a, f) => a + Number(f.amount || 0), 0),
+        rows.filter(f => f.kind === 'expense').reduce((a, f) => a + Number(f.amount || 0), 0),
+        balance(), '']);
+      downloadCSV('발자국_재정_' + dkey(new Date()) + '.csv',
+        ['날짜', '구분', '내용', '수입', '지출', '잔액', '증빙'], body);
+      toast('엑셀 파일을 내려받았어요', 'ok');
     };
   }
 
@@ -799,6 +809,16 @@
       '<div class="tagrow" id="catTags" style="margin:-8px 0 14px"></div>' +
       '<label class="field"><span class="lb">날짜</span>' +
       '<input class="input" type="date" id="fDate" value="' + esc(String(f.date).slice(0, 10)) + '"></label>' +
+      '<div class="field"><span class="lb">증빙 사진 <span class="mut" style="font-weight:400">(선택)</span></span>' +
+      '<div class="dropzone" id="fDrop" tabindex="0" role="button" aria-label="증빙 사진 첨부">' +
+      '<div id="fIdle"' + (f.receipt ? ' hidden' : '') + '><div class="big">' + ic('image') + '</div>' +
+      '<div class="sm mut" style="margin-top:4px">영수증·이체 캡처를 올려두면 나중에 확인하기 좋아요</div></div>' +
+      '<div id="fDone"' + (f.receipt ? '' : ' hidden') + '>' +
+      '<img id="fPrev" alt="증빙 사진" src="' + (f.receipt || '') + '">' +
+      '<div class="sm mut" style="margin-top:6px">다시 탭하면 바꿀 수 있어요</div></div></div>' +
+      '<input type="file" id="fFile" accept="image/*" hidden>' +
+      '<button type="button" class="btn ghost sm block" id="fClear" style="margin-top:8px"' +
+      (f.receipt ? '' : ' hidden') + '>사진 지우기</button></div>' +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>추가하기</button>'
         : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
@@ -818,6 +838,23 @@
       ov.querySelectorAll('#kSeg button').forEach(x => x.classList.toggle('on', x.dataset.k === kind));
       tags();
     }));
+    let receipt = f.receipt || '';
+    const drop = ov.querySelector('#fDrop'), file = ov.querySelector('#fFile'), clr = ov.querySelector('#fClear');
+    drop.addEventListener('click', () => file.click());
+    drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+    file.addEventListener('change', async () => {
+      const x = file.files[0]; if (!x) return;
+      try {
+        receipt = await UI.resizeImage(x, 1280, .72);
+        ov.querySelector('#fPrev').src = receipt;
+        ov.querySelector('#fIdle').hidden = true; ov.querySelector('#fDone').hidden = false; clr.hidden = false;
+      } catch (e) { toast(e.message || '사진을 처리하지 못했어요', 'err'); }
+    });
+    clr.addEventListener('click', e => {
+      e.stopPropagation(); receipt = ''; file.value = '';
+      ov.querySelector('#fIdle').hidden = false; ov.querySelector('#fDone').hidden = true; clr.hidden = true;
+    });
+
     const amt = ov.querySelector('#fAmt');
     amt.addEventListener('input', () => {
       const n = amt.value.replace(/[^\d]/g, '');
@@ -830,7 +867,7 @@
         kind, amount: Number(String(amt.value).replace(/[^\d]/g, '')) || 0,
         category: ov.querySelector('#fCat').value.trim() || (kind === 'income' ? '수입' : '지출'),
         date: ov.querySelector('#fDate').value || dkey(new Date()),
-        memo: '', member_id: null
+        memo: '', member_id: null, receipt: receipt || null
       };
       if (!patch.amount) return toast('금액을 입력해주세요', 'err');
       closeSheet();

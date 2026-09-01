@@ -251,6 +251,18 @@ a{color:inherit;text-decoration:none}
 textarea.input{min-height:110px;resize:vertical;line-height:1.6}
 select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
   background-position:calc(100% - 19px) 50%,calc(100% - 14px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:38px}
+/* 날짜·시각 입력은 폰에서 내부 표시가 넓어 잘리거나 밀린다 — 여백을 줄여 잡는다 */
+input[type="date"].input,
+input[type="time"].input,
+input[type="datetime-local"].input{
+  padding:12px 10px;font-size:15px;min-width:0;width:100%;
+  -webkit-appearance:none;appearance:none;line-height:1.2
+}
+input[type="date"].input::-webkit-date-and-time-value,
+input[type="time"].input::-webkit-date-and-time-value{text-align:left;margin:0}
+input[type="date"].input::-webkit-calendar-picker-indicator,
+input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opacity:.55;cursor:pointer}
+
 /* 날짜 + 시각 (모바일에서 잘리지 않게 폭을 나눠 잡는다) */
 .dt2{display:grid;grid-template-columns:1.3fr 1fr;gap:8px}
 .dt2 .input{

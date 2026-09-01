@@ -189,3 +189,6 @@ begin
     end;
   end loop;
 end $$;
+
+-- 재정 내역 증빙 사진 (선택, 축소된 data URL)
+alter table finance add column if not exists receipt text;
