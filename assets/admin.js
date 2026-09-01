@@ -919,11 +919,14 @@
 
     $('#newCamp').onclick = () => campSheet(null);
     $$('#donatePanel [data-camp]').forEach(el => el.addEventListener('click', e => {
-      if (e.target.closest('[data-add]')) return;
-      campSheet(byId(S.camps, el.dataset.camp), true);
+      if (e.target.closest('[data-add]') || e.target.closest('[data-detail]')) return;
+      detailSheet(byId(S.camps, el.dataset.camp));
     }));
     $$('#donatePanel [data-add]').forEach(el => el.addEventListener('click', e => {
       e.stopPropagation(); donSheet(el.dataset.add, null);
+    }));
+    $$('#donatePanel [data-detail]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation(); detailSheet(byId(S.camps, el.dataset.detail));
     }));
   }
 
@@ -961,11 +964,48 @@
           num(goal - got) + '원</b> 남았어요</div>')
         : '<div class="mut sm">' + donorCount(c.id) + '명 참여</div>') +
       '<div class="sp"></div>' +
-      '<button class="btn soft block sm" data-add="' + c.id + '" type="button">' + ic('plus') + '<span>입금 내역 추가</span></button>' +
-      '</div>';
+      '<div class="row" style="gap:8px">' +
+      '<button class="btn soft grow sm" data-add="' + c.id + '" type="button">' + ic('plus') + '<span>입금 내역 추가</span></button>' +
+      '<button class="btn ghost grow sm" data-detail="' + c.id + '" type="button">' + ic('clipboard') + '<span>세부내역</span></button>' +
+      '</div></div>';
   }
 
-  /* 후원 만들기 / 상세 */
+  /* 세부내역 — 입금 히스토리 */
+  function detailSheet(c) {
+    if (!c) return;
+    const list = S.dons.filter(d => d.campaign_id === c.id)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at).localeCompare(String(a.created_at)));
+    const dd = dday(c);
+
+    const body =
+      '<div class="row" style="gap:6px;margin:-6px 0 12px">' +
+      (c.partner ? '<span class="badge member">' + esc(c.partner) + '</span>' : '') +
+      '<span class="badge ' + dd.cls + '">' + dd.txt + '</span>' +
+      (c.starts_on || c.ends_on ? '<span class="mut sm">' + fmtDate(c.starts_on) + ' ~ ' + fmtDate(c.ends_on) + '</span>' : '') +
+      '</div>' +
+      (c.note ? '<div class="pill-note" style="margin-bottom:12px">' + esc(c.note) + '</div>' : '') +
+      donationList(c, list) +
+      '<div class="divider"></div>' +
+      '<button class="btn ghost block" data-edit>' + ic('settings') + '<span>후원 정보 수정</span></button>';
+
+    const ov = sheet({ title: c.title, body, noFocus: true });
+    ov.querySelector('[data-addd]').onclick = () => { closeSheet(); donSheet(c.id, null); };
+    ov.querySelectorAll('[data-don]').forEach(el => el.addEventListener('click', () => {
+      closeSheet(); donSheet(c.id, byId(S.dons, el.dataset.don));
+    }));
+    const ex = ov.querySelector('[data-export]');
+    if (ex) ex.onclick = () => {
+      downloadCSV('발자국_후원_' + dkey(new Date()) + '.csv',
+        ['날짜', '후원자', '구분', '금액'],
+        list.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .map(d => [d.date, donorLabel(d), d.member_id ? '구성원' : '외부', d.amount])
+          .concat([['합계', '', '', raised(c.id)]]));
+      toast('엑셀 파일을 내려받았어요', 'ok');
+    };
+    ov.querySelector('[data-edit]').onclick = () => { closeSheet(); campSheet(c); };
+  }
+
+  /* 후원 만들기 / 정보 수정 */
   function campSheet(c, detail) {
     const isNew = !c;
     c = c || { title: '', partner: '', goal: '', starts_on: DB.today(), ends_on: '', note: '', status: 'open' };
