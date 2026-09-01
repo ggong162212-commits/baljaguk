@@ -434,7 +434,8 @@
     if (F.member === 'admin') list = list.filter(m => m.role === 'admin');
     const q = F.q2.trim();
     if (q) list = list.filter(m => (m.name + (m.department || '') + (m.student_id || '')).includes(q));
-    if (F.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    if (F.sort === 'name') list.sort((a, b) =>
+      (b.role === 'admin') - (a.role === 'admin') || a.name.localeCompare(b.name, 'ko'));
     if (F.sort === 'vol') list.sort((a, b) => volCount(b.id) - volCount(a.id));
 
     const king = topMember();
@@ -531,7 +532,7 @@
       '<div class="grid2">' +
       '<label class="field"><span class="lb">가입일</span><input class="input" type="date" id="mJoin" value="' + esc((m.joined_on || '').slice(0, 10)) + '"></label>' +
       '<label class="field"><span class="lb">프로필 이모지 (선택)</span><input class="input" id="mEmoji" maxlength="2" value="' + esc(m.emoji || '') + '" placeholder="🐶"></label></div>' +
-      '<label class="field"><span class="lb">메모</span><textarea class="input" id="mMemo" style="min-height:70px" placeholder="운영진만 보는 메모">' + esc(m.memo || '') + '</textarea></label>' +
+
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
         '<div class="divider"></div><div class="row between" style="margin-bottom:8px">' +
@@ -564,7 +565,7 @@
         status: 'active',
         joined_on: ov.querySelector('#mJoin').value || null,
         emoji: ov.querySelector('#mEmoji').value.trim(),
-        memo: ov.querySelector('#mMemo').value.trim()
+        memo: m.memo || ''
       };
       if (!patch.name) return toast('이름을 입력해주세요', 'err');
       closeSheet();
