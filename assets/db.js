@@ -217,14 +217,28 @@
         role: 'member', status: 'active', joined_on: today(), application_id: app.id, memo: ''
       });
       await DB.applications.update(app.id, { status: 'approved', reviewed_at: new Date().toISOString() });
-      if (opts.fee > 0) {
-        await DB.finance.create({
-          date: today(), kind: 'income', category: app.name + ' 동아리비', amount: Number(opts.fee),
-          memo: '', member_id: member.id
-        });
-      }
+      if (opts.fee > 0) await DB.addFeeIncome(Number(opts.fee));
       return member;
     },
+    /* 가입비는 새 내역을 만들지 않고 기존 '동아리비' 수입 한 줄에 더한다 */
+    async addFeeIncome(fee) {
+      const rows = await DB.finance.list();
+      const pool = rows.filter(f => f.kind === 'income' && /동아리비|회비/.test(f.category || ''));
+      pool.sort((a, b) => String(a.date).localeCompare(String(b.date)) ||
+        String(a.created_at).localeCompare(String(b.created_at)));
+      const row = pool[0];
+      if (!row) {
+        return DB.finance.create({
+          date: today(), kind: 'income', category: '동아리비 (1명)',
+          amount: fee, memo: '', member_id: null
+        });
+      }
+      const patch = { amount: (Number(row.amount) || 0) + fee };
+      const m = String(row.category || '').match(/^(.*?)\((\d+)\s*명\)\s*$/);
+      if (m) patch.category = m[1] + '(' + (Number(m[2]) + 1) + '명)';
+      return DB.finance.update(row.id, patch);
+    },
+
     async reject(app, reason) {
       return DB.applications.update(app.id, { status: 'rejected', note: reason || '', reviewed_at: new Date().toISOString() });
     },

@@ -323,7 +323,7 @@
       (a.status === 'pending'
         ? '<div class="divider"></div>' +
         (S.settings.fee ? '<label class="check on" data-fee style="margin-bottom:10px"><span class="box">' + ic('check') + '</span>' +
-          '<span class="sm">승인하면 회비 ' + won(S.settings.fee) + '을 수입으로 기록</span></label>' : '') +
+          '<span class="sm">승인하면 회비 ' + won(S.settings.fee) + '을 재정의 동아리비 수입에 더하기</span></label>' : '') +
         '<div class="row" style="gap:8px"><button class="btn danger grow" data-rej>반려</button>' +
         '<button class="btn primary grow" data-ok>승인하고 구성원 추가</button></div>'
         : '<div class="divider"></div><div class="row" style="gap:8px">' +
@@ -391,7 +391,7 @@
   async function bulkApprove() {
     const list = S.apps.filter(a => a.status === 'pending');
     if (!await confirmSheet('대기 ' + list.length + '건을 모두 승인할까요?',
-      '모두 구성원으로 추가되고' + (S.settings.fee && autoFee() ? ', 회비 수입도 각각 기록돼요.' : '요.'), '모두 승인')) return;
+      '모두 구성원으로 추가되고' + (S.settings.fee && autoFee() ? ', 회비도 동아리비 수입에 합산돼요.' : '요.'), '모두 승인')) return;
     toast('처리 중이에요…');
     let ok = 0;
     for (const a of list) { try { await DB.approve(a, { fee: autoFee() ? S.settings.fee : 0 }); ok++; } catch (e) { } }
@@ -1295,7 +1295,7 @@
       '<button class="btn primary block" id="saveClub">저장하기</button></div>' +
 
       '<div class="card"><h3>승인 옵션</h3><div class="sp"></div>' +
-      '<label class="switch" style="justify-content:space-between"><span class="sm">승인할 때 회비를 수입으로 자동 기록</span>' +
+      '<label class="switch" style="justify-content:space-between"><span class="sm">승인할 때 회비를 동아리비 수입에 더하기</span>' +
       '<span style="display:flex"><input type="checkbox" id="autoFee"' + (autoFee() ? ' checked' : '') + '><span class="track"></span></span></label></div>' +
 
       '<div class="card"><h3>운영진 페이지 잠금</h3>' +
