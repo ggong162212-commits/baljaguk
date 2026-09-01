@@ -60,7 +60,7 @@
     $('#kicker').innerHTML = ic('sprout') + '<span>' + esc(s.generation || '') + ' 부원 모집</span>';
     $('#heroSub').textContent = '아래 폼을 작성해주시면 운영진이 확인 후 승인하겠습니다.';
     $('#feeAmount').textContent = won(s.fee);
-    $('#deptHint').textContent = (s.department || '') + ' 학생 대상이에요. 학번은 숫자만 적어주세요 (예: 25).';
+    $('#deptHint').textContent = (s.department || '') + ' 학생 대상이에요. 학번은 숫자만 (예: 25 또는 202511234).';
     $('#bankName').textContent = s.bank;
     $('#acctNo').textContent = s.account;
     $('#holderName').textContent = '예금주 ' + s.holder;
