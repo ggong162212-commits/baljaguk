@@ -160,12 +160,10 @@
       (st.open ? '지금 신청을 받고 있어요' : (why[st.why] || '접수를 받지 않는 중이에요')) + '</div></div>' +
       '<label class="switch"><input type="checkbox" id="openSw"' + (s.form_open !== false ? ' checked' : '') + '><span class="track"></span></label></div>' +
       '<div class="divider"></div>' +
-      '<label class="field"><span class="lb">접수 시작 예약</span>' +
-      '<input class="input" type="datetime-local" id="openAt" value="' + toLocalInput(s.form_open_at) + '">' +
-      '<span class="hint">비워두면 바로 접수해요.</span></label>' +
-      '<label class="field"><span class="lb">자동 마감 예약</span>' +
-      '<input class="input" type="datetime-local" id="closeAt" value="' + toLocalInput(s.form_close_at) + '">' +
-      '<span class="hint">이 시각이 지나면 폼이 스스로 닫혀요.</span></label>' +
+      '<div class="field"><span class="lb">접수 시작 예약</span>' + dtField('openAt', s.form_open_at) +
+      '<span class="hint">비워두면 바로 접수해요.</span></div>' +
+      '<div class="field"><span class="lb">자동 마감 예약</span>' + dtField('closeAt', s.form_close_at) +
+      '<span class="hint">이 시각이 지나면 폼이 스스로 닫혀요.</span></div>' +
       '<div class="row" style="gap:8px;margin:-6px 0 14px">' +
       '<button class="btn ghost sm" data-quick="1">오늘 밤 23:59</button>' +
       '<button class="btn ghost sm" data-quick="7">7일 뒤</button>' +
@@ -198,14 +196,14 @@
     });
     $$('[data-quick]').forEach(b => b.addEventListener('click', () => {
       const n = Number(b.dataset.quick);
-      if (!n) { $('#closeAt').value = ''; return; }
+      if (!n) { setDt('closeAt', null); return; }
       const d = new Date(); d.setDate(d.getDate() + (n === 1 ? 0 : n)); d.setHours(23, 59, 0, 0);
-      $('#closeAt').value = toLocalInput(d.toISOString());
+      setDt('closeAt', d.toISOString());
     }));
     $('#saveForm').addEventListener('click', async () => {
       await save({
-        form_open_at: fromLocalInput($('#openAt').value),
-        form_close_at: fromLocalInput($('#closeAt').value),
+        form_open_at: readDt('openAt', '00:00'),
+        form_close_at: readDt('closeAt', '23:59'),
         capacity: $('#cap').value ? Number($('#cap').value) : null,
         closed_message: $('#closedMsg').value.trim()
       });
@@ -223,6 +221,28 @@
     });
   }
   const mini = (k, v) => '<div class="b"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>';
+
+  /* 날짜 + 시각 (모바일에서 datetime-local 이 잘려 보여 둘로 나눔) */
+  function dtField(id, iso) {
+    const local = toLocalInput(iso);           // 2026-09-08T23:59
+    const d = local ? local.slice(0, 10) : '';
+    const t = local ? local.slice(11, 16) : '';
+    return '<div class="dt2">' +
+      '<input class="input" type="date" id="' + id + 'D" value="' + d + '" aria-label="날짜">' +
+      '<input class="input" type="time" id="' + id + 'T" value="' + t + '" aria-label="시각">' +
+      '</div>';
+  }
+  function setDt(id, iso) {
+    const local = toLocalInput(iso);
+    $('#' + id + 'D').value = local ? local.slice(0, 10) : '';
+    $('#' + id + 'T').value = local ? local.slice(11, 16) : '';
+  }
+  function readDt(id, fallbackTime) {
+    const d = $('#' + id + 'D').value;
+    if (!d) return null;
+    const t = $('#' + id + 'T').value || fallbackTime;
+    return fromLocalInput(d + 'T' + t);
+  }
 
   async function save(patch) {
     try { S.settings = await DB.settings.save(patch) || Object.assign(S.settings, patch); }
