@@ -222,6 +222,74 @@
       }
     },
 
+    /* ------------------------------------------------------------
+       실시간 동기화
+       · Supabase: Realtime 웹소켓 구독 (되면 즉시, 안 되면 폴링)
+       · 체험 모드: 같은 브라우저의 다른 탭과 동기화
+       onChange() 가 불리면 화면 쪽에서 다시 불러오면 됩니다.
+       ------------------------------------------------------------ */
+    live(onChange, pollMs) {
+      let stopped = false;
+      let interval = pollMs || 7000;
+      let timer = null;
+
+      const fire = () => { if (!stopped && !document.hidden) onChange(); };
+      const loop = () => { clearInterval(timer); timer = setInterval(fire, interval); };
+      loop();
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) fire(); });
+      window.addEventListener('focus', fire);
+
+      if (!HAS_SB) {
+        window.addEventListener('storage', e => { if (e.key === DKEY) fire(); });
+        return () => { stopped = true; clearInterval(timer); };
+      }
+
+      // --- Supabase Realtime (실패해도 위 폴링이 계속 돌아갑니다) ---
+      let ws = null, hb = null, tries = 0;
+      const connect = () => {
+        if (stopped || tries > 3) return;
+        tries++;
+        try {
+          const base = C.SUPABASE_URL.replace(/^http/, 'ws');
+          ws = new WebSocket(base + '/realtime/v1/websocket?apikey=' + encodeURIComponent(C.SUPABASE_ANON_KEY) + '&vsn=1.0.0');
+        } catch (e) { return; }
+        const topic = 'realtime:baljaguk';
+        let ref = 0;
+        const send = (event, payload) => { try { ws.send(JSON.stringify({ topic, event, payload: payload || {}, ref: String(++ref) })); } catch (e) { } };
+
+        ws.onopen = () => {
+          tries = 0;
+          send('phx_join', {
+            config: {
+              broadcast: { self: false }, presence: { key: '' },
+              postgres_changes: [{ event: '*', schema: 'public' }]
+            },
+            access_token: session && session.access_token
+          });
+          if (session && session.access_token) send('access_token', { access_token: session.access_token });
+          clearInterval(hb);
+          hb = setInterval(() => {
+            try { ws.send(JSON.stringify({ topic: 'phoenix', event: 'heartbeat', payload: {}, ref: String(++ref) })); } catch (e) { }
+          }, 25000);
+          interval = 25000; loop();   // 실시간이 붙었으면 폴링은 느슨하게
+        };
+        ws.onmessage = (m) => {
+          let msg = null; try { msg = JSON.parse(m.data); } catch (e) { return; }
+          if (msg && msg.event === 'postgres_changes') fire();
+        };
+        const down = () => {
+          clearInterval(hb);
+          interval = 7000; loop();    // 실시간이 끊기면 다시 촘촘한 폴링으로
+          if (!stopped) setTimeout(connect, 4000);
+        };
+        ws.onclose = down;
+        ws.onerror = () => { try { ws.close(); } catch (e) { } };
+      };
+      connect();
+
+      return () => { stopped = true; clearInterval(timer); clearInterval(hb); try { ws && ws.close(); } catch (e) { } };
+    },
+
     resetDemo() { localStorage.removeItem(DKEY); localStorage.removeItem('baljaguk.demoAuth'); },
     uid, today
   };

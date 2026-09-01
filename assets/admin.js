@@ -82,6 +82,38 @@
     $('#topbar').hidden = false; $('#admin').hidden = false; $('#tabbar').hidden = false;
     await load();
     go(cur);
+    startLive();
+  }
+
+  /* ---------- 다른 운영진의 변경을 자동으로 받아오기 ---------- */
+  let liveStop = null;
+  function sig() {
+    return JSON.stringify([
+      S.settings,
+      S.apps.map(a => a.id + a.status + a.name),
+      S.members.map(m => m.id + m.name + m.role + m.student_id),
+      S.events.map(e => e.id + e.date + e.title + e.place + (e.start_time || '')),
+      S.att.map(a => a.event_id + a.member_id + a.hours),
+      S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date)
+    ]);
+  }
+  function startLive() {
+    if (liveStop) return;
+    let last = sig();
+    liveStop = DB.live(async () => {
+      if (document.querySelector('.overlay')) return;              // 뭔가 입력 중이면 건드리지 않기
+      const el = document.activeElement;
+      if (el && /INPUT|TEXTAREA|SELECT/.test(el.tagName)) return;
+      const beforePending = S.apps.filter(a => a.status === 'pending').length;
+      await load();
+      const now = sig();
+      if (now === last) return;
+      last = now;
+      render();
+      const pending = S.apps.filter(a => a.status === 'pending').length;
+      if (pending > beforePending) toast('새 가입 신청이 ' + (pending - beforePending) + '건 들어왔어요', 'ok');
+      else $('#syncNote') && ($('#syncNote').textContent = '방금 업데이트됨');
+    });
   }
 
   async function load() {

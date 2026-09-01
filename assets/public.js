@@ -29,6 +29,27 @@
     paintStatus();
     wireForm();
     restoreDraft();
+    watchSettings();
+  }
+
+  /* 운영진이 접수를 열고 닫으면 보고 있던 화면에도 반영 */
+  function watchSettings() {
+    let last = JSON.stringify(settings);
+    DB.live(async () => {
+      let next = null;
+      try { next = await DB.settings.get(); } catch (e) { return; }
+      const now = JSON.stringify(next);
+      if (now === last) return;
+      const wasOpen = DB.formState(settings, null).open;
+      const wasClose = settings.form_close_at || '';
+      settings = next; last = now;
+      const isOpen = DB.formState(settings, null).open;
+      if (wasOpen !== isOpen || wasClose !== (settings.form_close_at || '')) paintStatus();
+      $('#feeAmount').textContent = won(settings.fee);
+      $('#acctNo').textContent = settings.account;
+      $('#bankName').textContent = settings.bank;
+      $('#holderName').textContent = '예금주 ' + settings.holder;
+    }, 20000);
   }
 
   /* ---------- 동아리 정보 ---------- */
@@ -37,7 +58,7 @@
     document.title = s.club_name + ' · 부원 모집';
     $('#brandName').textContent = s.club_name;
     $('#kicker').innerHTML = ic('sprout') + '<span>' + esc(s.generation || '') + ' 부원 모집</span>';
-    $('#heroSub').innerHTML = esc(s.tagline) + '예요.<br>아래 폼을 작성해주시면 운영진이 확인 후 승인하겠습니다.';
+    $('#heroSub').textContent = '아래 폼을 작성해주시면 운영진이 확인 후 승인하겠습니다.';
     $('#feeAmount').textContent = won(s.fee);
     $('#deptHint').textContent = (s.department || '') + ' 학생 대상이에요.';
     $('#bankName').textContent = s.bank;
@@ -117,14 +138,17 @@
     cdTimer = setInterval(tick, 1000);
   }
 
+  let ctaWired = false;
   function watchCta() {
     const btn = $('#ctaBtn'), form = $('#applyForm');
     if (!form) return;
+    if (ctaWatcher) { ctaWatcher.disconnect(); ctaWatcher = null; }
     btn.innerHTML = ic('clipboard') + '<span>신청서 작성하러 가기</span>';
-    btn.addEventListener('click', () => {
+    if (!ctaWired) btn.addEventListener('click', () => {
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setTimeout(() => { const i = form.querySelector('input[name=name]'); if (i) i.focus({ preventScroll: true }); }, 420);
     });
+    ctaWired = true;
     if (!('IntersectionObserver' in window)) return;
     ctaWatcher = new IntersectionObserver(es => {
       if ($('#formWrap').hidden) { $('#cta').hidden = true; return; }

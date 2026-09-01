@@ -174,3 +174,18 @@ alter table club_settings add column if not exists capacity       integer;      
 
 -- 소속 학과 (동아리 구성원이 모두 같은 학과라 폼에서는 자동으로 채웁니다)
 alter table club_settings add column if not exists department text default '산업경영융합학과';
+
+-- ============================================================
+--  실시간 동기화 (운영진 여러 명이 각자 폰에서 같은 화면을 보도록)
+--  아래 테이블의 변경을 Realtime 으로 흘려보냅니다.
+-- ============================================================
+do $$
+declare t text;
+begin
+  foreach t in array array['club_settings','applications','members','events','attendance','finance'] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then null;
+    end;
+  end loop;
+end $$;
