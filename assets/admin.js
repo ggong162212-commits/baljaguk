@@ -284,8 +284,7 @@
       '<div class="grow"><div class="nm">' + esc(a.name) +
       '<span class="badge ' + a.status + '">' + ({ pending: '대기', approved: '승인', rejected: '반려' }[a.status]) + '</span></div>' +
       '<div class="meta">' + esc(a.student_id || '') + '학번 · ' + esc(a.department || '') + '</div>' +
-      '<div class="sub"><span>' + relTime(a.created_at) + '</span>' +
-      (a.has_receipt ? '<span>입금증 있음</span>' : '<span style="color:var(--danger)">입금증 없음</span>') + '</div></div>' +
+      '<div class="sub"><span>' + relTime(a.created_at) + '</span></div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('clipboard', F.apply === 'pending' ? '대기 중인 신청이 없어요' : '해당하는 신청이 없어요');
 
@@ -508,9 +507,7 @@
       '<div class="row between" style="margin-bottom:8px">' +
       '<b class="sm">지원 동기</b>' +
       '<span class="mut" style="font-size:12px">' + fmtDate(app.created_at) + ' 신청</span></div>' +
-      '<div class="card flat sm" style="white-space:pre-wrap">' + esc(app.motivation) + '</div>' +
-      (app.has_receipt ? '<button type="button" class="btn ghost sm block" data-receipt style="margin-top:8px">' +
-        ic('image') + '<span>입금증 보기</span></button>' : '');
+      '<div class="card flat sm" style="white-space:pre-wrap">' + esc(app.motivation) + '</div>';
   }
 
   function memberSheet(m) {
