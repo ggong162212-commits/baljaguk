@@ -6,7 +6,7 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
-  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [] };
+  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [] };
   const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', day: null, month: null };
   let cur = 'form';
 
@@ -94,7 +94,9 @@
       S.members.map(m => m.id + m.name + m.role + m.student_id),
       S.events.map(e => e.id + e.date + e.title + e.place + (e.start_time || '')),
       S.att.map(a => a.event_id + a.member_id + a.hours),
-      S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date)
+      S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date),
+      S.camps.map(c => c.id + c.title + c.goal + c.status + c.ends_on),
+      S.dons.map(d => d.id + d.amount + d.date + (d.member_id || d.donor_name || ''))
     ]);
   }
   function startLive() {
@@ -118,11 +120,12 @@
 
   async function load() {
     try {
-      const [settings, apps, members, events, att, fin] = await Promise.all([
+      const [settings, apps, members, events, att, fin, camps, dons] = await Promise.all([
         DB.settings.get(), DB.applications.list(), DB.members.list(),
-        DB.events.list(), DB.attendance.list(), DB.finance.list()
+        DB.events.list(), DB.attendance.list(), DB.finance.list(),
+        DB.campaigns.list(), DB.donations.list()
       ]);
-      Object.assign(S, { settings, apps, members, events, att, fin });
+      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons });
     } catch (e) {
       toast(e.message || '데이터를 불러오지 못했어요', 'err');
       if (e.status === 401) { DB.logout(); location.reload(); }
@@ -887,25 +890,279 @@
   /* ============================================================
      6. 후원 (기능 설계 중)
      ============================================================ */
-  function renderDonate() {
-    $('#donatePanel').innerHTML =
-      '<div class="card center" style="padding:28px 20px">' +
-      '<div style="display:flex;justify-content:center">' +
-      '<span style="width:56px;height:56px;border-radius:20px;background:var(--pink-soft);color:var(--pink);display:grid;place-items:center">' +
-      ic('heart') + '</span></div>' +
-      '<h3 style="margin-top:14px;font-size:20px">기능 설계 중이에요</h3>' +
-      '<p class="mut sm" style="margin-top:8px;line-height:1.7">보호소 후원을 모으고 사용 내역을 공개하는 기능을<br>준비하고 있어요. 곧 열어둘게요.</p>' +
-      '</div>' +
-      '<div class="card"><h3>이런 걸 담을 예정이에요</h3><div class="sp"></div>' +
-      '<div class="tl">' +
-      tlrow('pink', 'heart', '후원 모금', '목표 금액과 현재 모인 금액을 한눈에') +
-      tlrow('green', 'wallet', '사용 내역 공개', '후원금이 어디에 쓰였는지 투명하게') +
-      tlrow('gold', 'star', '후원자 명단', '동의한 분만 이름을 남기기') +
-      '</div></div>';
+  const raised = (cid) => S.dons.filter(d => d.campaign_id === cid).reduce((a, d) => a + (Number(d.amount) || 0), 0);
+  const donorCount = (cid) => S.dons.filter(d => d.campaign_id === cid).length;
+  const donorLabel = (d) => {
+    if (d.member_id) { const m = byId(S.members, d.member_id); return m ? m.name : '(삭제된 구성원)'; }
+    return d.donor_name || '익명';
+  };
+  function dday(c) {
+    if (c.status === 'closed') return { txt: '종료됨', cls: 'rest' };
+    if (!c.ends_on) return { txt: '진행 중', cls: 'on' };
+    const end = new Date(c.ends_on + 'T23:59:59');
+    const left = Math.ceil((end - Date.now()) / 86400000);
+    if (left < 0) return { txt: '기간 지남', cls: 'off' };
+    if (left === 0) return { txt: '오늘 마감', cls: 'pending' };
+    return { txt: 'D-' + left, cls: 'on' };
   }
-  const tlrow = (c, i, t, d) =>
-    '<div class="n"><span class="dot ic ' + c + '">' + ic(i) + '</span>' +
-    '<div><b class="sm">' + t + '</b><div class="mut" style="font-size:12.5px">' + d + '</div></div></div>';
+
+  function renderDonate() {
+    const open = S.camps.filter(c => c.status !== 'closed');
+    const closed = S.camps.filter(c => c.status === 'closed');
+
+    $('#donatePanel').innerHTML =
+      (S.camps.length ? '' : emptyDonate()) +
+      open.map(campCard).join('') +
+      (closed.length ? '<div class="section-title">' + ic('clock') + '<span>지난 후원</span></div>' +
+        closed.map(campCard).join('') : '') +
+      '<button class="btn soft block" id="newCamp" style="margin-top:6px">' + ic('plus') + '<span>후원 만들기</span></button>';
+
+    $('#newCamp').onclick = () => campSheet(null);
+    $$('#donatePanel [data-camp]').forEach(el => el.addEventListener('click', e => {
+      if (e.target.closest('[data-add]')) return;
+      campSheet(byId(S.camps, el.dataset.camp), true);
+    }));
+    $$('#donatePanel [data-add]').forEach(el => el.addEventListener('click', e => {
+      e.stopPropagation(); donSheet(el.dataset.add, null);
+    }));
+  }
+
+  const emptyDonate = () =>
+    '<div class="card empty" style="padding:30px 20px">' +
+    '<div style="display:flex;justify-content:center">' +
+    '<span style="width:54px;height:54px;border-radius:19px;background:var(--pink-soft);color:var(--pink);display:grid;place-items:center">' +
+    ic('heart') + '</span></div>' +
+    '<div style="margin-top:12px;font-family:var(--font-title);font-size:17px;color:var(--ink)">아직 진행 중인 후원이 없어요</div>' +
+    '<div class="sm" style="margin-top:6px">브랜드 협업 후원을 만들고 입금 내역을 모아보세요</div></div>';
+
+  function campCard(c) {
+    const got = raised(c.id), goal = Number(c.goal) || 0;
+    const pct = goal ? Math.min(100, Math.round(got / goal * 100)) : 0;
+    const dd = dday(c);
+    const done = goal && got >= goal;
+    return '<div class="card" data-camp="' + c.id + '" style="cursor:pointer">' +
+      '<div class="row between" style="align-items:flex-start;gap:10px">' +
+      '<div class="grow"><div class="row" style="gap:6px;margin-bottom:5px">' +
+      (c.partner ? '<span class="badge member">' + esc(c.partner) + '</span>' : '') +
+      '<span class="badge ' + dd.cls + '">' + dd.txt + '</span></div>' +
+      '<h3>' + esc(c.title) + '</h3>' +
+      (c.starts_on || c.ends_on ? '<div class="sub">' + fmtDate(c.starts_on) + ' ~ ' + fmtDate(c.ends_on) + '</div>' : '') +
+      '</div><span class="arrow">' + ic('chevron') + '</span></div>' +
+      '<div class="sp"></div>' +
+      '<div class="row between" style="align-items:baseline">' +
+      '<div class="money" style="font-size:24px;color:var(--brand-deep)">' + num(got) + '원</div>' +
+      (goal ? '<div class="mut sm">목표 ' + num(goal) + '원</div>' : '') + '</div>' +
+      (goal ? '<div class="bar" style="margin:9px 0 7px"><i style="width:' + pct + '%' +
+        (done ? ';background:var(--gold)' : '') + '"></i></div>' +
+        '<div class="row between sm"><span style="color:' + (done ? 'var(--gold)' : 'var(--brand-deep)') + ';font-weight:700">' +
+        (done ? '목표 달성! (+' + num(got - goal) + '원)' : pct + '% 달성') + '</span>' +
+        '<span class="mut">' + donorCount(c.id) + '명 참여</span></div>' +
+        (done ? '' : '<div class="sm mut" style="margin-top:4px">목표까지 <b style="color:var(--ink)">' +
+          num(goal - got) + '원</b> 남았어요</div>')
+        : '<div class="mut sm">' + donorCount(c.id) + '명 참여</div>') +
+      '<div class="sp"></div>' +
+      '<button class="btn soft block sm" data-add="' + c.id + '" type="button">' + ic('plus') + '<span>입금 내역 추가</span></button>' +
+      '</div>';
+  }
+
+  /* 후원 만들기 / 상세 */
+  function campSheet(c, detail) {
+    const isNew = !c;
+    c = c || { title: '', partner: '', goal: '', starts_on: DB.today(), ends_on: '', note: '', status: 'open' };
+    const list = isNew ? [] : S.dons.filter(d => d.campaign_id === c.id)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+    const form =
+      '<label class="field"><span class="lb">후원 이름</span>' +
+      '<input class="input" id="cTitle" value="' + esc(c.title) + '" placeholder="펫발란스 X 발자국 사료 후원"></label>' +
+      '<div class="grid2">' +
+      '<label class="field"><span class="lb">협업 브랜드 (선택)</span>' +
+      '<input class="input" id="cPartner" value="' + esc(c.partner || '') + '" placeholder="펫발란스"></label>' +
+      '<label class="field"><span class="lb">목표 금액</span>' +
+      '<input class="input" id="cGoal" inputmode="numeric" value="' + (c.goal ? num(c.goal) : '') + '" placeholder="1,000,000"></label></div>' +
+      '<div class="grid2">' +
+      '<label class="field"><span class="lb">시작일</span>' +
+      '<input class="input" type="date" id="cStart" value="' + esc(c.starts_on || '') + '"></label>' +
+      '<label class="field"><span class="lb">종료일</span>' +
+      '<input class="input" type="date" id="cEnd" value="' + esc(c.ends_on || '') + '"></label></div>' +
+      '<label class="field"><span class="lb">설명 (선택)</span>' +
+      '<textarea class="input" id="cNote" style="min-height:70px" placeholder="모인 금액을 어디에 쓰는지 적어두면 좋아요">' + esc(c.note || '') + '</textarea></label>';
+
+    const body = (detail ? donationList(c, list) + '<div class="divider"></div>' : '') + form +
+      '<div class="divider"></div>' +
+      (isNew ? '<button class="btn primary block" data-save>후원 만들기</button>'
+        : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
+        '<button class="btn ghost grow" data-toggle>' + (c.status === 'closed' ? '다시 열기' : '후원 종료') + '</button>' +
+        '<button class="btn primary grow" data-save>저장</button></div>');
+
+    const ov = sheet({ title: isNew ? '후원 만들기' : c.title, body, noFocus: !isNew });
+    const goal = ov.querySelector('#cGoal');
+    goal.addEventListener('input', () => {
+      const n = goal.value.replace(/[^0-9]/g, '');
+      goal.value = n ? Number(n).toLocaleString('ko-KR') : '';
+    });
+    const addBtn = ov.querySelector('[data-addd]');
+    if (addBtn) addBtn.onclick = () => { closeSheet(); donSheet(c.id, null); };
+    ov.querySelectorAll('[data-don]').forEach(el => el.addEventListener('click', () => {
+      closeSheet(); donSheet(c.id, byId(S.dons, el.dataset.don));
+    }));
+    const ex = ov.querySelector('[data-export]');
+    if (ex) ex.onclick = () => {
+      downloadCSV('발자국_후원_' + dkey(new Date()) + '.csv',
+        ['날짜', '후원자', '구분', '금액'],
+        list.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .map(d => [d.date, donorLabel(d), d.member_id ? '구성원' : '외부', d.amount])
+          .concat([['합계', '', '', raised(c.id)]]));
+      toast('엑셀 파일을 내려받았어요', 'ok');
+    };
+
+    ov.querySelector('[data-save]').onclick = async () => {
+      const patch = {
+        title: ov.querySelector('#cTitle').value.trim() || '후원',
+        partner: ov.querySelector('#cPartner').value.trim(),
+        goal: Number(String(ov.querySelector('#cGoal').value).replace(/[^0-9]/g, '')) || null,
+        starts_on: ov.querySelector('#cStart').value || null,
+        ends_on: ov.querySelector('#cEnd').value || null,
+        note: ov.querySelector('#cNote').value.trim()
+      };
+      closeSheet();
+      try {
+        if (isNew) await DB.campaigns.create(Object.assign({ status: 'open' }, patch));
+        else await DB.campaigns.update(c.id, patch);
+        await reload(); toast('저장했어요', 'ok');
+      } catch (e) { toast(e.message || '저장하지 못했어요', 'err'); }
+    };
+    const tg = ov.querySelector('[data-toggle]');
+    if (tg) tg.onclick = async () => {
+      closeSheet();
+      await DB.campaigns.update(c.id, { status: c.status === 'closed' ? 'open' : 'closed' });
+      await reload(); toast(c.status === 'closed' ? '다시 열었어요' : '후원을 종료했어요');
+    };
+    const del = ov.querySelector('[data-del]');
+    if (del) del.onclick = async () => {
+      closeSheet();
+      if (!await confirmSheet('이 후원을 지울까요?', '입금 내역 ' + list.length + '건도 함께 사라져요.', '삭제', true)) return;
+      await DB.campaigns.remove(c.id); await reload(); toast('삭제했어요');
+    };
+  }
+
+  function donationList(c, list) {
+    const got = raised(c.id), goal = Number(c.goal) || 0;
+    const pct = goal ? Math.min(100, Math.round(got / goal * 100)) : 0;
+    return '<div class="card flat" style="margin-bottom:14px">' +
+      '<div class="row between" style="align-items:baseline">' +
+      '<div class="money" style="font-size:23px;color:var(--brand-deep)">' + num(got) + '원</div>' +
+      (goal ? '<div class="mut sm">목표 ' + num(goal) + '원</div>' : '') + '</div>' +
+      (goal ? '<div class="bar" style="margin:8px 0 7px"><i style="width:' + pct + '%"></i></div>' +
+        '<div class="row between sm"><b style="color:' + (got >= goal ? 'var(--gold)' : 'var(--brand-deep)') + '">' +
+        pct + '% 달성</b><span class="mut">' +
+        (got >= goal ? '목표보다 ' + num(got - goal) + '원 더!' : '목표까지 ' + num(goal - got) + '원') +
+        '</span></div>' : '') +
+      '</div>' +
+      '<div class="row between" style="margin-bottom:8px">' +
+      '<b class="sm">입금 내역 ' + list.length + '건</b>' +
+      (list.length ? '<span class="sm" data-export style="cursor:pointer;color:var(--brand-deep);font-weight:700">엑셀 저장</span>' : '') +
+      '</div>' +
+      (list.length ? '<div class="list" style="box-shadow:none;border:1px solid var(--line-2)">' + list.map(d => {
+        const m = d.member_id ? byId(S.members, d.member_id) : null;
+        return '<div class="item" data-don="' + d.id + '">' + avatar(m || { name: donorLabel(d) }, 'sm') +
+          '<div class="grow"><div class="nm">' + esc(donorLabel(d)) +
+          (m ? '' : '<span class="badge">외부</span>') + '</div>' +
+          '<div class="sub"><span>' + fmtDate(d.date) + '</span></div></div>' +
+          '<div class="money" style="color:var(--brand-deep)">' + num(d.amount) + '</div></div>';
+      }).join('') + '</div>' : '<div class="mut sm" style="padding:4px 2px 10px">아직 입금 내역이 없어요</div>') +
+      '<button class="btn soft block sm" data-addd style="margin-top:10px">' + ic('plus') + '<span>입금 내역 추가</span></button>';
+  }
+
+  /* 입금 내역 추가 / 수정 */
+  function donSheet(campaignId, d) {
+    const isNew = !d;
+    d = d || { member_id: null, donor_name: '', amount: '', date: dkey(new Date()) };
+    let kind = isNew ? 'member' : (d.member_id ? 'member' : 'outside');
+    let picked = d.member_id || null;
+
+    const body =
+      '<div class="seg" style="margin-bottom:14px" id="dSeg">' +
+      '<button type="button" data-k="member" class="' + (kind === 'member' ? 'on' : '') + '">구성원</button>' +
+      '<button type="button" data-k="outside" class="' + (kind === 'outside' ? 'on' : '') + '">외부 후원자</button></div>' +
+      '<div id="dWho"></div>' +
+      '<label class="field"><span class="lb">금액</span>' +
+      '<input class="input" id="dAmt" inputmode="numeric" value="' + (d.amount ? num(d.amount) : '') + '" placeholder="0" style="font-family:var(--font-title);font-size:20px"></label>' +
+      '<label class="field"><span class="lb">입금일</span>' +
+      '<input class="input" type="date" id="dDate" value="' + esc(String(d.date).slice(0, 10)) + '"></label>' +
+      '<div class="divider"></div>' +
+      (isNew ? '<button class="btn primary block" data-save>추가하기</button>'
+        : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
+        '<button class="btn primary grow" data-save>저장</button></div>');
+
+    const ov = sheet({ title: isNew ? '입금 내역 추가' : '입금 내역', body, noFocus: true });
+
+    function drawPick() {
+      const q = (ov.querySelector('#dSearch').value || '').trim();
+      const list = S.members.filter(m => !q || m.name.includes(q));
+      ov.querySelector('#dPick').innerHTML = list.length ? list.map(m =>
+        '<div class="check' + (picked === m.id ? ' on' : '') + '" data-m="' + m.id + '">' +
+        '<span class="box">' + (picked === m.id ? ic('check') : '') + '</span>' + avatar(m, 'sm') +
+        '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
+        '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div></div>'
+      ).join('') : '<div class="mut sm center" style="padding:12px">구성원이 없어요</div>';
+      ov.querySelectorAll('#dPick [data-m]').forEach(el => el.addEventListener('click', () => {
+        picked = el.dataset.m === picked ? null : el.dataset.m; drawPick();
+      }));
+    }
+    function drawWho() {
+      const box = ov.querySelector('#dWho');
+      if (kind === 'outside') {
+        box.innerHTML = '<label class="field"><span class="lb">후원자 이름</span>' +
+          '<input class="input" id="dName" value="' + esc(d.donor_name || '') + '" placeholder="예: 김보호 (졸업생)"></label>';
+      } else {
+        box.innerHTML = '<div class="field"><span class="lb">후원한 구성원</span>' +
+          '<div class="search" style="margin-bottom:8px">' + ic('search') +
+          '<input id="dSearch" placeholder="이름으로 찾기"></div>' +
+          '<div class="picker" id="dPick"></div></div>';
+        drawPick();
+        ov.querySelector('#dSearch').addEventListener('input', drawPick);
+      }
+    }
+    drawWho();
+    ov.querySelectorAll('#dSeg [data-k]').forEach(b => b.addEventListener('click', () => {
+      kind = b.dataset.k;
+      ov.querySelectorAll('#dSeg button').forEach(x => x.classList.toggle('on', x.dataset.k === kind));
+      drawWho();
+    }));
+    const amt = ov.querySelector('#dAmt');
+    amt.addEventListener('input', () => {
+      const n = amt.value.replace(/[^0-9]/g, '');
+      amt.value = n ? Number(n).toLocaleString('ko-KR') : '';
+    });
+    setTimeout(() => { if (kind === 'outside') { const n = ov.querySelector('#dName'); if (n) n.focus(); } }, 80);
+
+    ov.querySelector('[data-save]').onclick = async () => {
+      const amount = Number(String(amt.value).replace(/[^0-9]/g, '')) || 0;
+      if (!amount) return toast('금액을 입력해주세요', 'err');
+      const nameEl = ov.querySelector('#dName');
+      const name = kind === 'outside' ? ((nameEl && nameEl.value) || '').trim() : '';
+      if (kind === 'outside' && !name) return toast('후원자 이름을 입력해주세요', 'err');
+      if (kind === 'member' && !picked) return toast('후원한 구성원을 골라주세요', 'err');
+      const patch = {
+        campaign_id: campaignId,
+        member_id: kind === 'member' ? picked : null,
+        donor_name: kind === 'outside' ? name : null,
+        amount, date: ov.querySelector('#dDate').value || dkey(new Date())
+      };
+      closeSheet();
+      try {
+        if (isNew) await DB.donations.create(patch); else await DB.donations.update(d.id, patch);
+        await reload(); toast('저장했어요', 'ok');
+      } catch (e) { toast(e.message || '저장하지 못했어요', 'err'); }
+    };
+    const del = ov.querySelector('[data-del]');
+    if (del) del.onclick = async () => {
+      closeSheet();
+      if (!await confirmSheet('이 입금 내역을 지울까요?', '', '삭제', true)) return;
+      await DB.donations.remove(d.id); await reload(); toast('삭제했어요');
+    };
+  }
 
   /* ============================================================
      7. 설정

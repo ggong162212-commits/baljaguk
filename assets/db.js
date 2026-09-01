@@ -44,7 +44,19 @@
       { id: uid(), date: d(-20), kind: 'expense', category: '봉사물품 (사료·배변패드)', amount: 38400, memo: '', member_id: null, created_at: new Date().toISOString() },
       { id: uid(), date: d(-8), kind: 'expense', category: '봉사물품 (미용도구)', amount: 24000, memo: '', member_id: null, created_at: new Date().toISOString() }
     ];
+    const camp = {
+      id: uid(), created_at: new Date().toISOString(),
+      title: '펫발란스 X 발자국 사료 후원', partner: '펫발란스',
+      goal: 1000000, starts_on: d(-10), ends_on: d(20),
+      note: '모인 금액은 전액 보호소 사료 구입에 씁니다.', status: 'open'
+    };
+    const dons = [
+      { id: uid(), created_at: new Date().toISOString(), campaign_id: camp.id, member_id: members[0].id, donor_name: null, amount: 30000, date: d(-8) },
+      { id: uid(), created_at: new Date().toISOString(), campaign_id: camp.id, member_id: members[2].id, donor_name: null, amount: 20000, date: d(-6) },
+      { id: uid(), created_at: new Date().toISOString(), campaign_id: camp.id, member_id: null, donor_name: '김보호 (졸업생)', amount: 100000, date: d(-3) }
+    ];
     return {
+      campaigns: [camp], donations: dons,
       settings: Object.assign({ id: 1, form_open: true, form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
       applications: apps, members, events, attendance: att, finance: fin,
       password: C.DEMO_PASSWORD || '260324'
@@ -181,6 +193,8 @@
     events: table('events', 'date.desc'),
     attendance: table('attendance'),
     finance: table('finance', 'date.desc'),
+    campaigns: table('campaigns', 'created_at.desc'),
+    donations: table('donations', 'date.desc'),
 
     /* 신청 접수 (비로그인 상태에서 호출) */
     async apply(form) {

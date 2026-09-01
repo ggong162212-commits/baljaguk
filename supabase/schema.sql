@@ -192,3 +192,47 @@ end $$;
 
 -- 재정 내역 증빙 사진 (선택, 축소된 data URL)
 alter table finance add column if not exists receipt text;
+
+-- ============================================================
+--  후원 (운영진 전용) · 동아리 재정과는 분리해서 집계
+-- ============================================================
+create table if not exists campaigns (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  title      text not null,
+  partner    text,                        -- 협업 브랜드 (예: 펫발란스)
+  goal       integer,                     -- 목표 금액
+  starts_on  date,
+  ends_on    date,
+  note       text,
+  status     text not null default 'open' check (status in ('open','closed'))
+);
+
+create table if not exists donations (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz default now(),
+  campaign_id uuid not null references campaigns(id) on delete cascade,
+  member_id   uuid references members(id) on delete set null,   -- 구성원 후원이면
+  donor_name  text,                                             -- 외부 후원자 이름
+  amount      integer not null,
+  date        date not null default current_date
+);
+create index if not exists donations_campaign_idx on donations (campaign_id, date desc);
+
+alter table campaigns enable row level security;
+alter table donations enable row level security;
+drop policy if exists "campaigns admin" on campaigns;
+drop policy if exists "donations admin" on donations;
+create policy "campaigns admin" on campaigns for all to authenticated using (true) with check (true);
+create policy "donations admin" on donations for all to authenticated using (true) with check (true);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['campaigns','donations'] loop
+    begin
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then null;
+    end;
+  end loop;
+end $$;
