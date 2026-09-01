@@ -15,10 +15,10 @@
 
 window.CONFIG = {
   // ① Project URL  (예: 'https://abcdefgh.supabase.co')
-  SUPABASE_URL: '',
+  SUPABASE_URL: 'https://qgosyeqaxuxejathpkgd.supabase.co',
 
-  // ② anon public key  (공개되어도 안전한 키입니다. RLS 가 막아줍니다)
-  SUPABASE_ANON_KEY: '',
+  // ② publishable key (공개되어도 안전한 키입니다. RLS 가 막아줍니다)
+  SUPABASE_ANON_KEY: 'sb_publishable_XcdlWyuV0ywCfqJIRpWVHA_zCXs6HT7',
 
   // 운영진 로그인에 쓸 계정 이메일 (화면에는 안 보이고 비밀번호만 입력받습니다)
   ADMIN_EMAIL: 'unyoung@baljaguk.club',
