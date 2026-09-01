@@ -536,7 +536,7 @@
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
         '<div class="divider"></div><div class="row between" style="margin-bottom:8px">' +
-        '<b class="sm">봉사 이력 ' + hist.length + '회</b><span class="mut sm">누적 ' + volHours(m.id) + '시간</span></div>' +
+        '<b class="sm">봉사 이력 ' + hist.length + '회</b></div>' +
         (hist.length ? '<div class="card flat" style="padding:4px 12px">' + hist.slice(0, 8).map(h =>
           '<div class="kv"><span class="k">' + fmtDate(h.ev.date) + '</span><span class="v">' + esc(h.ev.title) + '</span></div>').join('') + '</div>'
           : '<div class="mut sm">아직 참여 기록이 없어요</div>')) +
