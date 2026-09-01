@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 부원 모집</title>
+<meta name="description" content="유기견·유기묘 봉사 동아리 발자국 부원 모집 신청">
+<meta property="og:title" content="발자국 · 부원 모집">
+<meta property="og:description" content="유기견·유기묘 봉사 동아리 발자국에서 함께할 부원을 찾습니다.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark" id="brandName">발자국</span>
+    </div>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<main class="app" id="app">
+
+  <!-- 히어로 -->
+  <section class="hero">
+    <div class="pawline" id="pawline"></div>
+    <span class="kicker" id="kicker">부원 모집</span>
+    <h1 id="heroTitle">같이 걸어요</h1>
+    <p id="heroSub">유기견·유기묘 보호소에서 함께 손 보태는 봉사 동아리입니다. 아래 폼을 작성하면 운영진이 확인 후 연락드려요.</p>
+  </section>
+
+  <div class="sp"></div>
+  <div id="statusSlot"></div>
+
+  <!-- 모집 안내 -->
+  <section class="card" style="margin-top:14px" id="feeCard">
+    <div class="row between" style="align-items:flex-start">
+      <div>
+        <h3>가입 회비</h3>
+        <div class="sub">봉사 물품 구입에 쓰여요</div>
+      </div>
+      <div class="money" style="font-size:20px;color:var(--brand-deep)" id="feeAmount">15,000원</div>
+    </div>
+    <div class="sp"></div>
+    <div class="acct">
+      <div class="row between">
+        <div>
+          <div class="sm mut" id="bankName">우리은행</div>
+          <div class="no" id="acctNo">1002964773832</div>
+          <div class="sm mut" id="holderName">예금주 노혜림</div>
+        </div>
+        <button class="btn soft sm" type="button" id="copyAcct">복사</button>
+      </div>
+    </div>
+    <p class="hint-note sm mut" style="margin:10px 0 0" id="depositTip">입금자명은 <b>신청자 본인 이름</b>으로 보내주세요.</p>
+  </section>
+
+  <!-- 신청 폼 -->
+  <section id="formWrap">
+    <div class="section-title" id="formTitle"><span></span></div>
+
+    <form class="card" id="applyForm" novalidate>
+      <div class="steps" id="steps"><i></i><i></i><i></i></div>
+
+      <label class="field" id="f-name">
+        <span class="lb">이름 <span class="req">*</span></span>
+        <input class="input" name="name" autocomplete="name" placeholder="김발자" maxlength="20" required>
+        <span class="hint-inline">이름을 입력해주세요</span>
+      </label>
+
+      <label class="field" id="f-student">
+        <span class="lb">학번 <span class="req">*</span></span>
+        <input class="input" name="student_id" inputmode="numeric" placeholder="25학번" maxlength="20" required>
+        <span class="hint" id="deptHint"></span>
+        <span class="hint-inline">학번을 입력해주세요</span>
+      </label>
+
+      <label class="field" id="f-phone">
+        <span class="lb">연락처 <span class="req">*</span></span>
+        <input class="input" name="phone" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000" maxlength="20" required>
+        <span class="hint hintline">카카오톡 오픈채팅 초대와 봉사 공지에 사용해요.</span>
+        <span class="hint-inline">연락처를 정확히 입력해주세요</span>
+      </label>
+
+      <label class="field" id="f-motive">
+        <span class="lb">지원 동기 <span class="req">*</span></span>
+        <textarea class="input" name="motivation" placeholder="유기견·유기묘 봉사에 관심을 갖게 된 이유를 편하게 적어주세요." maxlength="600" required></textarea>
+        <span class="hint"><span id="motiveCount">0</span>/600자</span>
+        <span class="hint-inline">10자 이상 적어주세요</span>
+      </label>
+
+      <div class="field" id="f-receipt">
+        <span class="lb">입금증 <span class="req">*</span></span>
+        <div class="dropzone" id="drop" tabindex="0" role="button" aria-label="입금증 이미지 첨부">
+          <div id="dropIdle">
+            <div class="big" id="dropIcon"></div>
+            <div style="font-weight:700;margin-top:6px">탭해서 사진 올리기</div>
+            <div class="sm mut">사진첩에 저장한 이체 캡처를 골라주세요</div>
+          </div>
+          <div id="dropDone" hidden>
+            <img id="receiptPreview" alt="첨부한 입금증 미리보기">
+            <div class="sm mut" style="margin-top:8px" id="receiptInfo"></div>
+            <div class="sm mut" style="margin-top:2px">다시 탭하면 다른 사진으로 바꿀 수 있어요</div>
+          </div>
+        </div>
+        <input type="file" id="file" accept="image/*" hidden>
+        <div class="row" style="margin-top:8px" id="receiptActions" hidden>
+          <button type="button" class="btn ghost sm block" id="receiptClear">첨부한 사진 지우기</button>
+        </div>
+        <span class="hint-inline">입금증 사진을 첨부해주세요</span>
+      </div>
+
+      <div class="divider"></div>
+      <label class="check" id="agree">
+        <span class="box" aria-hidden="true"></span>
+        <input type="checkbox" hidden>
+        <span class="sm">이름·학번·연락처를 동아리 운영 목적으로만 사용하는 데 동의합니다.</span>
+      </label>
+
+      <div class="sp"></div>
+      <button class="btn primary lg block" type="submit" id="submitBtn">신청서 보내기</button>
+      <p class="sm mut center" style="margin:10px 0 0" id="savedNote"></p>
+    </form>
+  </section>
+
+  <!-- 마감 안내 -->
+  <section id="closedWrap" hidden>
+    <div class="card center" style="padding:30px 20px">
+      <div id="closedIcon" style="color:var(--ink-3);display:flex;justify-content:center"></div>
+      <h3 style="margin-top:12px" id="closedTitle">지금은 접수 기간이 아니에요</h3>
+      <p class="mut sm" id="closedMsg" style="margin-top:6px"></p>
+    </div>
+  </section>
+
+  <!-- 완료 -->
+  <section id="doneWrap" hidden>
+    <div class="card center" style="padding:30px 20px">
+      <div style="display:flex;justify-content:center;color:var(--brand)" id="doneIcon"></div>
+      <h3 style="margin-top:12px;font-size:22px">신청이 접수됐어요</h3>
+      <p class="mut sm" style="margin-top:6px">운영진이 입금 확인 후 승인해드려요.<br>승인되면 등록한 연락처로 안내가 갑니다.</p>
+      <div class="acct" style="text-align:left;margin-top:16px" id="doneSummary"></div>
+      <div class="sp"></div>
+      <button class="btn ghost block" type="button" id="againBtn">다른 사람 신청서 작성하기</button>
+    </div>
+  </section>
+
+  <div class="linkline" id="footNote"></div>
+  <div style="height:90px"></div>
+</main>
+
+<div class="stickycta" id="cta" hidden>
+  <div class="in"><button class="btn primary lg block" type="button" id="ctaBtn">신청서 작성하러 가기</button></div>
+</div>
+
+<script src="assets/config.js"></script>
+<script src="assets/icons.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/db.js"></script>
+<script src="assets/public.js"></script>
+</body>
+</html>

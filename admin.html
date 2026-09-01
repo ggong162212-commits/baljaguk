@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 운영진</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="topbar wide" id="topbar" hidden>
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark">운영진</span>
+      <span class="badge" id="modeBadge"></span>
+    </div>
+    <button class="iconbtn" id="gearBtn" type="button" aria-label="설정"></button>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<!-- 로그인 -->
+<main class="app" id="login">
+  <div style="height:8vh"></div>
+  <div class="card center" style="padding:30px 22px">
+    <div style="display:flex;justify-content:center">
+      <span style="width:60px;height:60px;border-radius:22px;background:var(--brand-soft);color:var(--brand-deep);display:grid;place-items:center" id="lockIcon"></span>
+    </div>
+    <h2 style="margin-top:14px;font-size:22px">운영진 전용</h2>
+    <p class="mut sm" style="margin-top:6px">비밀번호를 입력하면 관리 화면이 열려요.</p>
+    <form id="loginForm" style="margin-top:18px;text-align:left">
+      <label class="field" style="margin-bottom:10px">
+        <span class="lb">운영진 비밀번호</span>
+        <input class="input" id="pw" type="password" inputmode="numeric" autocomplete="current-password" placeholder="••••••" required>
+      </label>
+      <button class="btn primary lg block" type="submit" id="loginBtn">들어가기</button>
+    </form>
+    <p class="sm mut" style="margin-top:14px" id="loginHint"></p>
+  </div>
+  <div class="linkline"><a href="index.html">← 신청 폼으로</a></div>
+</main>
+
+<!-- 관리 화면 -->
+<main class="app wide" id="admin" hidden>
+
+  <!-- 폼 관리 -->
+  <section class="view" id="v-form">
+    <div class="pagehead">
+      <h1>폼 관리</h1>
+      <p>신청 접수를 켜고 끄거나 마감 시각을 예약할 수 있어요.</p>
+    </div>
+    <div id="formPanel" class="stack"></div>
+  </section>
+
+  <!-- 가입 신청 -->
+  <section class="view" id="v-apply">
+    <div class="pagehead">
+      <h1>가입 신청</h1>
+      <p>입금증을 확인하고 승인하면 구성원으로 등록돼요.</p>
+    </div>
+    <div class="chips" id="applyChips"></div>
+    <div class="search" style="margin-bottom:12px">
+      <span id="applySearchIcon"></span>
+      <input id="applySearch" placeholder="이름·학번으로 찾기" aria-label="신청자 검색">
+    </div>
+    <div id="applyBulk"></div>
+    <div id="applyList" class="stack"></div>
+  </section>
+
+  <!-- 구성원 -->
+  <section class="view" id="v-members">
+    <div class="pagehead">
+      <h1>구성원</h1>
+      <p>함께하는 발자국 멤버</p>
+    </div>
+    <div id="memberStats"></div>
+    <div class="sp"></div>
+    <div class="search" style="margin-bottom:10px">
+      <span id="memberSearchIcon"></span>
+      <input id="memberSearch" placeholder="이름, 학번으로 검색하세요" aria-label="구성원 검색">
+    </div>
+    <div class="chips" id="memberChips"></div>
+    <div class="row between" style="margin:2px 0 10px">
+      <div class="seg" id="memberSort" style="flex:1"></div>
+    </div>
+    <div id="memberList" class="stack"></div>
+    <div class="sp"></div>
+    <div class="row" style="gap:8px">
+      <button class="btn soft grow" id="addMember" type="button">구성원 추가</button>
+      <button class="btn ghost" id="exportMembers" type="button">내보내기</button>
+    </div>
+  </section>
+
+  <!-- 봉사 참여 -->
+  <section class="view" id="v-vol">
+    <div class="pagehead">
+      <h1>봉사 참여</h1>
+      <p>날짜를 고르고 그 날의 봉사모임을 만들어보세요.</p>
+    </div>
+    <div id="calendar"></div>
+    <div class="sp"></div>
+    <div id="volRank"></div>
+  </section>
+
+  <!-- 재정 -->
+  <section class="view" id="v-fin">
+    <div class="pagehead">
+      <h1>동아리 재정</h1>
+      <p>운영진만 볼 수 있는 동아리비 장부예요.</p>
+    </div>
+    <div id="finTop"></div>
+    <div class="sp"></div>
+    <div class="row" style="gap:8px;margin-bottom:10px">
+      <div class="seg grow" id="finSeg"></div>
+      <select class="input" id="finMonth" style="width:auto;padding:10px 34px 10px 12px" aria-label="월 선택"></select>
+    </div>
+    <div id="finList" class="stack"></div>
+    <div class="sp"></div>
+    <div class="row" style="gap:8px">
+      <button class="btn soft grow" id="addFin" type="button">내역 추가</button>
+      <button class="btn ghost" id="exportFin" type="button">내보내기</button>
+    </div>
+  </section>
+
+  <!-- 후원 -->
+  <section class="view" id="v-donate">
+    <div class="pagehead">
+      <h1>후원</h1>
+      <p>보호소 후원을 모으고 쓰임을 공개하는 공간이에요.</p>
+    </div>
+    <div id="donatePanel" class="stack"></div>
+  </section>
+
+  <!-- 설정 -->
+  <section class="view" id="v-settings">
+    <div class="pagehead">
+      <h1>설정</h1>
+      <p>동아리 정보와 계정을 관리해요.</p>
+    </div>
+    <div id="settingsPanel" class="stack"></div>
+  </section>
+
+  <div style="height:96px"></div>
+</main>
+
+<nav class="tabbar" id="tabbar" hidden aria-label="관리 메뉴"></nav>
+
+<script src="assets/config.js"></script>
+<script src="assets/icons.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/db.js"></script>
+<script src="assets/admin.js"></script>
+</body>
+</html>
