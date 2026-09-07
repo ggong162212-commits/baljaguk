@@ -679,11 +679,18 @@
     };
   }
 
-  const volPlace = () => (S.settings && S.settings.place) || '천보금 보호소';
-  function autoTitle(date, skipId) {
+  function volPlaces() {
+    const s = S.settings || {};
+    let list = s.places;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
+    if (!Array.isArray(list) || !list.length) list = [s.place || '천보금 보호소'];
+    return list.filter(Boolean);
+  }
+  const volPlace = () => volPlaces()[0];
+  function autoTitle(date, place, skipId) {
     const d = new Date(date + 'T00:00:00');
-    const base = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 봉사';
-    const same = S.events.filter(e => e.date === date && e.id !== skipId).length;
+    const base = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + (place || volPlace());
+    const same = S.events.filter(e => e.date === date && e.place === place && e.id !== skipId).length;
     return same ? base + ' ' + (same + 1) : base;
   }
 
@@ -693,10 +700,20 @@
     const joined = isNew ? [] : S.att.filter(a => a.event_id === ev.id);
     const picked = new Map(joined.map(a => [a.member_id, Number(a.hours) || 0]));
 
+    const places = volPlaces();
+    let place = ev.place && places.indexOf(ev.place) >= 0 ? ev.place : (ev.place || places[0]);
     const body =
       '<label class="field"><span class="lb">봉사 날짜</span>' +
-      '<input class="input" type="date" id="eDate" value="' + esc(ev.date) + '">' +
-      '<span class="hint">장소는 ' + esc(volPlace()) + ' 로 저장돼요.</span></label>' +
+      '<input class="input" type="date" id="eDate" value="' + esc(ev.date) + '"></label>' +
+      '<div class="field"><span class="lb">봉사지</span>' +
+      (places.length > 1 || (ev.place && places.indexOf(ev.place) < 0)
+        ? '<div class="chips" id="ePlaces">' +
+          places.concat(ev.place && places.indexOf(ev.place) < 0 ? [ev.place] : []).map(pl =>
+            '<button type="button" class="chip' + (pl === place ? ' on' : '') + '" data-pl="' + esc(pl) + '">' +
+            esc(pl) + '</button>').join('') + '</div>'
+        : '<div class="card flat sm" style="padding:11px 14px">' + esc(places[0]) + '</div>' +
+          '<span class="hint">봉사지는 설정에서 더 추가할 수 있어요.</span>') +
+      '</div>' +
       '<div class="divider"></div>' +
       '<div class="row between" style="margin-bottom:8px"><b class="sm">참여한 구성원 <span id="pickCount">' + picked.size + '</span>명</b>' +
       '<button class="btn ghost sm" id="pickAll">전체 선택</button></div>' +
@@ -710,6 +727,10 @@
         '<button class="btn primary grow" data-save>저장하기</button></div>');
 
     const ov = sheet({ title: isNew ? fmtDate(F.day) + ' 봉사모임' : '봉사모임 수정', body, noFocus: true });
+    ov.querySelectorAll('#ePlaces [data-pl]').forEach(b => b.addEventListener('click', () => {
+      place = b.dataset.pl;
+      ov.querySelectorAll('#ePlaces [data-pl]').forEach(x => x.classList.toggle('on', x.dataset.pl === place));
+    }));
 
     function drawPicker() {
       const q = ov.querySelector('#pickSearch').value.trim();
@@ -769,8 +790,8 @@
     ov.querySelector('[data-save]').onclick = async () => {
       const date = ov.querySelector('#eDate').value || F.day;
       const patch = {
-        title: autoTitle(date, isNew ? null : ev.id),
-        date: date, start_time: null, place: volPlace(), note: ''
+        title: autoTitle(date, place, isNew ? null : ev.id),
+        date: date, start_time: null, place: place, note: ''
       };
       closeSheet();
       try {
@@ -1290,9 +1311,7 @@
       '<label class="field"><span class="lb">한 줄 소개</span><input class="input" id="sTag" value="' + esc(s.tagline || '') + '"></label>' +
       '<label class="field"><span class="lb">소속 학과</span><input class="input" id="sDept" value="' + esc(s.department || '') + '">' +
       '<span class="hint">신청 폼에 안내로 뜨고, 승인된 구성원의 학과로 자동 입력돼요.</span></label>' +
-      '<label class="field"><span class="lb">봉사 장소</span>' +
-      '<input class="input" id="sPlace" value="' + esc(s.place || '천보금 보호소') + '">' +
-      '<span class="hint">봉사모임을 만들 때 이 장소로 자동 저장돼요.</span></label>' +
+
       '<label class="field"><span class="lb">공지 (선택)</span><textarea class="input" id="sNotice" style="min-height:70px" placeholder="폼 상단에 노란 박스로 보여요">' + esc(s.notice || '') + '</textarea></label>' +
       '<div class="divider"></div>' +
       '<label class="field"><span class="lb">회비</span><input class="input" id="sFee" inputmode="numeric" value="' + num(s.fee) + '"></label>' +
@@ -1301,6 +1320,13 @@
       '<label class="field"><span class="lb">예금주</span><input class="input" id="sHolder" value="' + esc(s.holder || '') + '"></label></div>' +
       '<label class="field"><span class="lb">계좌번호</span><input class="input" id="sAcct" inputmode="numeric" value="' + esc(s.account || '') + '"></label>' +
       '<button class="btn primary block" id="saveClub">저장하기</button></div>' +
+
+      '<div class="card"><h3>봉사지</h3>' +
+      '<div class="sub">정기적으로 가는 곳을 등록해두면 봉사모임 만들 때 골라서 쓸 수 있어요.</div>' +
+      '<div class="sp"></div><div id="placeList"></div>' +
+      '<div class="row" style="gap:8px;margin-top:10px">' +
+      '<input class="input grow" id="newPlace" placeholder="예: 천사들의 보금자리">' +
+      '<button class="btn soft" id="addPlace" type="button">추가</button></div></div>' +
 
       '<div class="card"><h3>승인 옵션</h3><div class="sp"></div>' +
       '<label class="switch" style="justify-content:space-between"><span class="sm">승인할 때 회비를 동아리비 수입에 더하기</span>' +
@@ -1333,7 +1359,6 @@
         generation: $('#sGen').value.trim(),
         tagline: $('#sTag').value.trim(),
         department: $('#sDept').value.trim(),
-        place: $('#sPlace').value.trim() || '천보금 보호소',
         notice: $('#sNotice').value.trim(),
         fee: Number(String($('#sFee').value).replace(/[^\d]/g, '')) || 0,
         bank: $('#sBank').value.trim(),
@@ -1347,6 +1372,32 @@
       toast(e.target.checked ? '이제 들어올 때 비밀번호를 물어봐요' : '잠금을 껐어요. 주소만 알면 바로 들어와요');
       renderSettings();
     };
+    function paintPlaces() {
+      const list = volPlaces();
+      $('#placeList').innerHTML = list.map((pl, i) =>
+        '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
+        '<span class="sm">' + esc(pl) + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
+        (list.length > 1 ? '<button class="iconbtn" data-rmpl="' + i + '" aria-label="삭제" ' +
+          'style="width:30px;height:30px;border-radius:10px">' + ic('x') + '</button>' : '') +
+        '</div>').join('');
+      $$('#placeList [data-rmpl]').forEach(b => b.onclick = async () => {
+        const next = volPlaces().filter((_, i) => i !== Number(b.dataset.rmpl));
+        await save({ places: next, place: next[0] });
+        paintPlaces(); toast('봉사지를 지웠어요');
+      });
+    }
+    paintPlaces();
+    $('#addPlace').onclick = async () => {
+      const v = $('#newPlace').value.trim();
+      if (!v) return toast('봉사지 이름을 적어주세요', 'err');
+      const list = volPlaces();
+      if (list.includes(v)) return toast('이미 있는 봉사지예요', 'err');
+      const next = list.concat([v]);
+      await save({ places: next, place: next[0] });
+      $('#newPlace').value = '';
+      paintPlaces(); toast(v + ' 추가했어요', 'ok');
+    };
+
     $('#autoFee').onchange = e => {
       localStorage.setItem('baljaguk.autoFee', e.target.checked ? '1' : '0');
       toast(e.target.checked ? '승인 시 회비를 자동 기록해요' : '자동 기록을 껐어요');

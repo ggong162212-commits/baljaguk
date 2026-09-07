@@ -287,3 +287,9 @@ end $$;
 
 revoke all on function add_fee_income(integer) from public, anon;
 grant execute on function add_fee_income(integer) to authenticated;
+
+-- 봉사지 여러 곳 (정기 봉사 장소 목록)
+alter table club_settings add column if not exists places jsonb default '["천보금 보호소"]'::jsonb;
+update club_settings
+   set places = to_jsonb(array[coalesce(nullif(place,''), '천보금 보호소')])
+ where places is null or jsonb_array_length(places) = 0;

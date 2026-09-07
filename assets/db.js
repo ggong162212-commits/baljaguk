@@ -57,7 +57,7 @@
     ];
     return {
       campaigns: [camp], donations: dons,
-      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
+      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: ['천보금 보호소'], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
       applications: apps, members, events, attendance: att, finance: fin,
       password: C.DEMO_PASSWORD || '260324'
     };
