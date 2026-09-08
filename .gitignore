@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 Thumbs.db
+
+# 인스타 피드 작업 파일 (사이트와 무관)
+feed/

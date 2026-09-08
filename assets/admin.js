@@ -6,8 +6,8 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
-  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', day: null, month: null };
+  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [] };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', formPick: 'apply' };
   let cur = 'form';
 
   const TABS = [
@@ -28,6 +28,14 @@
   const balance = () => S.fin.reduce((s, f) => s + (f.kind === 'income' ? 1 : -1) * (Number(f.amount) || 0), 0);
   const autoFee = () => localStorage.getItem('baljaguk.autoFee') !== '0';
   const formURL = () => new URL('index.html', location.href).href;
+  const surveyURL = () => new URL('survey.html', location.href).href;
+  const PARTY = { yes: ['참여', 'approved'], no: ['불참', 'rejected'], maybe: ['미정', 'pending'] };
+  /* '건대입구' 와 '건대입구역' 을 같은 곳으로 묶는다 */
+  const normStation = v => {
+    const s = String(v || '').replace(/\s+/g, '');
+    if (!s) return '';
+    return /역$/.test(s) ? s : s + '역';
+  };
 
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', boot);
@@ -38,6 +46,7 @@
     $('#lockIcon').innerHTML = ic('lock');
     $('#applySearchIcon').innerHTML = ic('search');
     $('#memberSearchIcon').innerHTML = ic('search');
+    $('#surveySearchIcon').innerHTML = ic('search');
     $('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
     UI.paintThemeButtons();
     $('#gearBtn').addEventListener('click', () => go('settings'));
@@ -96,7 +105,8 @@
       S.att.map(a => a.event_id + a.member_id + a.hours),
       S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date),
       S.camps.map(c => c.id + c.title + c.goal + c.status + c.ends_on),
-      S.dons.map(d => d.id + d.amount + d.date + (d.member_id || d.donor_name || ''))
+      S.dons.map(d => d.id + d.amount + d.date + (d.member_id || d.donor_name || '')),
+      S.srv.map(r => r.id + r.party + r.name + (r.station || ''))
     ]);
   }
   function startLive() {
@@ -120,12 +130,14 @@
 
   async function load() {
     try {
-      const [settings, apps, members, events, att, fin, camps, dons] = await Promise.all([
+      const [settings, apps, members, events, att, fin, camps, dons, srv] = await Promise.all([
         DB.settings.get(), DB.applications.list(), DB.members.list(),
         DB.events.list(), DB.attendance.list(), DB.finance.list(),
-        DB.campaigns.list(), DB.donations.list()
+        DB.campaigns.list(), DB.donations.list(),
+        // 설문 테이블을 아직 안 만들었어도 나머지 화면은 그대로 열리게 한다
+        (S.srvError = null, DB.surveys.list().catch(e => { S.srvError = e.message || '불러오지 못했어요'; return []; }))
       ]);
-      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons });
+      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons, srv });
     } catch (e) {
       toast(e.message || '데이터를 불러오지 못했어요', 'err');
       if (e.status === 401) { DB.logout(); location.reload(); }
@@ -151,6 +163,21 @@
      1. 폼 관리
      ============================================================ */
   function renderForm() {
+    const picks = [['apply', '동아리 신청'], ['survey', '2학기 활동의견 · 개파']];
+    $('#formPick').innerHTML = picks.map(([k, l]) =>
+      '<button type="button" class="' + (F.formPick === k ? 'on' : '') + '" data-fp="' + k + '">' + l + '</button>').join('');
+    $$('#formPick [data-fp]').forEach(b => b.addEventListener('click', () => {
+      F.formPick = b.dataset.fp; renderForm(); window.scrollTo({ top: 0 });
+    }));
+
+    const onSurvey = F.formPick === 'survey';
+    $('#formPanel').hidden = onSurvey;
+    $('#surveyPanel').hidden = !onSurvey;
+    $('#formLead').textContent = onSurvey
+      ? '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.'
+      : '신청 접수를 켜고 끄거나 마감 시각을 예약할 수 있어요.';
+    if (onSurvey) return renderSurvey();
+
     const s = S.settings, st = DB.formState(s, approvedCount());
     const pending = S.apps.filter(a => a.status === 'pending').length;
     const todayNew = S.apps.filter(a => (a.created_at || '').slice(0, 10) === dkey(new Date())).length;
@@ -297,6 +324,7 @@
   $ && document.addEventListener('input', e => {
     if (e.target.id === 'applySearch') { F.q1 = e.target.value; renderApply(); $('#applySearch').focus(); }
     if (e.target.id === 'memberSearch') { F.q2 = e.target.value; renderMembers(); $('#memberSearch').focus(); }
+    if (e.target.id === 'surveySearch') { F.q3 = e.target.value; renderSurvey(); $('#surveySearch').focus(); }
   });
 
   function appSheet(a) {
@@ -991,6 +1019,100 @@
     if (left < 0) return { txt: '기간 지남', cls: 'off' };
     if (left === 0) return { txt: '오늘 마감', cls: 'pending' };
     return { txt: 'D-' + left, cls: 'on' };
+  }
+
+  /* ============================================================
+     1-2. 2학기 활동의견 · 개강파티 (설문 응답)
+     ============================================================ */
+  function renderSurvey() {
+    const all = S.srv.slice();
+    const c = { yes: 0, no: 0, maybe: 0 };
+    all.forEach(r => { if (c[r.party] != null) c[r.party]++; });
+    const total = all.length;
+    const mem = S.members.length;
+
+    /* 주소 */
+    $('#surveyLink').innerHTML =
+      (S.srvError
+        ? '<div class="pill-note" style="margin-bottom:12px"><b>설문 표가 아직 없어요.</b><br>' +
+        'Supabase → SQL Editor 에 <b>supabase/schema.sql</b> 을 다시 한 번 붙여넣고 Run 하면 켜집니다. (' + esc(S.srvError) + ')</div>'
+        : '') +
+      '<div class="card">' +
+      '<h3>설문 주소</h3><div class="sub">부원들에게 보낼 링크예요. 신청 폼·운영진 주소와는 다릅니다.</div>' +
+      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(surveyURL()) + '</div>' +
+      '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copySurveyLink">링크 복사</button>' +
+      '<button class="btn ghost sm grow" id="openSurveyLink">폼 열어보기</button></div></div>' +
+      '<button class="btn ghost block sm" id="copySurveyNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
+      '</div>';
+    $('#copySurveyLink').addEventListener('click', () => copy(surveyURL(), '설문 주소를 복사했어요'));
+    $('#openSurveyLink').addEventListener('click', () => window.open(surveyURL(), '_blank'));
+    $('#copySurveyNotice').addEventListener('click', () => copy(
+      '🐾 발자국 2학기 활동 의견 및 개파 참여 조사\n\n' +
+      '이번 학기 봉사 지역과 개강파티 인원을 정하려고 해요.\n' +
+      '1분이면 끝나니 아래에서 남겨주세요.\n\n' +
+      '📍 개강파티 : 9월 19일 토요일 오후 7시, 건대입구 인근 술집\n\n' +
+      surveyURL(), '공지 문구를 복사했어요'));
+
+    /* 개강파티 참여 집계 */
+    $('#surveyStats').innerHTML =
+      '<div class="statcard">' +
+      stat('green', 'check', '참여', c.yes + '명') +
+      stat('pink', 'x', '불참', c.no + '명') +
+      stat('gold', 'clock', '미정', c.maybe + '명') +
+      '</div>' +
+      '<div class="sm mut center" style="margin-top:9px">' +
+      (mem ? '구성원 ' + mem + '명 중 <b>' + total + '명</b> 응답 (' + Math.round(total / mem * 100) + '%)'
+        : '응답 <b>' + total + '건</b>') +
+      (c.maybe ? ' · 미정 ' + c.maybe + '명은 따로 확인이 필요해요' : '') +
+      '</div>';
+
+    /* 거주지 분포 — 봉사 지역을 나눌 때 쓰는 숫자 */
+    const st = {};
+    all.forEach(r => { const k = normStation(r.station); if (k) st[k] = (st[k] || 0) + 1; });
+    const stations = Object.keys(st).map(k => [k, st[k]])
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    $('#surveyStations').innerHTML = stations.length
+      ? '<div class="card"><h3>거주지 분포</h3>' +
+      '<div class="sub">봉사 지역을 나눌 때 참고하세요.</div>' +
+      '<div class="tagrow" style="margin-top:12px">' +
+      stations.map(([k, n]) => '<span class="chip">' + esc(k) + '<span class="n">' + n + '</span></span>').join('') +
+      '</div></div>'
+      : '';
+
+    /* 필터 · 검색 · 목록 */
+    const chips = [['all', '전체', total], ['yes', '참여', c.yes], ['no', '불참', c.no], ['maybe', '미정', c.maybe]];
+    $('#surveyChips').innerHTML = chips.map(([k, l, n]) =>
+      '<button class="chip' + (F.party === k ? ' on' : '') + '" data-p="' + k + '">' + l + '<span class="n">' + n + '</span></button>').join('');
+    $$('#surveyChips [data-p]').forEach(b => b.addEventListener('click', () => { F.party = b.dataset.p; renderSurvey(); }));
+
+    const q = F.q3.trim().toLowerCase();
+    const rows = all.filter(r =>
+      (F.party === 'all' || r.party === F.party) &&
+      (!q || [r.name, r.station, r.opinion].some(v => String(v || '').toLowerCase().includes(q))));
+
+    $('#surveyList').innerHTML = rows.length ? rows.map(r => {
+      const [label, cls] = PARTY[r.party] || PARTY.maybe;
+      return '<div class="card">' +
+        '<div class="row between" style="align-items:flex-start;gap:10px">' +
+        '<div class="row" style="gap:11px;min-width:0">' + avatar(r) +
+        '<div style="min-width:0">' +
+        '<div style="font-weight:800">' + esc(r.name) + '</div>' +
+        '<div class="sm mut">' + esc(normStation(r.station) || '거주지 미기입') + ' · ' + relTime(r.created_at) + '</div>' +
+        '</div></div>' +
+        '<span class="badge ' + cls + '">' + label + '</span>' +
+        '</div>' +
+        (r.opinion
+          ? '<p class="sm" style="margin:12px 0 0;line-height:1.65;white-space:pre-wrap">' + esc(r.opinion) + '</p>'
+          : '<p class="sm mut" style="margin:12px 0 0">의견 없음</p>') +
+        '</div>';
+    }).join('') : empty('clipboard', (q || F.party !== 'all') ? '조건에 맞는 응답이 없어요' : '아직 들어온 응답이 없어요');
+
+    $('#exportSurvey').onclick = () => {
+      if (!rows.length) return toast('내보낼 응답이 없어요', 'err');
+      downloadCSV('발자국_활동조사_' + dkey(new Date()) + '.csv',
+        ['보낸 시각', '이름', '거주지', '개강파티', '의견'],
+        rows.map(r => [fmtDateTime(r.created_at), r.name, normStation(r.station), (PARTY[r.party] || PARTY.maybe)[0], r.opinion || '']));
+    };
   }
 
   function renderDonate() {

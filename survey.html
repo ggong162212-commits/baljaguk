@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 2학기 활동 조사</title>
+<meta name="description" content="발자국 2학기 봉사 방향 의견과 개강파티 참여 여부를 조사합니다.">
+<meta property="og:title" content="발자국 · 2학기 활동 조사">
+<meta property="og:description" content="봉사 지역 의견과 개강파티 참여 여부를 알려주세요.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css?v=202609081130">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark" id="brandName">발자국</span>
+    </div>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<main class="app" id="app">
+
+  <!-- 히어로 -->
+  <section class="hero">
+    <div class="pawline" id="pawline"></div>
+    <span class="kicker" id="kicker"></span>
+    <h1 id="heroTitle">의견 들려주세요</h1>
+    <p id="heroSub">2학기 봉사 방향과 개강파티 참여 여부를 조사합니다. 1분이면 끝나요.</p>
+  </section>
+
+  <div class="sp"></div>
+
+  <!-- 개강파티 안내 -->
+  <section class="card" id="partyCard">
+    <div class="row between" style="align-items:flex-start">
+      <div>
+        <h3>발자국 개강파티</h3>
+        <p class="sm mut" style="margin-top:4px">한 학기에 한 번뿐인 자리예요.</p>
+      </div>
+      <span class="badge approved" id="partyBadge">9/19</span>
+    </div>
+    <div class="sp"></div>
+    <div class="kv"><span class="k">날짜</span><span class="v">9월 19일 토요일</span></div>
+    <div class="kv"><span class="k">시간</span><span class="v">오후 7시 시작 예정</span></div>
+    <div class="kv"><span class="k">장소</span><span class="v">건대입구 인근 술집</span></div>
+  </section>
+
+  <!-- 설문 폼 -->
+  <section id="formWrap">
+    <div class="section-title" id="formTitle"><span></span></div>
+
+    <form class="card" id="surveyForm" novalidate>
+      <div class="steps" id="steps"><i></i><i></i><i></i><i></i></div>
+
+      <label class="field" id="f-name">
+        <span class="lb">이름 <span class="req">*</span></span>
+        <input class="input" name="name" autocomplete="name" placeholder="김발자" maxlength="20" required>
+        <span class="hint-inline">이름을 입력해주세요</span>
+      </label>
+
+      <label class="field" id="f-station">
+        <span class="lb">거주지 (인근 지하철역) <span class="req">*</span></span>
+        <input class="input" name="station" placeholder="건대입구역" maxlength="30" required>
+        <span class="hint hintline">지역을 나눠 봉사지를 정하는 데만 씁니다. 예) 건대입구역 / 홍대입구역 / 수원역</span>
+        <span class="hint-inline">가까운 지하철역을 적어주세요</span>
+      </label>
+
+      <div class="field" id="f-opinion">
+        <span class="lb">다양한 보호소에서 봉사하는 것에 대한 의견</span>
+        <p class="sm mut" style="margin:2px 0 10px;line-height:1.6">
+          이번 학기부터 대화역에 있는 <b>천보금</b> 이외에도 지역을 나누어
+          다양한 보호소에서 봉사를 진행해볼 예정이에요. 편하게 남겨주세요.
+        </p>
+        <div class="pill-note" id="opinionExamples"></div>
+        <div class="sp"></div>
+        <textarea class="input" name="opinion" placeholder="좋은 점, 걱정되는 점, 궁금한 점 무엇이든 좋아요." maxlength="600"></textarea>
+        <span class="hint"><span id="opinionCount">0</span>/600자</span>
+      </div>
+
+      <div class="field" id="f-party">
+        <span class="lb">9월 19일 개강파티 참여 여부 <span class="req">*</span></span>
+        <div class="stack" style="gap:8px;margin-top:6px" id="partyOptions">
+          <label class="check" data-party="yes">
+            <span class="box" aria-hidden="true"></span>
+            <input type="radio" name="party" value="yes" hidden>
+            <span class="sm">참여합니다</span>
+          </label>
+          <label class="check" data-party="no">
+            <span class="box" aria-hidden="true"></span>
+            <input type="radio" name="party" value="no" hidden>
+            <span class="sm">참여하지 않습니다</span>
+          </label>
+          <label class="check" data-party="maybe">
+            <span class="box" aria-hidden="true"></span>
+            <input type="radio" name="party" value="maybe" hidden>
+            <span class="sm">아직 모르겠습니다</span>
+          </label>
+        </div>
+        <span class="hint hintline">지금 모르겠어도 괜찮아요. 정해지면 운영진에게 알려주세요.</span>
+        <span class="hint-inline">참여 여부를 골라주세요</span>
+      </div>
+
+      <div class="sp"></div>
+      <button class="btn primary lg block" type="submit" id="submitBtn">응답 보내기</button>
+      <p class="sm mut center" style="margin:10px 0 0" id="savedNote"></p>
+    </form>
+  </section>
+
+  <!-- 완료 -->
+  <section id="doneWrap" hidden>
+    <div class="card center" style="padding:30px 20px">
+      <div style="display:flex;justify-content:center;color:var(--brand)" id="doneIcon"></div>
+      <h3 style="margin-top:12px;font-size:22px">응답 고마워요</h3>
+      <p class="mut sm" style="margin-top:6px" id="doneMsg">운영진이 모아서 봉사 지역과 개강파티 인원을 정할게요.</p>
+      <div class="acct" style="text-align:left;margin-top:16px" id="doneSummary"></div>
+      <div class="sp"></div>
+      <button class="btn ghost block" type="button" id="againBtn">다시 작성하기</button>
+    </div>
+  </section>
+
+  <div class="linkline" id="footNote"></div>
+  <div style="height:90px"></div>
+</main>
+
+<div class="stickycta" id="cta" hidden>
+  <div class="in"><button class="btn primary lg block" type="button" id="ctaBtn">응답 작성하러 가기</button></div>
+</div>
+
+<script src="assets/config.js?v=202609081130"></script>
+<script src="assets/icons.js?v=202609081130"></script>
+<script src="assets/ui.js?v=202609081130"></script>
+<script src="assets/db.js?v=202609081130"></script>
+<script src="assets/survey.js?v=202609081130"></script>
+</body>
+</html>

@@ -158,6 +158,32 @@ from members m;
 
 grant select on members_public to anon, authenticated;
 
+-- ------------------------------------------------------------
+-- 7) 설문 응답 (survey.html 에서 들어오는 곳)
+--    · 학기마다 새 설문을 돌릴 수 있게 topic 으로 구분합니다.
+-- ------------------------------------------------------------
+create table if not exists survey_responses (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  topic      text not null default '2026-2',   -- 설문 회차 (학기)
+  name       text not null,
+  station    text,                             -- 거주지 (인근 지하철역)
+  opinion    text,                             -- 여러 보호소 봉사에 대한 의견
+  party      text not null default 'maybe'     -- 개강파티 참여 여부
+             check (party in ('yes','no','maybe')),
+  note       text                              -- 운영진 메모
+);
+create index if not exists survey_topic_idx on survey_responses (topic, created_at desc);
+
+alter table survey_responses enable row level security;
+
+drop policy if exists "survey insert" on survey_responses;
+drop policy if exists "survey admin"  on survey_responses;
+
+-- 설문 : 누구나 제출(INSERT) / 조회는 운영진만 (이름·거주지가 담기므로)
+create policy "survey insert" on survey_responses for insert to anon, authenticated with check (true);
+create policy "survey admin"  on survey_responses for all    to authenticated using (true) with check (true);
+
 -- 끝. 이제 Authentication → Users → Add user 로 운영진 계정을 만드세요.
 --   Email    : unyoung@baljaguk.club   (아무거나 가능, config.js 와 같아야 함)
 --   Password : 260324                  (운영진 페이지에서 입력할 비밀번호)

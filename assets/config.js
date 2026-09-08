@@ -33,6 +33,9 @@ window.CONFIG = {
   // 체험 모드에서 쓰는 기본 운영진 비밀번호
   DEMO_PASSWORD: '260324',
 
+  // 설문(survey.html) 회차. 학기가 바뀌면 이 값만 바꾸면 응답이 새로 쌓입니다.
+  SURVEY_TOPIC: '2026-2',
+
   // 연결 전에 보여줄 기본 동아리 정보
   FALLBACK: {
     club_name: '발자국',

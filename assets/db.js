@@ -55,8 +55,16 @@
       { id: uid(), created_at: new Date().toISOString(), campaign_id: camp.id, member_id: members[2].id, donor_name: null, amount: 20000, date: d(-6) },
       { id: uid(), created_at: new Date().toISOString(), campaign_id: camp.id, member_id: null, donor_name: '김보호 (졸업생)', amount: 100000, date: d(-3) }
     ];
+    const TOPIC = C.SURVEY_TOPIC || '2026-2';
+    const sv = (name, station, opinion, party) =>
+      ({ id: uid(), created_at: new Date().toISOString(), topic: TOPIC, name, station, opinion, party, note: '' });
+    const survey = [
+      sv('박서연', '건대입구역', '집 근처에서 봉사할 수 있으면 좋을 것 같아요.', 'yes'),
+      sv('최민재', '수원역', '여러 보호소를 경험해볼 수 있어서 기대돼요.', 'maybe'),
+      sv('정예린', '홍대입구역', '매번 같이 봉사하던 사람들과 못 만나게 될까 봐 아쉬워요.', 'yes')
+    ];
     return {
-      campaigns: [camp], donations: dons,
+      campaigns: [camp], donations: dons, survey_responses: survey,
       settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: ['천보금 보호소'], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
       applications: apps, members, events, attendance: att, finance: fin,
       password: C.DEMO_PASSWORD || '260324'
@@ -200,12 +208,27 @@
       'id,created_at,date,kind,category,amount,memo,member_id,has_receipt'),
     campaigns: table('campaigns', 'created_at.desc'),
     donations: table('donations', 'date.desc'),
+    surveys: table('survey_responses', 'created_at.desc'),
+
+    /* 이번 학기 설문 회차 */
+    surveyTopic: () => C.SURVEY_TOPIC || '2026-2',
 
     /* 신청 접수 (비로그인 상태에서 호출) */
     async apply(form) {
       return DB.applications.create({
         name: form.name, student_id: form.student_id, department: form.department,
         phone: form.phone, motivation: form.motivation, receipt: form.receipt || '', status: 'pending'
+      });
+    },
+
+    /* 설문 응답 접수 (비로그인 상태에서 호출) */
+    async submitSurvey(form) {
+      return DB.surveys.create({
+        topic: DB.surveyTopic(),
+        name: String(form.name || '').trim(),
+        station: String(form.station || '').trim(),
+        opinion: String(form.opinion || '').trim(),
+        party: ['yes', 'no', 'maybe'].includes(form.party) ? form.party : 'maybe'
       });
     },
 
