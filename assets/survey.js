@@ -28,6 +28,8 @@
     $('#formTitle').innerHTML = ic('clipboard') + '<span>응답 작성</span>';
     $('#doneIcon').innerHTML =
       '<span style="width:56px;height:56px;border-radius:50%;background:var(--brand-soft);display:grid;place-items:center">' + ic('check') + '</span>';
+    $('#closedIcon').innerHTML =
+      '<span style="width:52px;height:52px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center">' + ic('clock') + '</span>';
     $('#opinionExamples').innerHTML =
       '<b>이렇게 적어주셔도 좋아요</b><br>' + EXAMPLES.map(e => '· ' + esc(e)).join('<br>');
     $('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
@@ -40,6 +42,34 @@
     wireForm();
     restoreDraft();
     if (localStorage.getItem(SENT)) showSent();
+    else paintOpenState();
+    watchSettings();
+  }
+
+  /* 운영진이 접수를 닫으면 폼 대신 안내를 보여준다 */
+  function paintOpenState() {
+    const st = DB.surveyState(settings);
+    const closed = !st.open;
+    $('#closedWrap').hidden = !closed;
+    $('#formWrap').hidden = closed;
+    $('#partyCard').hidden = closed;
+    if (closed) $('#cta').hidden = true;
+    if (closed && st.at) {
+      $('#closedMsg').textContent = fmtDateTime(st.at) + ' 에 마감됐어요. 궁금한 건 운영진에게 알려주세요.';
+    }
+  }
+
+  /* 보고 있는 중에 운영진이 열고 닫아도 반영 */
+  function watchSettings() {
+    let last = JSON.stringify(settings);
+    DB.live(async () => {
+      let next = null;
+      try { next = await DB.settings.get(); } catch (e) { return; }
+      const now = JSON.stringify(next);
+      if (now === last) return;
+      settings = next; last = now;
+      if (!localStorage.getItem(SENT) && $('#doneWrap').hidden) paintOpenState();
+    }, 20000);
   }
 
   function paintClub() {
@@ -49,8 +79,7 @@
     $('#brandName').textContent = name;
     $('#kicker').innerHTML = ic('sprout') + '<span>' + esc(s.generation || '2기') + ' 활동 조사</span>';
     $('#footNote').innerHTML =
-      '<a href="index.html">부원 모집 신청서 →</a>' +
-      '<div class="sm mut" style="margin-top:8px">' + esc(name) + ' · ' + esc(s.tagline || '유기견·유기묘 봉사 동아리') + '</div>';
+      '<div class="sm mut">' + esc(name) + ' · ' + esc(s.tagline || '유기견·유기묘 봉사 동아리') + '</div>';
   }
 
   /* ---------- 폼 ---------- */
@@ -87,8 +116,7 @@
     $('#againBtn').addEventListener('click', () => {
       localStorage.removeItem(SENT);
       $('#doneWrap').hidden = true;
-      $('#formWrap').hidden = false;
-      $('#partyCard').hidden = false;
+      paintOpenState();
       f.reset(); pick(null);
       $('#opinionCount').textContent = '0';
       localStorage.removeItem(DRAFT);
@@ -176,6 +204,11 @@
     btn.disabled = true; btn.textContent = '보내는 중…';
     const v = values();
     try {
+      // 작성 중에 마감됐을 수 있으니 한 번 더 확인
+      const fresh = await DB.settings.get().catch(() => settings);
+      settings = fresh || settings;
+      if (!DB.surveyState(settings).open) { paintOpenState(); throw new Error('방금 조사가 마감됐어요. 운영진에게 문의해주세요'); }
+
       await DB.submitSurvey(v);
       localStorage.removeItem(DRAFT);
       localStorage.setItem(SENT, JSON.stringify({ name: v.name, party: v.party, at: new Date().toISOString() }));
@@ -228,7 +261,8 @@
     if (!target) return;
     ctaWatcher = new IntersectionObserver(entries => {
       const seen = entries[0] && entries[0].isIntersecting;
-      $('#cta').hidden = !!seen || !$('#doneWrap').hidden;
+      // 폼이 보이거나, 이미 보냈거나, 마감됐으면 버튼을 띄우지 않는다
+      $('#cta').hidden = !!seen || !$('#doneWrap').hidden || !$('#closedWrap').hidden;
     }, { rootMargin: '-40% 0px -20% 0px' });
     ctaWatcher.observe(target);
   }

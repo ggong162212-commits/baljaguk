@@ -379,6 +379,14 @@
     uid, today
   };
 
+  /* 설문 접수 가능 여부 */
+  DB.surveyState = function (s) {
+    s = s || {};
+    if (s.survey_open === false) return { open: false, why: 'manual' };
+    if (s.survey_close_at && Date.now() >= Date.parse(s.survey_close_at)) return { open: false, why: 'closed', at: s.survey_close_at };
+    return { open: true, until: s.survey_close_at || null };
+  };
+
   /* 폼 접수 가능 여부 (예약 마감 포함) */
   DB.formState = function (s, approvedCount) {
     const now = Date.now();

@@ -175,6 +175,10 @@ create table if not exists survey_responses (
 );
 create index if not exists survey_topic_idx on survey_responses (topic, created_at desc);
 
+-- 설문 접수도 신청 폼처럼 켜고 끌 수 있게
+alter table club_settings add column if not exists survey_open     boolean default true;
+alter table club_settings add column if not exists survey_close_at timestamptz;
+
 alter table survey_responses enable row level security;
 
 drop policy if exists "survey insert" on survey_responses;

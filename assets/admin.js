@@ -179,31 +179,28 @@
     if (onSurvey) return renderSurvey();
 
     const s = S.settings, st = DB.formState(s, approvedCount());
-    const pending = S.apps.filter(a => a.status === 'pending').length;
-    const todayNew = S.apps.filter(a => (a.created_at || '').slice(0, 10) === dkey(new Date())).length;
-
-    const why = { manual: '운영진이 접수를 꺼둔 상태예요', before: '예약된 오픈 시각을 기다리는 중이에요', closed: '예약 마감 시각이 지났어요', full: '정원이 다 찼어요' };
+    const why ={ manual: '운영진이 접수를 꺼둔 상태예요', before: '예약된 오픈 시각을 기다리는 중이에요', closed: '예약 마감 시각이 지났어요', full: '정원이 다 찼어요' };
 
     $('#formPanel').innerHTML =
       '<div class="card">' +
-      '<div class="row between"><div><h3>신청 접수</h3><div class="sub" id="formStateText">' +
+      '<div class="row between"><div><h3>동아리 신청 접수</h3><div class="sub" id="formStateText">' +
       (st.open ? '지금 신청을 받고 있어요' : (why[st.why] || '접수를 받지 않는 중이에요')) + '</div></div>' +
       '<label class="switch"><input type="checkbox" id="openSw"' + (s.form_open !== false ? ' checked' : '') + '><span class="track"></span></label></div>' +
-      '<div class="divider"></div>' +
-      '<div class="field"><span class="lb">접수 시작 예약</span>' + dtField('openAt', s.form_open_at) +
-      '<span class="hint">비워두면 바로 접수해요.</span></div>' +
-      '<div class="field"><span class="lb">자동 마감 예약</span>' + dtField('closeAt', s.form_close_at) +
-      '<span class="hint">이 시각이 지나면 폼이 스스로 닫혀요.</span></div>' +
-      '<div class="row" style="gap:8px;margin:-6px 0 14px">' +
-      '<button class="btn ghost sm" data-quick="1">오늘 밤 23:59</button>' +
-      '<button class="btn ghost sm" data-quick="7">7일 뒤</button>' +
-      '<button class="btn ghost sm" data-quick="0">지우기</button></div>' +
-      '<label class="field"><span class="lb">정원 (선택)</span>' +
-      '<input class="input" type="number" min="0" id="cap" placeholder="예: 30" value="' + (s.capacity || '') + '">' +
-      '<span class="hint">승인 인원이 정원에 닿으면 자동으로 마감해요. 지금 승인 ' + approvedCount() + '명.</span></label>' +
-      '<label class="field"><span class="lb">마감 중 안내 문구</span>' +
-      '<textarea class="input" id="closedMsg" style="min-height:80px">' + esc(s.closed_message || '') + '</textarea></label>' +
-      '<button class="btn primary block" id="saveForm">저장하기</button>' +
+      fold('applyMore', '예약·정원·안내 문구',
+        '<div class="field"><span class="lb">접수 시작 예약</span>' + dtField('openAt', s.form_open_at) +
+        '<span class="hint">비워두면 바로 접수해요.</span></div>' +
+        '<div class="field"><span class="lb">자동 마감 예약</span>' + dtField('closeAt', s.form_close_at) +
+        '<span class="hint">이 시각이 지나면 폼이 스스로 닫혀요.</span></div>' +
+        '<div class="row" style="gap:8px;margin:-6px 0 14px">' +
+        '<button class="btn ghost sm" data-quick="1">오늘 밤 23:59</button>' +
+        '<button class="btn ghost sm" data-quick="7">7일 뒤</button>' +
+        '<button class="btn ghost sm" data-quick="0">지우기</button></div>' +
+        '<label class="field"><span class="lb">정원 (선택)</span>' +
+        '<input class="input" type="number" min="0" id="cap" placeholder="예: 30" value="' + (s.capacity || '') + '">' +
+        '<span class="hint">승인 인원이 정원에 닿으면 자동으로 마감해요. 지금 승인 ' + approvedCount() + '명.</span></label>' +
+        '<label class="field"><span class="lb">마감 중 안내 문구</span>' +
+        '<textarea class="input" id="closedMsg" style="min-height:80px">' + esc(s.closed_message || '') + '</textarea></label>' +
+        '<button class="btn primary block" id="saveForm">저장하기</button>') +
       '</div>' +
 
       '<div class="card">' +
@@ -212,13 +209,9 @@
       '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copyLink">링크 복사</button>' +
       '<button class="btn ghost sm grow" id="openLink">폼 열어보기</button></div></div>' +
       '<button class="btn ghost block sm" id="copyNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
-      '</div>' +
+      '</div>';
 
-      '<div class="card"><h3>한눈에 보기</h3><div class="sp"></div><div class="mini">' +
-      mini('승인 대기', pending + '건') + mini('오늘 신청', todayNew + '건') +
-      mini('구성원', S.members.length + '명') + mini('잔액', num(balance()) + '원') +
-      '</div></div>';
-
+    wireFolds();
     $('#openSw').addEventListener('change', async e => {
       await save({ form_open: e.target.checked });
       toast(e.target.checked ? '접수를 열었어요' : '접수를 닫았어요', 'ok');
@@ -250,7 +243,25 @@
         close, '공지 문구를 복사했어요');
     });
   }
-  const mini = (k, v) => '<div class="b"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>';
+  /* 접었다 펴는 영역. 접힌 상태를 이 기기에 기억해 둔다 (기본은 접힘) */
+  const foldOpen = id => localStorage.getItem('baljaguk.fold.' + id) === '1';
+  function fold(id, label, inner) {
+    const on = foldOpen(id);
+    return '<div class="divider"></div>' +
+      '<button type="button" class="foldbtn' + (on ? ' on' : '') + '" data-fold="' + id + '">' +
+      '<span>' + label + '</span>' + ic('down') + '</button>' +
+      '<div data-foldbody="' + id + '" style="margin-top:14px"' + (on ? '' : ' hidden') + '>' + inner + '</div>';
+  }
+  function wireFolds() {
+    $$('[data-fold]').forEach(b => b.addEventListener('click', () => {
+      const id = b.dataset.fold;
+      const body = document.querySelector('[data-foldbody="' + id + '"]');
+      const next = body.hidden;
+      body.hidden = !next;
+      b.classList.toggle('on', next);
+      localStorage.setItem('baljaguk.fold.' + id, next ? '1' : '0');
+    }));
+  }
 
   /* 날짜 + 시각 (모바일에서 datetime-local 이 잘려 보여 둘로 나눔) */
   function dtField(id, iso) {
@@ -1031,12 +1042,30 @@
     const total = all.length;
     const mem = S.members.length;
 
-    /* 주소 */
+    /* 접수 켜고 끄기 + 주소 */
+    const sv = S.settings || {};
+    const svSt = DB.surveyState(sv);
+    const svWhy = { manual: '운영진이 접수를 꺼둔 상태예요', closed: '예약 마감 시각이 지났어요' };
+
     $('#surveyLink').innerHTML =
       (S.srvError
         ? '<div class="pill-note" style="margin-bottom:12px"><b>설문 표가 아직 없어요.</b><br>' +
         'Supabase → SQL Editor 에 <b>supabase/schema.sql</b> 을 다시 한 번 붙여넣고 Run 하면 켜집니다. (' + esc(S.srvError) + ')</div>'
         : '') +
+      '<div class="card">' +
+      '<div class="row between"><div><h3>활동의견·개파 접수</h3><div class="sub">' +
+      (svSt.open ? '지금 응답을 받고 있어요' : (svWhy[svSt.why] || '응답을 받지 않는 중이에요')) + '</div></div>' +
+      '<label class="switch"><input type="checkbox" id="svOpenSw"' + (sv.survey_open !== false ? ' checked' : '') + '><span class="track"></span></label></div>' +
+      fold('surveyMore', '자동 마감 예약',
+        '<div class="field"><span class="lb">자동 마감 예약</span>' + dtField('svCloseAt', sv.survey_close_at) +
+        '<span class="hint">이 시각이 지나면 설문이 스스로 닫혀요. 비워두면 계속 받아요.</span></div>' +
+        '<div class="row" style="gap:8px;margin:-6px 0 14px">' +
+        '<button class="btn ghost sm" data-svquick="1">오늘 밤 23:59</button>' +
+        '<button class="btn ghost sm" data-svquick="7">7일 뒤</button>' +
+        '<button class="btn ghost sm" data-svquick="0">지우기</button></div>' +
+        '<button class="btn primary block" id="saveSurvey">저장하기</button>') +
+      '</div>' +
+
       '<div class="card">' +
       '<h3>설문 주소</h3><div class="sub">부원들에게 보낼 링크예요. 신청 폼·운영진 주소와는 다릅니다.</div>' +
       '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(surveyURL()) + '</div>' +
@@ -1044,6 +1073,23 @@
       '<button class="btn ghost sm grow" id="openSurveyLink">폼 열어보기</button></div></div>' +
       '<button class="btn ghost block sm" id="copySurveyNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
       '</div>';
+
+    wireFolds();
+    $('#svOpenSw').addEventListener('change', async e => {
+      await save({ survey_open: e.target.checked });
+      toast(e.target.checked ? '설문 접수를 열었어요' : '설문 접수를 닫았어요', 'ok');
+      renderForm();
+    });
+    $$('[data-svquick]').forEach(b => b.addEventListener('click', () => {
+      const n = Number(b.dataset.svquick);
+      if (!n) { setDt('svCloseAt', null); return; }
+      const d = new Date(); d.setDate(d.getDate() + (n === 1 ? 0 : n)); d.setHours(23, 59, 0, 0);
+      setDt('svCloseAt', d.toISOString());
+    }));
+    $('#saveSurvey').addEventListener('click', async () => {
+      await save({ survey_close_at: readDt('svCloseAt', '23:59') });
+      toast('저장했어요', 'ok'); renderForm();
+    });
     $('#copySurveyLink').addEventListener('click', () => copy(surveyURL(), '설문 주소를 복사했어요'));
     $('#openSurveyLink').addEventListener('click', () => window.open(surveyURL(), '_blank'));
     $('#copySurveyNotice').addEventListener('click', () => copy(
