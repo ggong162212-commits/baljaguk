@@ -1227,9 +1227,10 @@
 
     const pending = Object.keys(memberNames).filter(k => !answered[k]);
     // 명단에 없는 이름 — 별명이나 오타일 수 있으니 비슷한 구성원을 짚어준다
-    const strays = Object.keys(answered).filter(k => !memberNames[k]).map(k => {
+    const strays = all.filter(r => nm(r.name) && !memberNames[nm(r.name)]).map(r => {
+      const k = nm(r.name);
       const near = pending.find(p => p.length >= 2 && (k.includes(p) || p.includes(k)));
-      return { typed: k, near: near || '' };
+      return { row: r, typed: k, near: near || '' };
     });
     const stillPending = pending.filter(p => !strays.some(s => s.near === p));
 
@@ -1242,8 +1243,12 @@
       stillPending.length + '명</div></div>' +
       (strays.length
         ? '<div class="pill-note" style="margin-top:12px">' +
-        '<b>명단에 없는 이름이 ' + strays.length + '건 있어요.</b><br>' +
-        strays.map(s => '· ' + esc(s.typed) + (s.near ? ' → <b>' + esc(s.near) + '</b> 님일까요?' : ' (구성원이 아닐 수 있어요)')).join('<br>') +
+        '<b>명단에 없는 이름이 ' + strays.length + '건 있어요.</b>' +
+        strays.map(s => '<div style="margin-top:8px">· ' + esc(String(s.row.name || '').trim()) +
+          (s.near
+            ? ' → <b>' + esc(s.near) + '</b> 님일까요?' +
+            ' <button type="button" class="linkbtn" data-fixname="' + esc(s.row.id) + '" data-to="' + esc(s.near) + '">맞아요, 이름 고치기</button>'
+            : ' (구성원이 아닐 수 있어요)') + '</div>').join('') +
         '</div>' : '') +
       (stillPending.length
         ? '<div class="tagrow" style="margin-top:12px">' +
@@ -1258,6 +1263,18 @@
         copy(stillPending.sort((a, b) => a.localeCompare(b)).join(', '),
           stillPending.length + '명 이름을 복사했어요'));
     }
+    // 별명으로 낸 응답을 구성원 이름으로 고쳐 둔다 (다음부터 안내가 뜨지 않는다)
+    $$('#surveyGap [data-fixname]').forEach(b => b.addEventListener('click', async () => {
+      const to = b.dataset.to;
+      const ok = await confirmSheet('이름 고치기',
+        '이 응답의 이름을 <b>' + esc(to) + '</b> 으로 바꿀까요? 응답 내용은 그대로예요.', '고치기');
+      if (!ok) return;
+      try {
+        await DB.surveys.update(b.dataset.fixname, { name: to });
+        toast(to + ' 님으로 고쳤어요', 'ok');
+        await reload();
+      } catch (e) { toast(e.message || '고치지 못했어요', 'err'); }
+    }));
 
     /* 거주지 분포 — 봉사 지역을 나눌 때 쓰는 숫자
        역별 / 권역별 을 골라서 볼 수 있다. 두 곳을 적은 사람은 양쪽 모두에 들어간다. */
