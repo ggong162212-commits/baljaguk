@@ -7,7 +7,7 @@
     debounce, toLocalInput, fromLocalInput } = UI;
 
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', formPick: 'apply' };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply' };
   let cur = 'form';
 
   const TABS = [
@@ -30,11 +30,89 @@
   const formURL = () => new URL('index.html', location.href).href;
   const surveyURL = () => new URL('survey.html', location.href).href;
   const PARTY = { yes: ['참여', 'approved'], no: ['불참', 'rejected'], maybe: ['미정', 'pending'] };
-  /* '건대입구' 와 '건대입구역' 을 같은 곳으로 묶는다 */
+  /* ------------------------------------------------------------
+     거주지 정리
+     · '건대입구' 와 '건대입구역' 은 같은 곳
+     · '3호선무악재역' 처럼 호선을 붙여 적었으면 호선을 뗀다
+     · '상록수역,신대방역' 처럼 두 곳을 적었으면 각각으로 센다
+     ------------------------------------------------------------ */
   const normStation = v => {
-    const s = String(v || '').replace(/\s+/g, '');
+    let s = String(v || '').replace(/\s+/g, '').replace(/[?？!！.]/g, '');
+    s = s.replace(/^[0-9０-９]+호선/, '');          // 3호선무악재역 → 무악재역
+    s = s.replace(/^(신분당선|경의중앙선|수인분당선|공항철도|경춘선|우이신설선|서해선|김포골드라인)/, '');
     if (!s) return '';
     return /역$/.test(s) ? s : s + '역';
+  };
+  /* 한 사람이 여러 곳을 적었으면 나눠서 돌려준다 */
+  const splitStations = v => {
+    const list = String(v || '').split(/[,،、\/·|]+|\s+(?:및|또는|이나)\s+/)
+      .map(normStation).filter(Boolean);
+    return list.filter((x, i) => list.indexOf(x) === i);
+  };
+
+  /* ------------------------------------------------------------
+     권역 묶기 — 봉사 지역을 나눌 때 쓰는 큰 덩어리
+     표에 없는 역은 '기타' 로 모이니 운영진이 직접 확인하면 된다.
+     ------------------------------------------------------------ */
+  const REGION_DESC = {
+    '서울 도심': '종로·중구·용산·서대문·마포·은평',
+    '서울 동북': '성동·광진·동대문·중랑·성북·강북·도봉·노원',
+    '서울 서남': '양천·강서·구로·금천·영등포·동작·관악',
+    '서울 동남': '서초·강남·송파·강동',
+    '경기 남부': '수원·성남·용인·안양·안산',
+    '경기 동북부': '하남·남양주·구리·의정부·고양',
+    '경기 서부·인천': '부천·광명·김포·인천',
+    '기타': '표에 없는 역 — 직접 확인이 필요해요'
+  };
+  const STATION_REGION = (function () {
+    const m = {};
+    const put = (region, names) => names.split(/\s+/).forEach(n => { if (n) m[n] = region; });
+    put('서울 도심', `시청 종각 종로3가 종로5가 동대문 을지로입구 을지로3가 을지로4가 동대문역사문화공원
+      충무로 명동 회현 신당 청구 약수 버티고개 한강진 이태원 녹사평 삼각지 숙대입구 남영 용산 신용산
+      이촌 서빙고 한남 효창공원앞 공덕 애오개 마포 광흥창 상수 합정 망원 홍대입구 신촌 이대 아현 충정로
+      서대문 독립문 무악재 홍제 가좌 디지털미디어시티 수색 녹번 불광 연신내 구파발 응암 역촌 증산 새절
+      경복궁 안국 광화문 서울`);
+    put('서울 동북', `왕십리 상왕십리 신답 용답 마장 답십리 장한평 군자 아차산 건대입구 구의 강변 뚝섬
+      성수 서울숲 왕십리 청량리 제기동 신설동 회기 외대앞 신이문 석계 광운대 월계 녹천 창동 쌍문 수유
+      미아 미아사거리 길음 성신여대입구 한성대입구 혜화 안암 고려대 보문 상봉 중화 면목 사가정 용마산
+      망우 양원 신내 태릉입구 화랑대 봉화산 노원 상계 당고개 중계 하계 공릉 마들 수락산 도봉 도봉산 방학
+      광나루 중랑 회기`);
+    put('서울 서남', `영등포 신길 대방 노량진 노들 흑석 동작 이수 총신대입구 사당 낙성대 서울대입구 봉천
+      신림 신대방 신대방삼거리 보라매 대림 구로 구일 개봉 오류동 온수 신도림 문래 도림천 양천구청 신정
+      목동 오목교 영등포구청 영등포시장 당산 선유도 가산디지털단지 구로디지털단지 남구로 독산
+      금천구청 까치산 화곡 우장산 발산 마곡 마곡나루 송정 김포공항 개화산 개화 방화 등촌 염창 신목동
+      가양 증미 신풍 보라매병원 장승배기 상도 숭실대입구 남성 서울대벤처타운 신정네거리`);
+    put('서울 동남', `강남 역삼 선릉 삼성 종합운동장 잠실 잠실새내 신천 몽촌토성 올림픽공원 방이 오금
+      개롱 거여 마천 가락시장 문정 장지 수서 대모산입구 일원 대청 학여울 대치 도곡 매봉 양재 남부터미널
+      교대 서초 방배 반포 논현 신논현 언주 선정릉 강남구청 압구정 압구정로데오 신사 청담 삼성중앙 봉은사
+      학동 강동 길동 굽은다리 명일 고덕 상일동 둔촌동 천호 강일 암사 잠원 고속터미널 사평
+      한티 구룡 개포동 대모산`);
+    put('경기 남부', `수원 화서 성균관대 세류 병점 서동탄 오산 오산대 진위 평택 안양 명학 금정 범계 평촌
+      인덕원 정부과천청사 과천 대공원 경마공원 산본 수리산 대야미 반월 상록수 한대앞 중앙 고잔 초지 안산
+      신길온천 정왕 오이도 야탑 서현 수내 정자 미금 오리 죽전 보정 구성 신갈 기흥 상갈 청명 영통 망포
+      매탄권선 수원시청 매교 수지구청 성복 상현 광교 광교중앙 판교 이매 모란 태평 가천대 남위례 산성
+      남한산성입구 단대오거리 신흥 수진 의왕 성균관대 부발 이천 곤지암 광주 초월 경기광주`);
+    put('경기 동북부', `미사 하남풍산 하남시청 하남검단산 구리 갈매 별내 별내별가람 다산 도농 양정 덕소
+      팔당 회룡 의정부 망월사 가능 녹양 양주 덕정 지행 동두천 동두천중앙 보산 소요산 대곡 화정 원당 원흥
+      삼송 지축 백석 마두 정발산 주엽 대화 킨텍스 운정 야당 탄현 일산 풍산 백마 곡산 금릉 금촌 문산 파주
+      별내 퇴계원 사릉 금곡 평내호평 마석 대성리 청평 가평`);
+    put('경기 서부·인천', `부천 중동 상동 송내 부개 부평 부평구청 백운 동암 간석 주안 도화 제물포 도원
+      동인천 인천 계양 작전 갈산 임학 계산 경인교대입구 박촌 귤현 검암 검단 청라국제도시 가정 서구청
+      인천시청 예술회관 인천터미널 문학경기장 선학 신연수 원인재 동춘 동막 캠퍼스타운 테크노파크
+      지식정보단지 인천대입구 센트럴파크 국제업무지구 송도달빛축제공원 광명 철산 광명사거리 천왕
+      역곡 소사 고촌 풍무 사우 걸포북변 운양 장기 마산 구래 양촌 시흥시청 시흥능곡 연성 소래포구`);
+    const out = {};
+    Object.keys(m).forEach(k => { out[normStation(k)] = m[k]; });
+    return out;
+  })();
+  const regionOf = st => STATION_REGION[st] || '기타';
+  const REGION_ORDER = Object.keys(REGION_DESC);
+  /* 한 사람의 거주지를 고른 방식(역/권역)에 맞는 값들로 바꾼다 */
+  const placesOf = (raw, byRegion) => {
+    const sts = splitStations(raw);
+    if (!byRegion) return sts;
+    const rs = sts.map(regionOf);
+    return rs.filter((x, i) => rs.indexOf(x) === i);
   };
 
   UI.initTheme();
@@ -1107,38 +1185,62 @@
       stat('gold', 'clock', '미정', c.maybe + '명') +
       '</div>' +
       '<div class="sm mut center" style="margin-top:9px">' +
-      (mem ? '구성원 ' + mem + '명 중 <b>' + total + '명</b> 응답 (' + Math.round(total / mem * 100) + '%)'
+      // 구성원이 아닌 사람도 답할 수 있어 응답이 구성원 수를 넘으면 비율은 접어둔다
+      (mem && total <= mem ? '구성원 ' + mem + '명 중 <b>' + total + '명</b> 응답 (' + Math.round(total / mem * 100) + '%)'
+        : mem ? '구성원 ' + mem + '명 · 응답 <b>' + total + '건</b>'
         : '응답 <b>' + total + '건</b>') +
       (c.maybe ? ' · 미정 ' + c.maybe + '명은 따로 확인이 필요해요' : '') +
       '</div>';
 
-    /* 거주지 분포 — 봉사 지역을 나눌 때 쓰는 숫자 */
+    /* 거주지 분포 — 봉사 지역을 나눌 때 쓰는 숫자
+       역별 / 권역별 을 골라서 볼 수 있다. 두 곳을 적은 사람은 양쪽 모두에 들어간다. */
+    const byRegion = F.geo === 'region';
     const st = {};
-    all.forEach(r => { const k = normStation(r.station); if (k) st[k] = (st[k] || 0) + 1; });
-    const stations = Object.keys(st).map(k => [k, st[k]])
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    // 고른 역이 사라졌으면(응답 수정 등) 필터를 풀어준다
+    all.forEach(r => placesOf(r.station, byRegion).forEach(k => { st[k] = (st[k] || 0) + 1; }));
+    const places = Object.keys(st).map(k => [k, st[k]]).sort((a, b) =>
+      // 권역별은 정해둔 순서대로, 역별은 많은 곳부터. '기타' 는 언제나 맨 뒤.
+      (a[0] === '기타') - (b[0] === '기타') ||
+      (byRegion ? REGION_ORDER.indexOf(a[0]) - REGION_ORDER.indexOf(b[0])
+        : b[1] - a[1] || a[0].localeCompare(b[0])));
+    // 고른 곳이 사라졌으면(응답 수정 등) 필터를 풀어준다
     if (F.station && !st[F.station]) F.station = '';
 
-    $('#surveyStations').innerHTML = stations.length
-      ? '<div class="card"><h3>거주지 분포</h3>' +
-      '<div class="sub">눌러서 그 지역 사람만 볼 수 있어요.</div>' +
+    const dupes = all.filter(r => splitStations(r.station).length > 1).length;
+
+    $('#surveyStations').innerHTML = places.length
+      ? '<div class="card">' +
+      '<div class="row between" style="gap:10px;align-items:flex-start">' +
+      '<div><h3>거주지 분포</h3><div class="sub">눌러서 그 지역 사람만 볼 수 있어요.</div></div>' +
+      '<div class="seg" id="geoSeg" style="flex:none">' +
+      '<button type="button" class="' + (byRegion ? '' : 'on') + '" data-geo="station">역별</button>' +
+      '<button type="button" class="' + (byRegion ? 'on' : '') + '" data-geo="region">권역별</button>' +
+      '</div></div>' +
       '<div class="tagrow" style="margin-top:12px">' +
-      stations.map(([k, n]) =>
-        '<button type="button" class="chip' + (F.station === k ? ' on' : '') + '" data-st="' + esc(k) + '">' +
+      places.map(([k, n]) =>
+        '<button type="button" class="chip' + (F.station === k ? ' on' : '') + '" data-st="' + esc(k) + '"' +
+        (byRegion && REGION_DESC[k] ? ' title="' + esc(REGION_DESC[k]) + '"' : '') + '>' +
         esc(k) + '<span class="n">' + n + '</span></button>').join('') +
       (F.station ? '<button type="button" class="chip" data-st="">전체 보기</button>' : '') +
-      '</div></div>'
+      '</div>' +
+      (byRegion && F.station && REGION_DESC[F.station]
+        ? '<div class="sm mut" style="margin-top:10px">' + esc(F.station) + ' · ' + esc(REGION_DESC[F.station]) + '</div>' : '') +
+      (dupes ? '<div class="sm mut" style="margin-top:10px">두 곳을 적은 ' + dupes + '명은 양쪽에 모두 들어가 있어요.</div>' : '') +
+      '</div>'
       : '';
+    $$('#geoSeg [data-geo]').forEach(b => b.addEventListener('click', () => {
+      F.geo = b.dataset.geo; F.station = '';
+      localStorage.setItem('baljaguk.geo', F.geo);
+      renderSurvey();
+    }));
     $$('#surveyStations [data-st]').forEach(b => b.addEventListener('click', () => {
-      // 같은 역을 다시 누르면 필터가 풀린다
+      // 같은 곳을 다시 누르면 필터가 풀린다
       F.station = (b.dataset.st && b.dataset.st !== F.station) ? b.dataset.st : '';
       renderSurvey();
     }));
 
     /* 필터 · 검색 · 목록
-       역을 골랐으면 참여/불참/미정 숫자도 그 지역 기준으로 센다 (아래 목록과 맞추기) */
-    const inSt = all.filter(r => !F.station || normStation(r.station) === F.station);
+       거주지를 골랐으면 참여/불참/미정 숫자도 그 지역 기준으로 센다 (아래 목록과 맞추기) */
+    const inSt = all.filter(r => !F.station || placesOf(r.station, byRegion).includes(F.station));
     const cc = { all: inSt.length, yes: 0, no: 0, maybe: 0 };
     inSt.forEach(r => { if (cc[r.party] != null) cc[r.party]++; });
 
@@ -1159,7 +1261,9 @@
         '<div class="row" style="gap:11px;min-width:0">' + avatar(r) +
         '<div style="min-width:0">' +
         '<div style="font-weight:800">' + esc(r.name) + '</div>' +
-        '<div class="sm mut">' + esc(normStation(r.station) || '거주지 미기입') + ' · ' + relTime(r.created_at) + '</div>' +
+        '<div class="sm mut">' + esc(splitStations(r.station).join(' · ') || '거주지 미기입') +
+        (byRegion ? ' <span style="opacity:.75">(' + esc(placesOf(r.station, true).join(' · ') || '기타') + ')</span>' : '') +
+        ' · ' + relTime(r.created_at) + '</div>' +
         '</div></div>' +
         '<span class="badge ' + cls + '">' + label + '</span>' +
         '</div>' +
@@ -1184,8 +1288,10 @@
     $('#exportSurvey').onclick = () => {
       if (!rows.length) return toast('내보낼 응답이 없어요', 'err');
       downloadCSV('발자국_활동조사' + (F.station ? '_' + F.station : '') + '_' + dkey(new Date()) + '.csv',
-        ['보낸 시각', '이름', '거주지', '개강파티', '의견'],
-        rows.map(r => [fmtDateTime(r.created_at), r.name, normStation(r.station), (PARTY[r.party] || PARTY.maybe)[0], r.opinion || '']));
+        ['보낸 시각', '이름', '거주지', '권역', '개강파티', '의견'],
+        rows.map(r => [fmtDateTime(r.created_at), r.name,
+          splitStations(r.station).join(' / '), placesOf(r.station, true).join(' / '),
+          (PARTY[r.party] || PARTY.maybe)[0], r.opinion || '']));
     };
   }
 
