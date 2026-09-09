@@ -7,7 +7,7 @@
     debounce, toLocalInput, fromLocalInput } = UI;
 
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', formPick: 'apply' };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', formPick: 'apply' };
   let cur = 'form';
 
   const TABS = [
@@ -1117,22 +1117,38 @@
     all.forEach(r => { const k = normStation(r.station); if (k) st[k] = (st[k] || 0) + 1; });
     const stations = Object.keys(st).map(k => [k, st[k]])
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    // 고른 역이 사라졌으면(응답 수정 등) 필터를 풀어준다
+    if (F.station && !st[F.station]) F.station = '';
+
     $('#surveyStations').innerHTML = stations.length
       ? '<div class="card"><h3>거주지 분포</h3>' +
-      '<div class="sub">봉사 지역을 나눌 때 참고하세요.</div>' +
+      '<div class="sub">눌러서 그 지역 사람만 볼 수 있어요.</div>' +
       '<div class="tagrow" style="margin-top:12px">' +
-      stations.map(([k, n]) => '<span class="chip">' + esc(k) + '<span class="n">' + n + '</span></span>').join('') +
+      stations.map(([k, n]) =>
+        '<button type="button" class="chip' + (F.station === k ? ' on' : '') + '" data-st="' + esc(k) + '">' +
+        esc(k) + '<span class="n">' + n + '</span></button>').join('') +
+      (F.station ? '<button type="button" class="chip" data-st="">전체 보기</button>' : '') +
       '</div></div>'
       : '';
+    $$('#surveyStations [data-st]').forEach(b => b.addEventListener('click', () => {
+      // 같은 역을 다시 누르면 필터가 풀린다
+      F.station = (b.dataset.st && b.dataset.st !== F.station) ? b.dataset.st : '';
+      renderSurvey();
+    }));
 
-    /* 필터 · 검색 · 목록 */
-    const chips = [['all', '전체', total], ['yes', '참여', c.yes], ['no', '불참', c.no], ['maybe', '미정', c.maybe]];
-    $('#surveyChips').innerHTML = chips.map(([k, l, n]) =>
-      '<button class="chip' + (F.party === k ? ' on' : '') + '" data-p="' + k + '">' + l + '<span class="n">' + n + '</span></button>').join('');
+    /* 필터 · 검색 · 목록
+       역을 골랐으면 참여/불참/미정 숫자도 그 지역 기준으로 센다 (아래 목록과 맞추기) */
+    const inSt = all.filter(r => !F.station || normStation(r.station) === F.station);
+    const cc = { all: inSt.length, yes: 0, no: 0, maybe: 0 };
+    inSt.forEach(r => { if (cc[r.party] != null) cc[r.party]++; });
+
+    const chips = [['all', '전체'], ['yes', '참여'], ['no', '불참'], ['maybe', '미정']];
+    $('#surveyChips').innerHTML = chips.map(([k, l]) =>
+      '<button class="chip' + (F.party === k ? ' on' : '') + '" data-p="' + k + '">' + l + '<span class="n">' + cc[k] + '</span></button>').join('');
     $$('#surveyChips [data-p]').forEach(b => b.addEventListener('click', () => { F.party = b.dataset.p; renderSurvey(); }));
 
     const q = F.q3.trim().toLowerCase();
-    const rows = all.filter(r =>
+    const rows = inSt.filter(r =>
       (F.party === 'all' || r.party === F.party) &&
       (!q || [r.name, r.station, r.opinion].some(v => String(v || '').toLowerCase().includes(q))));
 
@@ -1151,11 +1167,23 @@
           ? '<p class="sm" style="margin:12px 0 0;line-height:1.65;white-space:pre-wrap">' + esc(r.opinion) + '</p>'
           : '<p class="sm mut" style="margin:12px 0 0">의견 없음</p>') +
         '</div>';
-    }).join('') : empty('clipboard', (q || F.party !== 'all') ? '조건에 맞는 응답이 없어요' : '아직 들어온 응답이 없어요');
+    }).join('') : empty('clipboard', (q || F.party !== 'all' || F.station) ? '조건에 맞는 응답이 없어요' : '아직 들어온 응답이 없어요');
+
+    // 지금 무엇으로 걸러 보고 있는지 목록 위에 알려준다
+    const noteEl = $('#surveyNote');
+    if (noteEl) {
+      noteEl.innerHTML = F.station
+        ? '<b>' + esc(F.station) + '</b> 응답만 보는 중 · ' + rows.length + '명' +
+        ' <button type="button" class="linkbtn" data-st="">전체 보기</button>'
+        : '';
+      noteEl.hidden = !F.station;
+      const clr = noteEl.querySelector('[data-st]');
+      if (clr) clr.addEventListener('click', () => { F.station = ''; renderSurvey(); });
+    }
 
     $('#exportSurvey').onclick = () => {
       if (!rows.length) return toast('내보낼 응답이 없어요', 'err');
-      downloadCSV('발자국_활동조사_' + dkey(new Date()) + '.csv',
+      downloadCSV('발자국_활동조사' + (F.station ? '_' + F.station : '') + '_' + dkey(new Date()) + '.csv',
         ['보낸 시각', '이름', '거주지', '개강파티', '의견'],
         rows.map(r => [fmtDateTime(r.created_at), r.name, normStation(r.station), (PARTY[r.party] || PARTY.maybe)[0], r.opinion || '']));
     };
