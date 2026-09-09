@@ -287,9 +287,35 @@
       '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copyLink">링크 복사</button>' +
       '<button class="btn ghost sm grow" id="openLink">폼 열어보기</button></div></div>' +
       '<button class="btn ghost block sm" id="copyNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
+      '</div>' +
+
+      /* 신청 폼에 그대로 보이는 내용 — 폼을 고치는 곳에서 같이 고친다 */
+      '<div class="card"><h3>신청 폼 내용</h3>' +
+      '<div class="sub">아래 내용이 신청 폼에 그대로 보여요.</div>' +
+      fold('applyContent', '공지·회비·계좌 고치기',
+        '<label class="field"><span class="lb">공지 (선택)</span>' +
+        '<textarea class="input" id="sNotice" style="min-height:70px" placeholder="폼 상단에 노란 박스로 보여요">' + esc(s.notice || '') + '</textarea></label>' +
+        '<label class="field"><span class="lb">회비</span>' +
+        '<input class="input" id="sFee" inputmode="numeric" value="' + num(s.fee) + '"></label>' +
+        '<div class="grid2">' +
+        '<label class="field"><span class="lb">은행</span><input class="input" id="sBank" value="' + esc(s.bank || '') + '"></label>' +
+        '<label class="field"><span class="lb">예금주</span><input class="input" id="sHolder" value="' + esc(s.holder || '') + '"></label></div>' +
+        '<label class="field"><span class="lb">계좌번호</span>' +
+        '<input class="input" id="sAcct" inputmode="numeric" value="' + esc(s.account || '') + '"></label>' +
+        '<button class="btn primary block" id="saveApplyContent">저장하기</button>') +
       '</div>';
 
     wireFolds();
+    $('#saveApplyContent').addEventListener('click', async () => {
+      await save({
+        notice: $('#sNotice').value.trim(),
+        fee: Number(String($('#sFee').value).replace(/[^\d]/g, '')) || 0,
+        bank: $('#sBank').value.trim(),
+        holder: $('#sHolder').value.trim(),
+        account: $('#sAcct').value.trim()
+      });
+      toast('저장했어요', 'ok'); renderForm();
+    });
     $('#openSw').addEventListener('change', async e => {
       await save({ form_open: e.target.checked });
       toast(e.target.checked ? '접수를 열었어요' : '접수를 닫았어요', 'ok');
@@ -1192,6 +1218,47 @@
       (c.maybe ? ' · 미정 ' + c.maybe + '명은 따로 확인이 필요해요' : '') +
       '</div>';
 
+    /* 아직 안 낸 사람 — 구성원 명단과 응답 이름을 맞춰본다 */
+    const nm = v => String(v || '').replace(/\s+/g, '');
+    const answered = {};
+    all.forEach(r => { const k = nm(r.name); if (k) answered[k] = true; });
+    const memberNames = {};
+    S.members.forEach(m => { const k = nm(m.name); if (k) (memberNames[k] = memberNames[k] || []).push(m); });
+
+    const pending = Object.keys(memberNames).filter(k => !answered[k]);
+    // 명단에 없는 이름 — 별명이나 오타일 수 있으니 비슷한 구성원을 짚어준다
+    const strays = Object.keys(answered).filter(k => !memberNames[k]).map(k => {
+      const near = pending.find(p => p.length >= 2 && (k.includes(p) || p.includes(k)));
+      return { typed: k, near: near || '' };
+    });
+    const stillPending = pending.filter(p => !strays.some(s => s.near === p));
+
+    $('#surveyGap').innerHTML = S.members.length
+      ? '<div class="card">' +
+      '<div class="row between" style="gap:10px;align-items:flex-start">' +
+      '<div><h3>아직 안 낸 사람</h3>' +
+      '<div class="sub">구성원 명단과 응답한 이름을 맞춰봤어요.</div></div>' +
+      '<div class="money" style="font-size:26px;color:' + (stillPending.length ? 'var(--gold)' : 'var(--brand-deep)') + '">' +
+      stillPending.length + '명</div></div>' +
+      (strays.length
+        ? '<div class="pill-note" style="margin-top:12px">' +
+        '<b>명단에 없는 이름이 ' + strays.length + '건 있어요.</b><br>' +
+        strays.map(s => '· ' + esc(s.typed) + (s.near ? ' → <b>' + esc(s.near) + '</b> 님일까요?' : ' (구성원이 아닐 수 있어요)')).join('<br>') +
+        '</div>' : '') +
+      (stillPending.length
+        ? '<div class="tagrow" style="margin-top:12px">' +
+        stillPending.sort((a, b) => a.localeCompare(b))
+          .map(n => '<span class="chip">' + esc(n) + '</span>').join('') + '</div>' +
+        '<button class="btn soft block sm" id="copyPending" style="margin-top:12px">안 낸 사람 이름 복사</button>'
+        : '<p class="sm mut" style="margin:12px 0 0">구성원 모두가 응답했어요.</p>') +
+      '</div>'
+      : '';
+    if ($('#copyPending')) {
+      $('#copyPending').addEventListener('click', () =>
+        copy(stillPending.sort((a, b) => a.localeCompare(b)).join(', '),
+          stillPending.length + '명 이름을 복사했어요'));
+    }
+
     /* 거주지 분포 — 봉사 지역을 나눌 때 쓰는 숫자
        역별 / 권역별 을 골라서 볼 수 있다. 두 곳을 적은 사람은 양쪽 모두에 들어간다. */
     const byRegion = F.geo === 'region';
@@ -1606,22 +1673,17 @@
   function renderSettings() {
     const s = S.settings;
     $('#settingsPanel').innerHTML =
-      '<div class="card"><h3>동아리 정보</h3><div class="sub">신청 폼에 그대로 보여요.</div><div class="sp"></div>' +
+      '<div class="card"><h3>동아리 정보</h3>' +
+      '<div class="sub">신청 폼·설문·구성원 등록에 두루 쓰여요.</div><div class="sp"></div>' +
       '<div class="grid2">' +
       '<label class="field"><span class="lb">동아리 이름</span><input class="input" id="sName" value="' + esc(s.club_name) + '"></label>' +
       '<label class="field"><span class="lb">기수</span><input class="input" id="sGen" value="' + esc(s.generation || '') + '" placeholder="2기"></label></div>' +
       '<label class="field"><span class="lb">한 줄 소개</span><input class="input" id="sTag" value="' + esc(s.tagline || '') + '"></label>' +
       '<label class="field"><span class="lb">소속 학과</span><input class="input" id="sDept" value="' + esc(s.department || '') + '">' +
       '<span class="hint">신청 폼에 안내로 뜨고, 승인된 구성원의 학과로 자동 입력돼요.</span></label>' +
-
-      '<label class="field"><span class="lb">공지 (선택)</span><textarea class="input" id="sNotice" style="min-height:70px" placeholder="폼 상단에 노란 박스로 보여요">' + esc(s.notice || '') + '</textarea></label>' +
-      '<div class="divider"></div>' +
-      '<label class="field"><span class="lb">회비</span><input class="input" id="sFee" inputmode="numeric" value="' + num(s.fee) + '"></label>' +
-      '<div class="grid2">' +
-      '<label class="field"><span class="lb">은행</span><input class="input" id="sBank" value="' + esc(s.bank || '') + '"></label>' +
-      '<label class="field"><span class="lb">예금주</span><input class="input" id="sHolder" value="' + esc(s.holder || '') + '"></label></div>' +
-      '<label class="field"><span class="lb">계좌번호</span><input class="input" id="sAcct" inputmode="numeric" value="' + esc(s.account || '') + '"></label>' +
-      '<button class="btn primary block" id="saveClub">저장하기</button></div>' +
+      '<button class="btn primary block" id="saveClub">저장하기</button>' +
+      '<p class="sm mut" style="margin:12px 0 0">회비·계좌·공지처럼 <b>신청 폼에만</b> 쓰는 건 ' +
+      '<button type="button" class="linkbtn" id="goFormSettings">폼 관리</button> 에서 고쳐요.</p></div>' +
 
       '<div class="card"><h3>봉사지</h3>' +
       '<div class="sub">정기적으로 가는 곳을 등록해두면 봉사모임 만들 때 골라서 쓸 수 있어요.</div>' +
@@ -1660,15 +1722,11 @@
         club_name: $('#sName').value.trim() || '발자국',
         generation: $('#sGen').value.trim(),
         tagline: $('#sTag').value.trim(),
-        department: $('#sDept').value.trim(),
-        notice: $('#sNotice').value.trim(),
-        fee: Number(String($('#sFee').value).replace(/[^\d]/g, '')) || 0,
-        bank: $('#sBank').value.trim(),
-        holder: $('#sHolder').value.trim(),
-        account: $('#sAcct').value.trim()
+        department: $('#sDept').value.trim()
       });
       toast('저장했어요', 'ok'); renderSettings();
     };
+    $('#goFormSettings').onclick = () => { F.formPick = 'apply'; go('form'); };
     $('#lockSw').onchange = e => {
       localStorage.setItem('baljaguk.lock', e.target.checked ? '1' : '0');
       toast(e.target.checked ? '이제 들어올 때 비밀번호를 물어봐요' : '잠금을 껐어요. 주소만 알면 바로 들어와요');
