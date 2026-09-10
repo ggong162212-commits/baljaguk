@@ -288,7 +288,7 @@
     const ov = sheet({
       title: '응답 고치기',
       body:
-        '<p class="mut sm" style="margin:0 0 14px">응답할 때 적은 <b>이름</b>을 그대로 적어주세요.</p>' +
+        '<p class="mut sm" style="margin:0 0 14px"><b>본인 이름</b>을 적어주세요.</p>' +
         '<label class="field"><span class="lb">이름</span>' +
         '<input class="input" id="edName" placeholder="김발자" maxlength="20" value="' + esc(lastName()) + '"></label>' +
         '<button class="btn primary block" id="edFind">내 응답 찾기</button>' +
