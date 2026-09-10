@@ -3,7 +3,7 @@
    · 신청 폼(index.html)과는 별도 주소, 같은 데이터베이스
    ============================================================ */
 (function () {
-  const { $, $$, toast, esc, fmtDateTime, cheer, debounce } = UI;
+  const { $, $$, toast, esc, fmtDateTime, cheer, debounce, sheet, closeSheet } = UI;
 
   const TOPIC = (window.CONFIG || {}).SURVEY_TOPIC || '2026-2';
   const DRAFT = 'baljaguk.survey.draft.' + TOPIC;
@@ -40,6 +40,7 @@
     paintClub();
 
     wireForm();
+    $('#editBtn').addEventListener('click', openEdit);
     restoreDraft();
     if (localStorage.getItem(SENT)) showSent();
     else paintOpenState();
@@ -53,6 +54,7 @@
     $('#closedWrap').hidden = !closed;
     $('#formWrap').hidden = closed;
     $('#partyCard').hidden = closed;
+    $('#editRow').hidden = closed;
     if (closed) $('#cta').hidden = true;
     if (closed && st.at) {
       $('#closedMsg').textContent = fmtDateTime(st.at) + ' 에 마감됐어요. 궁금한 건 운영진에게 알려주세요.';
@@ -244,9 +246,10 @@
     let d = null;
     try { d = JSON.parse(localStorage.getItem(SENT) || 'null'); } catch (e) { }
     if (!d) return;
-    $('#doneMsg').textContent = '이미 응답을 보냈어요. 내용을 바꾸려면 아래에서 다시 작성해주세요.';
+    $('#doneMsg').textContent = '이미 응답을 보냈어요. 고칠 게 있으면 위의 「이미 응답했어요 · 고치러 가기」 를 눌러주세요.';
     $('#doneSummary').innerHTML =
-      row('이름', d.name || '') + row('개강파티', LABEL[d.party] || '-') + row('보낸 시각', fmtDateTime(d.at));
+      row('이름', d.name || '') + (d.station ? row('가까운 역', d.station) : '') +
+      row('개강파티', LABEL[d.party] || '-') + row('보낸 시각', fmtDateTime(d.at));
     $('#formWrap').hidden = true;
     $('#partyCard').hidden = true;
     $('#doneWrap').hidden = false;
@@ -266,4 +269,115 @@
     }, { rootMargin: '-40% 0px -20% 0px' });
     ctaWatcher.observe(target);
   }
+
+  /* ============================================================
+     이미 낸 응답 고치기
+     · 이름이 똑같은 응답만 서버에서 찾아온다 (부분 검색 불가)
+     · 이름은 못 바꾼다 — 남의 응답으로 덮어쓰는 걸 막기 위해
+     ============================================================ */
+  function lastName() {
+    try {
+      const sent = JSON.parse(localStorage.getItem(SENT) || 'null');
+      if (sent && sent.name) return sent.name;
+      const d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+      return (d && d.name) || '';
+    } catch (e) { return ''; }
+  }
+
+  function openEdit() {
+    const ov = sheet({
+      title: '응답 고치기',
+      body:
+        '<p class="mut sm" style="margin:0 0 14px">응답할 때 적은 <b>이름</b>을 그대로 적어주세요.</p>' +
+        '<label class="field"><span class="lb">이름</span>' +
+        '<input class="input" id="edName" placeholder="김발자" maxlength="20" value="' + esc(lastName()) + '"></label>' +
+        '<button class="btn primary block" id="edFind">내 응답 찾기</button>' +
+        '<div id="edResult" style="margin-top:14px"></div>'
+    });
+    const find = ov.querySelector('#edFind');
+    ov.querySelector('#edName').addEventListener('keydown', e => { if (e.key === 'Enter') find.click(); });
+    find.onclick = async () => {
+      const nm = ov.querySelector('#edName').value.trim();
+      if (!nm) return toast('이름을 적어주세요', 'err');
+      find.disabled = true; find.textContent = '찾는 중…';
+      try {
+        const rows = await DB.surveyLookup(nm);
+        if (!rows.length) {
+          ov.querySelector('#edResult').innerHTML =
+            '<div class="card flat center sm mut" style="padding:20px">' +
+            '<b>' + esc(nm) + '</b> 님으로 낸 응답이 없어요.<br>이름이 정확한지 확인해주세요.</div>';
+        } else if (rows.length === 1) {
+          editForm(ov, rows[0]);
+        } else {
+          ov.querySelector('#edResult').innerHTML =
+            '<div class="sm mut" style="margin-bottom:8px">같은 이름으로 낸 응답이 ' + rows.length + '건이에요. 고칠 응답을 골라주세요.</div>' +
+            '<div class="stack" style="gap:8px">' + rows.map((r, i) =>
+              '<button type="button" class="check" data-pickrow="' + i + '" style="text-align:left">' +
+              '<div class="grow"><b class="sm">' + esc(r.station || '거주지 없음') + '</b>' +
+              '<div class="mut" style="font-size:11.5px">' + fmtDateTime(r.created_at) + ' 제출 · ' +
+              (LABEL[r.party] || '') + '</div></div></button>').join('') + '</div>';
+          ov.querySelectorAll('[data-pickrow]').forEach(b =>
+            b.addEventListener('click', () => editForm(ov, rows[Number(b.dataset.pickrow)])));
+        }
+      } catch (e) {
+        toast(e.message || '응답을 찾지 못했어요', 'err');
+      } finally {
+        find.disabled = false; find.textContent = '내 응답 찾기';
+      }
+    };
+  }
+
+  function editForm(ov, row) {
+    const opt = (v, t, d) =>
+      '<label class="check' + (row.party === v ? ' on' : '') + '" data-ed="' + v + '">' +
+      '<span class="box">' + (row.party === v ? ic('check') : '') + '</span>' +
+      '<div class="grow"><b class="sm">' + t + '</b>' +
+      (d ? '<div class="mut" style="font-size:11.5px">' + d + '</div>' : '') + '</div></label>';
+
+    ov.querySelector('.sheet-body').innerHTML =
+      '<div class="pill-note" style="margin-bottom:14px"><b>' + esc(row.name) + '</b> 님의 응답이에요. ' +
+      fmtDateTime(row.created_at) + ' 에 냈어요.</div>' +
+      '<label class="field"><span class="lb">가까운 지하철역</span>' +
+      '<input class="input" id="edStation" maxlength="30" value="' + esc(row.station || '') + '"></label>' +
+      '<div class="field"><span class="lb">개강파티 참여</span>' +
+      '<div class="stack" style="gap:8px;margin-top:6px" id="edParty">' +
+      opt('yes', '참여합니다', '') +
+      opt('no', '참여하지 않습니다', '') +
+      opt('maybe', '아직 모르겠습니다', '') +
+      '</div></div>' +
+      '<label class="field"><span class="lb">의견 (선택)</span>' +
+      '<textarea class="input" id="edOpinion" style="min-height:100px" maxlength="600">' + esc(row.opinion || '') + '</textarea></label>' +
+      '<button class="btn primary block" id="edSave">이대로 고치기</button>';
+
+    let party = row.party;
+    ov.querySelectorAll('#edParty [data-ed]').forEach(el => el.addEventListener('click', e => {
+      e.preventDefault();
+      party = el.dataset.ed;
+      ov.querySelectorAll('#edParty [data-ed]').forEach(x => {
+        const on = x.dataset.ed === party;
+        x.classList.toggle('on', on);
+        x.querySelector('.box').innerHTML = on ? ic('check') : '';
+      });
+    }));
+
+    ov.querySelector('#edSave').onclick = async () => {
+      const btn = ov.querySelector('#edSave');
+      const station = ov.querySelector('#edStation').value.trim();
+      if (!station) return toast('가까운 지하철역을 적어주세요', 'err');
+      btn.disabled = true; btn.textContent = '고치는 중…';
+      try {
+        await DB.surveyEdit(row.id, { station, opinion: ov.querySelector('#edOpinion').value.trim(), party });
+        closeSheet();
+        toast('응답을 고쳤어요', 'ok');
+        try {
+          localStorage.setItem(SENT, JSON.stringify({ name: row.name, station, party, at: new Date().toISOString() }));
+        } catch (e) { }
+        showSent();
+      } catch (e) {
+        toast(e.message || '고치지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '이대로 고치기';
+      }
+    };
+  }
+
 })();
