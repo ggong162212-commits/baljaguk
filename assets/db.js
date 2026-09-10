@@ -232,6 +232,38 @@
       });
     },
 
+    /* 설문 응답 본인 수정 — 이름이 똑같은 응답만 찾아준다 */
+    async surveyLookup(name) {
+      const nm = String(name || '').trim();
+      if (!nm) return [];
+      if (!HAS_SB) {
+        const d = demoRead();
+        return (d.survey_responses || [])
+          .filter(r => r.topic === DB.surveyTopic() && String(r.name || '').trim() === nm)
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      }
+      return await rest('rpc/survey_lookup', {
+        method: 'POST', body: { p_name: nm, p_topic: DB.surveyTopic() }
+      }) || [];
+    },
+    async surveyEdit(id, patch) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const row = (d.survey_responses || []).find(r => r.id === id);
+        if (row) Object.assign(row, {
+          station: String(patch.station || '').trim(),
+          opinion: String(patch.opinion || '').trim(),
+          party: ['yes', 'no', 'maybe'].includes(patch.party) ? patch.party : row.party
+        });
+        demoWrite(d); return row;
+      }
+      await rest('rpc/survey_edit', {
+        method: 'POST', prefer: 'return=minimal',
+        body: { p_id: id, p_station: patch.station || '', p_opinion: patch.opinion || '', p_party: patch.party || '' }
+      });
+      return true;
+    },
+
     /* 승인 → 구성원 생성 (+ 회비 합산)
        같은 신청서를 두 번 승인해도 구성원이 중복으로 생기지 않는다 */
     async approve(app, opts) {

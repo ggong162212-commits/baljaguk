@@ -323,3 +323,42 @@ alter table club_settings add column if not exists places jsonb default '["천�
 update club_settings
    set places = to_jsonb(array[coalesce(nullif(place,''), '천보금 보호소')])
  where places is null or jsonb_array_length(places) = 0;
+
+-- ============================================================
+--  설문 응답 본인 수정
+--  · 이름이 정확히 일치하는 응답만 돌려준다 (부분검색 불가)
+--  · 이름은 못 바꾸게 해서 남의 응답으로 덮어쓰는 걸 막는다
+-- ============================================================
+create or replace function survey_lookup(p_name text, p_topic text)
+returns table (id uuid, name text, station text, opinion text, party text, created_at timestamptz)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select r.id, r.name, r.station, r.opinion, r.party, r.created_at
+    from survey_responses r
+   where r.topic = p_topic
+     and btrim(r.name) = btrim(p_name)
+   order by r.created_at desc
+   limit 5;
+$$;
+
+create or replace function survey_edit(p_id uuid, p_station text, p_opinion text, p_party text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update survey_responses
+     set station = btrim(p_station),
+         opinion = btrim(p_opinion),
+         party   = case when p_party in ('yes','no','maybe') then p_party else party end
+   where id = p_id;
+end $$;
+
+revoke all on function survey_lookup(text, text) from public;
+revoke all on function survey_edit(uuid, text, text, text) from public;
+grant execute on function survey_lookup(text, text) to anon, authenticated;
+grant execute on function survey_edit(uuid, text, text, text) to anon, authenticated;
