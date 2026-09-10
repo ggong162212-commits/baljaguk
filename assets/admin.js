@@ -356,10 +356,10 @@
       '<span>' + label + '</span>' + ic('down') + '</button>' +
       '<div data-foldbody="' + id + '" style="margin-top:14px"' + (on ? '' : ' hidden') + '>' + inner + '</div>';
   }
-  function wireFolds() {
-    $$('[data-fold]').forEach(b => b.addEventListener('click', () => {
+  function wireFolds(root) {
+    $$('[data-fold]', root).forEach(b => b.addEventListener('click', () => {
       const id = b.dataset.fold;
-      const body = document.querySelector('[data-foldbody="' + id + '"]');
+      const body = (root || document).querySelector('[data-foldbody="' + id + '"]');
       const next = body.hidden;
       body.hidden = !next;
       b.classList.toggle('on', next);
@@ -1299,18 +1299,26 @@
       '<button type="button" class="' + (byRegion ? '' : 'on') + '" data-geo="station">역별</button>' +
       '<button type="button" class="' + (byRegion ? 'on' : '') + '" data-geo="region">권역별</button>' +
       '</div></div>' +
-      '<div class="tagrow" style="margin-top:12px">' +
-      places.map(([k, n]) =>
-        '<button type="button" class="chip' + (F.station === k ? ' on' : '') + '" data-st="' + esc(k) + '"' +
-        (byRegion && REGION_DESC[k] ? ' title="' + esc(REGION_DESC[k]) + '"' : '') + '>' +
-        esc(k) + '<span class="n">' + n + '</span></button>').join('') +
-      (F.station ? '<button type="button" class="chip" data-st="">전체 보기</button>' : '') +
-      '</div>' +
-      (byRegion && F.station && REGION_DESC[F.station]
-        ? '<div class="sm mut" style="margin-top:10px">' + esc(F.station) + ' · ' + esc(REGION_DESC[F.station]) + '</div>' : '') +
-      (dupes ? '<div class="sm mut" style="margin-top:10px">두 곳을 적은 ' + dupes + '명은 양쪽에 모두 들어가 있어요.</div>' : '') +
+      // 고른 지역은 접혀 있어도 보이게 (풀기 버튼도 같이)
+      (F.station
+        ? '<div class="row between" style="margin-top:12px;gap:10px">' +
+          '<span class="badge admin">' + esc(F.station) + '</span>' +
+          '<button type="button" class="btn ghost sm" data-st="">전체 보기</button></div>' +
+          (byRegion && REGION_DESC[F.station]
+            ? '<div class="sm mut" style="margin-top:8px">' + esc(REGION_DESC[F.station]) + '</div>' : '')
+        : '') +
+      fold('surveyGeo', (byRegion ? '권역' : '역') + ' 고르기 (' + places.length + '곳)',
+        '<div class="tagrow">' +
+        places.map(([k, n]) =>
+          '<button type="button" class="chip' + (F.station === k ? ' on' : '') + '" data-st="' + esc(k) + '"' +
+          (byRegion && REGION_DESC[k] ? ' title="' + esc(REGION_DESC[k]) + '"' : '') + '>' +
+          esc(k) + '<span class="n">' + n + '</span></button>').join('') +
+        (F.station ? '<button type="button" class="chip" data-st="">전체 보기</button>' : '') +
+        '</div>' +
+        (dupes ? '<div class="sm mut" style="margin-top:10px">두 곳을 적은 ' + dupes + '명은 양쪽에 모두 들어가 있어요.</div>' : '')) +
       '</div>'
       : '';
+    wireFolds($('#surveyStations'));
     $$('#geoSeg [data-geo]').forEach(b => b.addEventListener('click', () => {
       F.geo = b.dataset.geo; F.station = '';
       localStorage.setItem('baljaguk.geo', F.geo);
