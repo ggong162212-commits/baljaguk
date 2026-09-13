@@ -904,7 +904,9 @@
       '<div class="field"><span class="lb">신청 열리는 시각 (선택)</span>' + dtField('evOpen', ev.signup_open_at) +
       '<span class="hint">비워두면 만들자마자 바로 신청을 받아요.</span></div>' +
       '<label class="field"><span class="lb">안내 문구 (선택)</span>' +
-      '<input class="input" id="eNote" value="' + esc(ev.note || '') + '" placeholder="준비물, 모이는 곳 등"></label>' +
+      '<textarea class="input" id="eNote" style="min-height:90px" ' +
+      'placeholder="준비물, 모이는 곳 등&#10;줄바꿈한 그대로 신청 폼에 보여요">' + esc(ev.note || '') + '</textarea>' +
+      '<span class="hint">띄어쓰기와 줄바꿈이 그대로 나와요.</span></label>' +
       (isNew ? '' :
         '<div class="card flat" style="margin-bottom:15px">' +
         '<div class="row between"><b class="sm">신청 받기</b>' +

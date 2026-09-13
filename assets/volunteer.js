@@ -81,7 +81,7 @@
       (ev.start_time ? row2('시간', timeLabel(ev.start_time)) : '') +
       row2('인원', st.cap ? st.taken + ' / ' + st.cap + '명' : st.taken + '명 신청');
     $('#evNote').innerHTML = ev.note
-      ? '<div class="pill-note" style="margin-top:12px">' + esc(ev.note) + '</div>' : '';
+      ? '<div class="pill-note" style="margin-top:12px;white-space:pre-wrap">' + esc(ev.note) + '</div>' : '';
 
     // 남은 자리 막대
     const slot = $('#statusSlot');
