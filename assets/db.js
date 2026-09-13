@@ -232,6 +232,62 @@
       });
     },
 
+    /* ---------- 봉사모임 신청 폼 (모임마다 고유 주소) ---------- */
+    async eventPublic(id) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const e = (d.events || []).find(x => x.id === id);
+        if (!e) return null;
+        const att = (d.attendance || []).filter(a => a.event_id === id);
+        const names = att.map(a => ((d.members || []).find(m => m.id === a.member_id) || {}).name).filter(Boolean);
+        return Object.assign({}, e, { taken: att.length, names });
+      }
+      const rows = await rest('rpc/event_public', { method: 'POST', body: { p_id: id } });
+      return (rows && rows[0]) || null;
+    },
+    async eventWho(name) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        return (d.members || []).filter(m => String(m.name).trim() === String(name).trim())
+          .map(m => ({ student_id: m.student_id }));
+      }
+      return await rest('rpc/event_who', { method: 'POST', body: { p_name: name } }) || [];
+    },
+    async eventSignup(eventId, name, sid) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return 'noevent';
+        if (e.signup_open === false) return 'closed';
+        if (e.signup_open_at && Date.now() < Date.parse(e.signup_open_at)) return 'before';
+        const hits = (d.members || []).filter(m => String(m.name).trim() === String(name).trim()
+          && (!sid || m.student_id === sid));
+        if (!hits.length) return 'nomatch';
+        if (hits.length > 1) return 'many';
+        const att = d.attendance || (d.attendance = []);
+        if (att.some(a => a.event_id === eventId && a.member_id === hits[0].id)) return 'dup';
+        const taken = att.filter(a => a.event_id === eventId).length;
+        if (e.capacity && taken >= e.capacity) return 'full';
+        att.push({ id: uid(), event_id: eventId, member_id: hits[0].id, hours: 0, created_at: new Date().toISOString() });
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/event_signup', { method: 'POST', body: { p_event: eventId, p_name: name, p_sid: sid || '' } });
+    },
+    async eventCancel(eventId, name, sid) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const hits = (d.members || []).filter(m => String(m.name).trim() === String(name).trim()
+          && (!sid || m.student_id === sid));
+        if (!hits.length) return 'nomatch';
+        if (hits.length > 1) return 'many';
+        const before = (d.attendance || []).length;
+        d.attendance = (d.attendance || []).filter(a => !(a.event_id === eventId && a.member_id === hits[0].id));
+        demoWrite(d);
+        return d.attendance.length < before ? 'ok' : 'none';
+      }
+      return await rest('rpc/event_cancel', { method: 'POST', body: { p_event: eventId, p_name: name, p_sid: sid || '' } });
+    },
+
     /* 설문 응답 본인 수정 — 이름이 똑같은 응답만 찾아준다 */
     async surveyLookup(name) {
       const nm = String(name || '').trim();

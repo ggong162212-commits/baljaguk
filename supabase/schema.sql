@@ -362,3 +362,152 @@ revoke all on function survey_lookup(text, text) from public;
 revoke all on function survey_edit(uuid, text, text, text) from public;
 grant execute on function survey_lookup(text, text) to anon, authenticated;
 grant execute on function survey_edit(uuid, text, text, text) to anon, authenticated;
+
+-- ============================================================
+--  봉사모임 신청 폼 (모임마다 고유 주소, 선착순 마감)
+-- ============================================================
+alter table events add column if not exists capacity    integer;
+alter table events add column if not exists signup_open boolean not null default true;
+
+-- 모임 공개 정보 (비로그인도 볼 수 있는 것만)
+create or replace function event_public(p_id uuid)
+returns table (id uuid, date date, title text, place text, start_time text, note text,
+               capacity integer, signup_open boolean, taken integer, names text[])
+language sql security definer set search_path = public stable
+as $$
+  select e.id, e.date, e.title, e.place, e.start_time, e.note, e.capacity, e.signup_open,
+         (select count(*)::int from attendance a where a.event_id = e.id),
+         (select coalesce(array_agg(m.name order by a.created_at), '{}')
+            from attendance a join members m on m.id = a.member_id
+           where a.event_id = e.id)
+    from events e
+   where e.id = p_id;
+$$;
+
+-- 이름이 같은 구성원 후보 (동명이인 대비, 학번만 함께 준다)
+create or replace function event_who(p_name text)
+returns table (student_id text)
+language sql security definer set search_path = public stable
+as $$
+  select m.student_id from members m
+   where btrim(m.name) = btrim(p_name)
+   order by m.student_id;
+$$;
+
+-- 신청 (행을 잠그고 정원을 세므로 동시에 눌러도 초과되지 않는다)
+create or replace function event_signup(p_event uuid, p_name text, p_sid text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare e events%rowtype; mid uuid; cnt int; taken int;
+begin
+  select * into e from events where id = p_event for update;
+  if not found then return 'noevent'; end if;
+  if e.signup_open is false then return 'closed'; end if;
+
+  select count(*) into cnt from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+  if cnt = 0 then return 'nomatch'; end if;
+  if cnt > 1 then return 'many'; end if;
+
+  select m.id into mid from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+
+  if exists (select 1 from attendance a where a.event_id = p_event and a.member_id = mid) then
+    return 'dup';
+  end if;
+
+  select count(*) into taken from attendance where event_id = p_event;
+  if e.capacity is not null and taken >= e.capacity then return 'full'; end if;
+
+  insert into attendance (event_id, member_id, hours) values (p_event, mid, 0);
+  return 'ok';
+end $$;
+
+-- 신청 취소
+create or replace function event_cancel(p_event uuid, p_name text, p_sid text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare mid uuid; cnt int; gone int;
+begin
+  select count(*) into cnt from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+  if cnt = 0 then return 'nomatch'; end if;
+  if cnt > 1 then return 'many'; end if;
+
+  select m.id into mid from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+
+  delete from attendance where event_id = p_event and member_id = mid;
+  get diagnostics gone = row_count;
+  if gone = 0 then return 'none'; end if;
+  return 'ok';
+end $$;
+
+revoke all on function event_public(uuid)              from public;
+revoke all on function event_who(text)                 from public;
+revoke all on function event_signup(uuid, text, text)  from public;
+revoke all on function event_cancel(uuid, text, text)  from public;
+grant execute on function event_public(uuid)             to anon, authenticated;
+grant execute on function event_who(text)                to anon, authenticated;
+grant execute on function event_signup(uuid, text, text) to anon, authenticated;
+grant execute on function event_cancel(uuid, text, text) to anon, authenticated;
+
+-- 선착순이라 "언제부터 받을지" 도 예약할 수 있게
+alter table events add column if not exists signup_open_at timestamptz;
+
+create or replace function event_public(p_id uuid)
+returns table (id uuid, date date, title text, place text, start_time text, note text,
+               capacity integer, signup_open boolean, signup_open_at timestamptz,
+               taken integer, names text[])
+language sql security definer set search_path = public stable
+as $$
+  select e.id, e.date, e.title, e.place, e.start_time, e.note, e.capacity,
+         e.signup_open, e.signup_open_at,
+         (select count(*)::int from attendance a where a.event_id = e.id),
+         (select coalesce(array_agg(m.name order by a.created_at), '{}')
+            from attendance a join members m on m.id = a.member_id
+           where a.event_id = e.id)
+    from events e
+   where e.id = p_id;
+$$;
+
+create or replace function event_signup(p_event uuid, p_name text, p_sid text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare e events%rowtype; mid uuid; cnt int; taken int;
+begin
+  select * into e from events where id = p_event for update;
+  if not found then return 'noevent'; end if;
+  if e.signup_open is false then return 'closed'; end if;
+  if e.signup_open_at is not null and now() < e.signup_open_at then return 'before'; end if;
+
+  select count(*) into cnt from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+  if cnt = 0 then return 'nomatch'; end if;
+  if cnt > 1 then return 'many'; end if;
+
+  select m.id into mid from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+
+  if exists (select 1 from attendance a where a.event_id = p_event and a.member_id = mid) then
+    return 'dup';
+  end if;
+
+  select count(*) into taken from attendance where event_id = p_event;
+  if e.capacity is not null and taken >= e.capacity then return 'full'; end if;
+
+  insert into attendance (event_id, member_id, hours) values (p_event, mid, 0);
+  return 'ok';
+end $$;
+
+grant execute on function event_public(uuid)             to anon, authenticated;
+grant execute on function event_signup(uuid, text, text) to anon, authenticated;

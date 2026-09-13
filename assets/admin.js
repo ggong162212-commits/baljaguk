@@ -773,8 +773,11 @@
         const joined = S.att.filter(a => a.event_id === ev.id);
         return '<div class="evrow" data-ev="' + ev.id + '"><span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' + ic('paw') + '</span>' +
           '<div class="grow"><div class="tt">' + esc(ev.title) + '</div><div class="mt">' +
+          (ev.start_time ? '<span>' + esc(ev.start_time) + '</span>' : '') +
           (ev.place ? '<span>' + esc(ev.place) + '</span>' : '') +
-          '<span>참여 ' + joined.length + '명</span></div></div>' +
+          '<span>' + (ev.capacity ? '신청 ' + joined.length + '/' + ev.capacity : '참여 ' + joined.length + '명') + '</span>' +
+          (ev.capacity && joined.length >= ev.capacity ? '<span style="color:var(--danger)">마감</span>' : '') +
+          '</div></div>' +
           '<div class="faces">' + joined.slice(0, 4).map(a => { const m = byId(S.members, a.member_id); return m ? avatar(m) : ''; }).join('') + '</div>' +
           '</div>';
       }).join('') : '<div class="mut sm" style="padding:6px 2px 12px">이 날에는 봉사모임이 없어요.</div>') +
@@ -822,14 +825,39 @@
     };
   }
 
+  /* 봉사지 목록 — [{ name, area }] 로 다룬다.
+     예전 형식(문자열 배열)도 그대로 읽어서 지역만 비워둔다. */
   function volPlaces() {
     const s = S.settings || {};
     let list = s.places;
     if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
     if (!Array.isArray(list) || !list.length) list = [s.place || '천보금 보호소'];
-    return list.filter(Boolean);
+    return list.map(x => (typeof x === 'string' ? { name: x, area: '' } : {
+      name: String((x && x.name) || ''), area: String((x && x.area) || '')
+    })).filter(x => x.name);
   }
-  const volPlace = () => volPlaces()[0];
+  const volPlaceNames = () => volPlaces().map(x => x.name);
+  const volPlace = () => (volPlaces()[0] || {}).name || '천보금 보호소';
+  const areaOf = (name) => ((volPlaces().find(x => x.name === name) || {}).area || '');
+  const signupURL = (id) => new URL('volunteer.html?e=' + id, location.href).href;
+  function signupNotice(e) {
+    const d = new Date(e.date + 'T00:00:00');
+    const area = areaOf(e.place);
+    const t = e.start_time ? timeLabel(e.start_time) : '';
+    return '🐾 ' + (e.place || '봉사') + ' 봉사 신청받아요\n\n' +
+      '📍 장소 : ' + (e.place || '') + (area ? ' (' + area + ')' : '') + '\n' +
+      '📅 날짜 : ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + weekday(e.date) + ')' + '\n' +
+      (t ? '⏰ 시간 : ' + t + '\n' : '') +
+      (e.capacity ? '👥 선착순 ' + e.capacity + '명\n' : '') +
+      (e.note ? '📝 ' + e.note + '\n' : '') +
+      '\n아래 링크로 신청해주세요\n' + signupURL(e.id);
+  }
+  function timeLabel(t) {
+    const [h, m] = String(t).split(':');
+    const hh = Number(h);
+    return (hh < 12 ? '오전 ' : '오후 ') + (hh % 12 === 0 ? 12 : hh % 12) + '시' +
+      (m && m !== '00' ? ' ' + m + '분' : '');
+  }
   function autoTitle(date, place, skipId) {
     const d = new Date(date + 'T00:00:00');
     const base = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + (place || volPlace());
@@ -843,20 +871,41 @@
     const joined = isNew ? [] : S.att.filter(a => a.event_id === ev.id);
     const picked = new Map(joined.map(a => [a.member_id, Number(a.hours) || 0]));
 
-    const places = volPlaces();
+    const places = volPlaceNames();
     let place = ev.place && places.indexOf(ev.place) >= 0 ? ev.place : (ev.place || places[0]);
     const body =
+      '<div class="grid2">' +
       '<label class="field"><span class="lb">봉사 날짜</span>' +
       '<input class="input" type="date" id="eDate" value="' + esc(ev.date) + '"></label>' +
+      '<label class="field"><span class="lb">시간</span>' +
+      '<input class="input" type="time" id="eTime" value="' + esc(ev.start_time || '') + '"></label></div>' +
       '<div class="field"><span class="lb">봉사지</span>' +
       (places.length > 1 || (ev.place && places.indexOf(ev.place) < 0)
         ? '<div class="chips" id="ePlaces">' +
           places.concat(ev.place && places.indexOf(ev.place) < 0 ? [ev.place] : []).map(pl =>
             '<button type="button" class="chip' + (pl === place ? ' on' : '') + '" data-pl="' + esc(pl) + '">' +
-            esc(pl) + '</button>').join('') + '</div>'
-        : '<div class="card flat sm" style="padding:11px 14px">' + esc(places[0]) + '</div>' +
+            esc(pl) + (areaOf(pl) ? '<span class="n">' + esc(areaOf(pl)) + '</span>' : '') + '</button>').join('') + '</div>'
+        : '<div class="card flat sm" style="padding:11px 14px">' + esc(places[0]) +
+          (areaOf(places[0]) ? ' <span class="mut">· ' + esc(areaOf(places[0])) + '</span>' : '') + '</div>' +
           '<span class="hint">봉사지는 설정에서 더 추가할 수 있어요.</span>') +
       '</div>' +
+      '<label class="field"><span class="lb">최대 인원 (선택)</span>' +
+      '<input class="input" type="number" min="1" id="eCap" placeholder="예: 15" value="' + (ev.capacity || '') + '">' +
+      '<span class="hint">정하면 신청 폼이 선착순으로 받고, 다 차면 스스로 닫혀요.</span></label>' +
+      '<div class="field"><span class="lb">신청 열리는 시각 (선택)</span>' + dtField('evOpen', ev.signup_open_at) +
+      '<span class="hint">비워두면 만들자마자 바로 신청을 받아요.</span></div>' +
+      '<label class="field"><span class="lb">안내 문구 (선택)</span>' +
+      '<input class="input" id="eNote" value="' + esc(ev.note || '') + '" placeholder="준비물, 모이는 곳 등"></label>' +
+      (isNew ? '' :
+        '<div class="card flat" style="margin-bottom:15px">' +
+        '<div class="row between"><b class="sm">신청 받기</b>' +
+        '<label class="switch"><input type="checkbox" id="eOpenSw"' + (ev.signup_open !== false ? ' checked' : '') +
+        '><span class="track"></span></label></div>' +
+        '<div class="sm" style="word-break:break-all;margin-top:10px">' + esc(signupURL(ev.id)) + '</div>' +
+        '<div class="row" style="gap:8px;margin-top:8px">' +
+        '<button type="button" class="btn soft sm grow" data-copysignup>링크 복사</button>' +
+        '<button type="button" class="btn ghost sm grow" data-opensignup>폼 열어보기</button>' +
+        '<button type="button" class="btn ghost sm grow" data-noticesignup>공지 문구</button></div></div>') +
       '<div class="divider"></div>' +
       '<div class="row between" style="margin-bottom:8px"><b class="sm">참여한 구성원 <span id="pickCount">' + picked.size + '</span>명</b>' +
       '<button class="btn ghost sm" id="pickAll">전체 선택</button></div>' +
@@ -870,6 +919,20 @@
         '<button class="btn primary grow" data-save>저장하기</button></div>');
 
     const ov = sheet({ title: isNew ? fmtDate(F.day) + ' 봉사모임' : '봉사모임 수정', body, noFocus: true });
+    const cp = ov.querySelector('[data-copysignup]');
+    if (cp) cp.onclick = () => copy(signupURL(ev.id), '신청 폼 주소를 복사했어요');
+    const op = ov.querySelector('[data-opensignup]');
+    if (op) op.onclick = () => window.open(signupURL(ev.id), '_blank');
+    const nt = ov.querySelector('[data-noticesignup]');
+    if (nt) nt.onclick = () => copy(signupNotice(ev), '공지 문구를 복사했어요');
+    const sw = ov.querySelector('#eOpenSw');
+    if (sw) sw.onchange = async () => {
+      try {
+        await DB.events.update(ev.id, { signup_open: sw.checked });
+        toast(sw.checked ? '신청을 열었어요' : '신청을 닫았어요', 'ok');
+        await load();
+      } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
+    };
     ov.querySelectorAll('#ePlaces [data-pl]').forEach(b => b.addEventListener('click', () => {
       place = b.dataset.pl;
       ov.querySelectorAll('#ePlaces [data-pl]').forEach(x => x.classList.toggle('on', x.dataset.pl === place));
@@ -932,9 +995,15 @@
 
     ov.querySelector('[data-save]').onclick = async () => {
       const date = ov.querySelector('#eDate').value || F.day;
+      const cap = Number(ov.querySelector('#eCap').value) || null;
       const patch = {
         title: autoTitle(date, place, isNew ? null : ev.id),
-        date: date, start_time: null, place: place, note: ''
+        date: date,
+        start_time: ov.querySelector('#eTime').value || null,
+        place: place,
+        note: ov.querySelector('#eNote').value.trim(),
+        capacity: cap,
+        signup_open_at: readDt('evOpen', '00:00')
       };
       closeSheet();
       try {
@@ -1713,9 +1782,12 @@
       '<div class="card"><h3>봉사지</h3>' +
       '<div class="sub">정기적으로 가는 곳을 등록해두면 봉사모임 만들 때 골라서 쓸 수 있어요.</div>' +
       '<div class="sp"></div><div id="placeList"></div>' +
-      '<div class="row" style="gap:8px;margin-top:10px">' +
-      '<input class="input grow" id="newPlace" placeholder="예: 천사들의 보금자리">' +
-      '<button class="btn soft" id="addPlace" type="button">추가</button></div></div>' +
+      '<div class="grid2" style="margin-top:10px">' +
+      '<label class="field" style="margin-bottom:0"><span class="lb">봉사지 이름</span>' +
+      '<input class="input" id="newPlace" placeholder="천사들의 보금자리"></label>' +
+      '<label class="field" style="margin-bottom:0"><span class="lb">소재지</span>' +
+      '<input class="input" id="newArea" placeholder="경기 광주"></label></div>' +
+      '<button class="btn soft block" id="addPlace" type="button" style="margin-top:10px">추가</button></div>' +
 
       '<div class="card"><h3>승인 옵션</h3><div class="sp"></div>' +
       '<label class="switch" style="justify-content:space-between"><span class="sm">승인할 때 회비를 동아리비 수입에 더하기</span>' +
@@ -1761,14 +1833,39 @@
       const list = volPlaces();
       $('#placeList').innerHTML = list.map((pl, i) =>
         '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
-        '<span class="sm">' + esc(pl) + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
+        '<div><span class="sm"><b>' + esc(pl.name) + '</b>' + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
+        (pl.area ? '<div class="mut" style="font-size:11.5px">' + esc(pl.area) + '</div>' : '') + '</div>' +
+        '<div class="row" style="gap:6px">' +
+        '<button class="iconbtn" data-edpl="' + i + '" aria-label="소재지 고치기" ' +
+        'style="width:30px;height:30px;border-radius:10px">' + ic('edit') + '</button>' +
         (list.length > 1 ? '<button class="iconbtn" data-rmpl="' + i + '" aria-label="삭제" ' +
           'style="width:30px;height:30px;border-radius:10px">' + ic('x') + '</button>' : '') +
-        '</div>').join('');
+        '</div></div>').join('');
       $$('#placeList [data-rmpl]').forEach(b => b.onclick = async () => {
         const next = volPlaces().filter((_, i) => i !== Number(b.dataset.rmpl));
-        await save({ places: next, place: next[0] });
+        await save({ places: next, place: next[0].name });
         paintPlaces(); toast('봉사지를 지웠어요');
+      });
+      $$('#placeList [data-edpl]').forEach(b => b.onclick = () => {
+        const i = Number(b.dataset.edpl), cur = volPlaces()[i];
+        const ov = sheet({
+          title: cur.name,
+          body: '<label class="field"><span class="lb">봉사지 이름</span>' +
+            '<input class="input" id="plName" value="' + esc(cur.name) + '"></label>' +
+            '<label class="field"><span class="lb">소재지</span>' +
+            '<input class="input" id="plArea" value="' + esc(cur.area) + '" placeholder="경기 광주"></label>' +
+            '<button class="btn primary block" data-save>저장하기</button>'
+        });
+        ov.querySelector('[data-save]').onclick = async () => {
+          const name = ov.querySelector('#plName').value.trim();
+          if (!name) return toast('봉사지 이름을 적어주세요', 'err');
+          const area = ov.querySelector('#plArea').value.trim();
+          const next = volPlaces();
+          next[i] = { name, area };
+          closeSheet();
+          await save({ places: next, place: next[0].name });
+          paintPlaces(); toast('저장했어요', 'ok');
+        };
       });
     }
     paintPlaces();
@@ -1776,10 +1873,10 @@
       const v = $('#newPlace').value.trim();
       if (!v) return toast('봉사지 이름을 적어주세요', 'err');
       const list = volPlaces();
-      if (list.includes(v)) return toast('이미 있는 봉사지예요', 'err');
-      const next = list.concat([v]);
-      await save({ places: next, place: next[0] });
-      $('#newPlace').value = '';
+      if (list.some(x => x.name === v)) return toast('이미 있는 봉사지예요', 'err');
+      const next = list.concat([{ name: v, area: $('#newArea').value.trim() }]);
+      await save({ places: next, place: next[0].name });
+      $('#newPlace').value = ''; $('#newArea').value = '';
       paintPlaces(); toast(v + ' 추가했어요', 'ok');
     };
 

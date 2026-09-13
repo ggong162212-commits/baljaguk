@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 봉사 신청</title>
+<meta name="description" content="발자국 봉사모임 참여 신청">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css?v=202609140812">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark" id="brandName">발자국</span>
+    </div>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<main class="app" id="app">
+
+  <!-- 불러오는 중 -->
+  <section id="loadWrap" class="card center" style="margin-top:16px;padding:34px 20px">
+    <div class="mut sm">봉사모임을 불러오는 중이에요…</div>
+  </section>
+
+  <!-- 잘못된 주소 -->
+  <section id="errWrap" hidden>
+    <div class="card center" style="margin-top:16px;padding:30px 20px">
+      <div id="errIcon" style="display:flex;justify-content:center;color:var(--ink-3)"></div>
+      <h3 style="margin-top:12px">봉사모임을 찾지 못했어요</h3>
+      <p class="mut sm" style="margin-top:6px">링크가 정확한지 운영진에게 확인해주세요.</p>
+    </div>
+  </section>
+
+  <!-- 본문 -->
+  <section id="mainWrap" hidden>
+    <div class="hero" style="margin-top:8px">
+      <div class="pawline" id="pawline"></div>
+      <span class="kicker" id="kicker"></span>
+      <h1 id="evTitle">봉사 신청</h1>
+      <p id="evLead">아래에서 이름을 적고 신청해주세요.</p>
+    </div>
+
+    <div class="sp"></div>
+    <div id="statusSlot"></div>
+
+    <!-- 봉사 세부사항 -->
+    <section class="card" style="margin-top:14px">
+      <h3>봉사 안내</h3>
+      <div class="sp"></div>
+      <div id="evDetail"></div>
+      <div id="evNote"></div>
+    </section>
+
+    <!-- 신청 -->
+    <section id="formWrap">
+      <div class="section-title" id="formTitle"><span></span></div>
+      <form class="card" id="signForm" novalidate>
+        <label class="field" id="f-name">
+          <span class="lb">이름 <span class="req">*</span></span>
+          <input class="input" name="name" autocomplete="name" placeholder="김발자" maxlength="20" required>
+          <span class="hint">구성원 명단에 등록된 이름으로 적어주세요.</span>
+          <span class="hint-inline">이름을 입력해주세요</span>
+        </label>
+
+        <label class="field" id="f-sid" hidden>
+          <span class="lb">학번</span>
+          <select class="input" name="student_id"></select>
+          <span class="hint">같은 이름이 여러 명이라 학번을 골라주세요.</span>
+        </label>
+
+        <button class="btn primary lg block" type="submit" id="submitBtn">신청하기</button>
+        <button class="btn ghost block sm" type="button" id="cancelBtn" style="margin-top:8px">신청 취소하기</button>
+      </form>
+    </section>
+
+    <!-- 마감 -->
+    <section id="closedWrap" hidden>
+      <div class="card center" style="padding:30px 20px">
+        <div id="closedIcon" style="display:flex;justify-content:center;color:var(--ink-3)"></div>
+        <h3 style="margin-top:12px" id="closedTitle">지금은 신청을 받지 않아요</h3>
+        <p class="mut sm" id="closedMsg" style="margin-top:6px"></p>
+      </div>
+    </section>
+
+    <!-- 신청 완료 -->
+    <section id="doneWrap" hidden>
+      <div class="card center" style="padding:30px 20px">
+        <div style="display:flex;justify-content:center;color:var(--brand)" id="doneIcon"></div>
+        <h3 style="margin-top:12px;font-size:22px">신청됐어요</h3>
+        <p class="mut sm" id="doneMsg" style="margin-top:6px"></p>
+        <div class="acct" style="text-align:left;margin-top:16px" id="doneSummary"></div>
+        <div class="sp"></div>
+        <button class="btn ghost block" type="button" id="doneCancel">신청 취소하기</button>
+      </div>
+    </section>
+
+    <!-- 신청한 사람 -->
+    <div id="peopleSlot" style="margin-top:14px"></div>
+
+    <div class="linkline" id="footNote"></div>
+    <div style="height:40px"></div>
+  </section>
+</main>
+
+<script src="assets/config.js?v=202609140812"></script>
+<script src="assets/icons.js?v=202609140812"></script>
+<script src="assets/ui.js?v=202609140812"></script>
+<script src="assets/db.js?v=202609140812"></script>
+<script src="assets/volunteer.js?v=202609140812"></script>
+</body>
+</html>
