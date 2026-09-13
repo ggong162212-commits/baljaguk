@@ -263,7 +263,7 @@
       '<div class="card">' +
       '<div class="row between"><div><h3>동아리 신청 접수</h3><div class="sub" id="formStateText">' +
       (st.open ? '지금 신청을 받고 있어요' : (why[st.why] || '접수를 받지 않는 중이에요')) + '</div></div>' +
-      '<label class="switch"><input type="checkbox" id="openSw"' + (s.form_open !== false ? ' checked' : '') + '><span class="track"></span></label></div>' +
+      '<label class="switch"><input type="checkbox" id="openSw"' + (st.open ? ' checked' : '') + '><span class="track"></span></label></div>' +
       fold('applyMore', '예약·정원·안내 문구',
         '<div class="field"><span class="lb">접수 시작 예약</span>' + dtField('openAt', s.form_open_at) +
         '<span class="hint">비워두면 바로 접수해요.</span></div>' +
@@ -317,8 +317,17 @@
       toast('저장했어요', 'ok'); renderForm();
     });
     $('#openSw').addEventListener('change', async e => {
-      await save({ form_open: e.target.checked });
-      toast(e.target.checked ? '접수를 열었어요' : '접수를 닫았어요', 'ok');
+      const on = e.target.checked;
+      const patch = { form_open: on };
+      let cleared = false;
+      if (on) {
+        // 지난 마감 시각·미래의 오픈 예약이 남아 있으면 켜도 안 열리므로 같이 정리한다
+        const cur = S.settings || {};
+        if (cur.form_close_at && Date.parse(cur.form_close_at) <= Date.now()) { patch.form_close_at = null; cleared = true; }
+        if (cur.form_open_at && Date.parse(cur.form_open_at) > Date.now()) { patch.form_open_at = null; cleared = true; }
+      }
+      await save(patch);
+      toast(on ? (cleared ? '예약을 지우고 접수를 다시 열었어요' : '접수를 열었어요') : '접수를 닫았어요', 'ok');
       renderForm();
     });
     $$('[data-quick]').forEach(b => b.addEventListener('click', () => {
@@ -1228,7 +1237,7 @@
       '<div class="card">' +
       '<div class="row between"><div><h3>활동의견·개파 접수</h3><div class="sub">' +
       (svSt.open ? '지금 응답을 받고 있어요' : (svWhy[svSt.why] || '응답을 받지 않는 중이에요')) + '</div></div>' +
-      '<label class="switch"><input type="checkbox" id="svOpenSw"' + (sv.survey_open !== false ? ' checked' : '') + '><span class="track"></span></label></div>' +
+      '<label class="switch"><input type="checkbox" id="svOpenSw"' + (svSt.open ? ' checked' : '') + '><span class="track"></span></label></div>' +
       fold('surveyMore', '자동 마감 예약',
         '<div class="field"><span class="lb">자동 마감 예약</span>' + dtField('svCloseAt', sv.survey_close_at) +
         '<span class="hint">이 시각이 지나면 설문이 스스로 닫혀요. 비워두면 계속 받아요.</span></div>' +
@@ -1249,7 +1258,11 @@
 
     wireFolds();
     $('#svOpenSw').addEventListener('change', async e => {
-      await save({ survey_open: e.target.checked });
+      const on = e.target.checked;
+      const patch = { survey_open: on };
+      const cur = S.settings || {};
+      if (on && cur.survey_close_at && Date.parse(cur.survey_close_at) <= Date.now()) patch.survey_close_at = null;
+      await save(patch);
       toast(e.target.checked ? '설문 접수를 열었어요' : '설문 접수를 닫았어요', 'ok');
       renderForm();
     });

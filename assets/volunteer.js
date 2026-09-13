@@ -165,7 +165,7 @@
     $('#formWrap').hidden = true;
     $('#closedWrap').hidden = true;
     $('#doneWrap').hidden = false;
-    $('#doneMsg').textContent = '봉사 당일에 만나요! 못 가게 되면 아래에서 취소해주세요.';
+    $('#doneMsg').textContent = '봉사 당일에 만나요! 못 가게 되면 운영진에게 개인적으로 연락해주세요.';
     $('#doneSummary').innerHTML =
       row2('이름', name) + row2('날짜', fmtDate(ev.date) + ' (' + weekday(ev.date) + ')') +
       row2('장소', ev.place || '-') + (ev.start_time ? row2('시간', timeLabel(ev.start_time)) : '');
@@ -179,8 +179,6 @@
       $('#f-name').classList.remove('bad');
       $('#f-sid').hidden = true;
     });
-    $('#cancelBtn').addEventListener('click', cancel);
-    $('#doneCancel').addEventListener('click', cancel);
   }
 
   function nameValue() { return $('#signForm').name.value.trim(); }
@@ -225,26 +223,6 @@
     } finally {
       btn.disabled = false; btn.textContent = '신청하기';
     }
-  }
-
-  async function cancel() {
-    const name = nameValue() || localStorage.getItem(MINE) || '';
-    if (!name) { toast('이름을 적어주세요', 'err'); return; }
-    if (!await UI.confirmSheet(name + ' 님 신청을 취소할까요?',
-      '자리가 다른 사람에게 넘어가요.', '취소하기', true)) return;
-    try {
-      const r = await DB.eventCancel(EV, name, sidValue());
-      if (r === 'ok') {
-        localStorage.removeItem(MINE);
-        $('#signForm').reset();
-        await load();
-        toast('신청을 취소했어요');
-      } else if (r === 'many') {
-        await askSid(name);
-      } else {
-        toast(MSG[r] || '취소하지 못했어요', 'err');
-      }
-    } catch (e) { toast(e.message || '취소하지 못했어요', 'err'); }
   }
 
   const MSG = {

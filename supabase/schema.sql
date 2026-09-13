@@ -466,4 +466,4 @@ revoke all on function event_cancel(uuid, text, text)  from public;
 grant execute on function event_public(uuid)             to anon, authenticated;
 grant execute on function event_who(text)                to anon, authenticated;
 grant execute on function event_signup(uuid, text, text) to anon, authenticated;
-grant execute on function event_cancel(uuid, text, text) to anon, authenticated;
+grant execute on function event_cancel(uuid, text, text) to authenticated;   -- 취소는 운영진만
