@@ -366,16 +366,25 @@ grant execute on function survey_edit(uuid, text, text, text) to anon, authentic
 -- ============================================================
 --  봉사모임 신청 폼 (모임마다 고유 주소, 선착순 마감)
 -- ============================================================
-alter table events add column if not exists capacity    integer;
-alter table events add column if not exists signup_open boolean not null default true;
+alter table events add column if not exists capacity       integer;
+alter table events add column if not exists signup_open     boolean not null default true;
+alter table events add column if not exists signup_open_at  timestamptz;
+
+-- 반환 열이 바뀌면 replace 가 안 되므로 먼저 지운다
+drop function if exists event_public(uuid);
+drop function if exists event_who(text);
+drop function if exists event_signup(uuid, text, text);
+drop function if exists event_cancel(uuid, text, text);
 
 -- 모임 공개 정보 (비로그인도 볼 수 있는 것만)
 create or replace function event_public(p_id uuid)
 returns table (id uuid, date date, title text, place text, start_time text, note text,
-               capacity integer, signup_open boolean, taken integer, names text[])
+               capacity integer, signup_open boolean, signup_open_at timestamptz,
+               taken integer, names text[])
 language sql security definer set search_path = public stable
 as $$
-  select e.id, e.date, e.title, e.place, e.start_time, e.note, e.capacity, e.signup_open,
+  select e.id, e.date, e.title, e.place, e.start_time, e.note, e.capacity,
+         e.signup_open, e.signup_open_at,
          (select count(*)::int from attendance a where a.event_id = e.id),
          (select coalesce(array_agg(m.name order by a.created_at), '{}')
             from attendance a join members m on m.id = a.member_id
@@ -404,6 +413,7 @@ begin
   select * into e from events where id = p_event for update;
   if not found then return 'noevent'; end if;
   if e.signup_open is false then return 'closed'; end if;
+  if e.signup_open_at is not null and now() < e.signup_open_at then return 'before'; end if;
 
   select count(*) into cnt from members m
    where btrim(m.name) = btrim(p_name)
@@ -457,57 +467,3 @@ grant execute on function event_public(uuid)             to anon, authenticated;
 grant execute on function event_who(text)                to anon, authenticated;
 grant execute on function event_signup(uuid, text, text) to anon, authenticated;
 grant execute on function event_cancel(uuid, text, text) to anon, authenticated;
-
--- 선착순이라 "언제부터 받을지" 도 예약할 수 있게
-alter table events add column if not exists signup_open_at timestamptz;
-
-create or replace function event_public(p_id uuid)
-returns table (id uuid, date date, title text, place text, start_time text, note text,
-               capacity integer, signup_open boolean, signup_open_at timestamptz,
-               taken integer, names text[])
-language sql security definer set search_path = public stable
-as $$
-  select e.id, e.date, e.title, e.place, e.start_time, e.note, e.capacity,
-         e.signup_open, e.signup_open_at,
-         (select count(*)::int from attendance a where a.event_id = e.id),
-         (select coalesce(array_agg(m.name order by a.created_at), '{}')
-            from attendance a join members m on m.id = a.member_id
-           where a.event_id = e.id)
-    from events e
-   where e.id = p_id;
-$$;
-
-create or replace function event_signup(p_event uuid, p_name text, p_sid text)
-returns text
-language plpgsql security definer set search_path = public
-as $$
-declare e events%rowtype; mid uuid; cnt int; taken int;
-begin
-  select * into e from events where id = p_event for update;
-  if not found then return 'noevent'; end if;
-  if e.signup_open is false then return 'closed'; end if;
-  if e.signup_open_at is not null and now() < e.signup_open_at then return 'before'; end if;
-
-  select count(*) into cnt from members m
-   where btrim(m.name) = btrim(p_name)
-     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
-  if cnt = 0 then return 'nomatch'; end if;
-  if cnt > 1 then return 'many'; end if;
-
-  select m.id into mid from members m
-   where btrim(m.name) = btrim(p_name)
-     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
-
-  if exists (select 1 from attendance a where a.event_id = p_event and a.member_id = mid) then
-    return 'dup';
-  end if;
-
-  select count(*) into taken from attendance where event_id = p_event;
-  if e.capacity is not null and taken >= e.capacity then return 'full'; end if;
-
-  insert into attendance (event_id, member_id, hours) values (p_event, mid, 0);
-  return 'ok';
-end $$;
-
-grant execute on function event_public(uuid)             to anon, authenticated;
-grant execute on function event_signup(uuid, text, text) to anon, authenticated;
