@@ -42,6 +42,7 @@
     wireForm();
     $('#editBtn').addEventListener('click', openEdit);
     restoreDraft();
+    UI.initGrow();
     if (localStorage.getItem(SENT)) showSent();
     else paintOpenState();
     watchSettings();

@@ -333,6 +333,7 @@
       $('#dropIdle').hidden = true; $('#dropDone').hidden = false; $('#receiptActions').hidden = false;
     }
     $('#savedNote').textContent = '이전에 작성하던 내용을 불러왔어요';
+    UI.initGrow();
     progress();
   }
 

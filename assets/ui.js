@@ -57,6 +57,7 @@
     document.addEventListener('keydown', escClose);
     const f = ov.querySelector('input,textarea,select,button:not([data-close])');
     if (f && !opts.noFocus) setTimeout(() => f.focus(), 60);
+    initGrow(ov);
     if (opts.onMount) opts.onMount(ov);
     return ov;
   }
@@ -80,6 +81,26 @@
       $('[data-yes]', ov).onclick = () => { closeSheet(); res(true); };
     });
   }
+
+  /* ---------- 여러 줄 입력칸 자동 늘리기 ----------
+     모바일 브라우저에는 크기 조절 손잡이가 없어서, 글이 길어지면
+     입력칸이 스스로 커지게 한다. */
+  function grow(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + 2) + 'px';
+  }
+  function initGrow(root) {
+    $$('textarea', root).forEach(t => {
+      t.style.overflow = 'hidden';
+      t.style.resize = 'none';
+      grow(t);
+    });
+  }
+  document.addEventListener('input', e => {
+    if (e.target && e.target.tagName === 'TEXTAREA') grow(e.target);
+  });
+  document.addEventListener('DOMContentLoaded', () => initGrow());
 
   /* ---------- 복사 ---------- */
   async function copy(text, label) {
@@ -219,7 +240,7 @@
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
-    copy, won, num, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar,
+    copy, won, num, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
     resizeImage, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
   };
 })();

@@ -235,6 +235,7 @@
       form: renderForm, apply: renderApply, members: renderMembers,
       vol: renderVol, fin: renderFin, donate: renderDonate, settings: renderSettings
     }[cur] || (() => { }))();
+    UI.initGrow();
   }
 
   /* ============================================================
