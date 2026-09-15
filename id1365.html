@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 1365 명부 등록</title>
+<meta name="description" content="금파하우스 봉사 1365 시간 지급을 위한 회원 명부 등록">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css?v=202609151633">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark" id="brandName">발자국</span>
+    </div>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<main class="app" id="app">
+
+  <!-- 히어로 -->
+  <section class="hero">
+    <div class="pawline" id="pawline"></div>
+    <span class="kicker" id="kicker"></span>
+    <h1 id="heroTitle">1365 명부 등록</h1>
+    <p id="heroSub">금파하우스 봉사 시간을 1365로 받으려면 명부에 이름을 올려야 해요.</p>
+  </section>
+
+  <div class="sp"></div>
+
+  <!-- 왜 적어야 하나 -->
+  <section class="card" id="whyCard">
+    <h3>이걸 왜 적나요?</h3>
+    <div class="sp"></div>
+    <p class="sm" style="line-height:1.7;margin:0">
+      <b>금파하우스</b> 봉사는 1365 자원봉사포털을 통해 봉사시간이 올라가요.
+      그러려면 동아리가 <b>자원봉사단체 회원 명부</b>를 센터에 내야 하는데,
+      거기에 이름이 올라간 사람만 시간을 받을 수 있어요.
+    </p>
+    <div class="pill-note" id="deadlineNote" style="margin-top:12px"></div>
+  </section>
+
+  <!-- ① 이름 확인 -->
+  <section id="findWrap">
+    <div class="section-title" id="findTitle"><span></span></div>
+    <form class="card" id="findForm" novalidate>
+      <label class="field" id="f-name">
+        <span class="lb">이름 <span class="req">*</span></span>
+        <input class="input" name="name" autocomplete="name" placeholder="김발자" maxlength="20" required>
+        <span class="hint">본인 이름을 적어주세요. 동아리에 등록된 이름으로 찾아요.</span>
+        <span class="hint-inline">이름을 입력해주세요</span>
+      </label>
+
+      <label class="field" id="f-sid" hidden>
+        <span class="lb">학번</span>
+        <select class="input" name="student_id"></select>
+        <span class="hint">같은 이름이 여러 명이라 학번을 골라주세요.</span>
+      </label>
+
+      <button class="btn primary lg block" type="submit" id="findBtn">내 정보 불러오기</button>
+      <div id="findMsg" style="margin-top:12px"></div>
+    </form>
+  </section>
+
+  <!-- ② 적기 -->
+  <section id="formWrap" hidden>
+    <div class="section-title" id="formTitle"><span></span></div>
+    <form class="card" id="idForm" novalidate>
+      <div class="steps" id="steps"><i></i><i></i><i></i></div>
+
+      <div class="acct" style="margin-bottom:16px" id="whoBox"></div>
+
+      <label class="field" id="f-birth">
+        <span class="lb">생년월일 <span class="req">*</span></span>
+        <input class="input" type="date" name="birth" required>
+        <span class="hint">주민등록상 생년월일이에요. 예) 2004-03-26</span>
+        <span class="hint-inline">생년월일을 골라주세요</span>
+      </label>
+
+      <label class="field" id="f-portal">
+        <span class="lb">1365 포털 아이디 <span class="req">*</span></span>
+        <input class="input" name="portal_id" autocapitalize="off" autocorrect="off" spellcheck="false"
+               placeholder="baljaguk01" maxlength="40" required>
+        <span class="hint hintline">1365 자원봉사포털(www.1365.go.kr) 로그인 아이디예요. 아직 없다면 가입하고 적어주세요.</span>
+        <span class="hint-inline">1365 아이디를 적어주세요</span>
+      </label>
+
+      <div class="field" id="f-phone">
+        <span class="lb">휴대전화 <span class="req">*</span></span>
+        <div id="phoneKnown" hidden>
+          <div class="acct" style="margin:0">
+            <div class="row between">
+              <div>
+                <div class="sm mut">등록된 번호</div>
+                <div class="no" id="phoneMask" style="font-size:17px"></div>
+              </div>
+              <button class="btn soft sm" type="button" id="phoneEdit">번호 바꾸기</button>
+            </div>
+          </div>
+          <span class="hint">번호가 그대로면 그냥 두셔도 돼요.</span>
+        </div>
+        <div id="phoneNew">
+          <input class="input" name="phone" inputmode="numeric" autocomplete="tel"
+                 placeholder="010-0000-0000" maxlength="20">
+          <span class="hint-inline">연락처를 정확히 입력해주세요</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <label class="check" id="agree">
+        <span class="box" aria-hidden="true"></span>
+        <input type="checkbox" hidden>
+        <span class="sm">이름·생년월일·1365 아이디·연락처를 자원봉사센터에 제출하는 회원 명부 용도로 쓰는 데 동의합니다.</span>
+      </label>
+
+      <div class="sp"></div>
+      <button class="btn primary lg block" type="submit" id="submitBtn">명부에 올리기</button>
+      <button class="btn ghost block sm" type="button" id="backBtn" style="margin-top:10px">다른 이름으로 찾기</button>
+    </form>
+  </section>
+
+  <!-- 마감 -->
+  <section id="closedWrap" hidden>
+    <div class="card center" style="padding:30px 20px">
+      <div id="closedIcon" style="color:var(--ink-3);display:flex;justify-content:center"></div>
+      <h3 style="margin-top:12px" id="closedTitle">등록 기간이 끝났어요</h3>
+      <p class="mut sm" id="closedMsg" style="margin-top:6px"></p>
+    </div>
+  </section>
+
+  <!-- 완료 -->
+  <section id="doneWrap" hidden>
+    <div class="card center" style="padding:30px 20px">
+      <div style="display:flex;justify-content:center;color:var(--brand)" id="doneIcon"></div>
+      <h3 style="margin-top:12px;font-size:22px">명부에 올렸어요</h3>
+      <p class="mut sm" style="margin-top:6px" id="doneMsg">운영진이 모아서 자원봉사센터에 제출할게요.</p>
+      <div class="acct" style="text-align:left;margin-top:16px" id="doneSummary"></div>
+      <div class="sp"></div>
+      <button class="btn ghost block" type="button" id="againBtn">고치거나 다른 사람 등록하기</button>
+    </div>
+  </section>
+
+  <div class="linkline" id="footNote"></div>
+  <div style="height:60px"></div>
+</main>
+
+<script src="assets/config.js?v=202609151633"></script>
+<script src="assets/icons.js?v=202609151633"></script>
+<script src="assets/ui.js?v=202609151633"></script>
+<script src="assets/db.js?v=202609151633"></script>
+<script src="assets/id1365.js?v=202609151633"></script>
+</body>
+</html>

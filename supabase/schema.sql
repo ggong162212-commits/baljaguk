@@ -467,3 +467,118 @@ grant execute on function event_public(uuid)             to anon, authenticated;
 grant execute on function event_who(text)                to anon, authenticated;
 grant execute on function event_signup(uuid, text, text) to anon, authenticated;
 grant execute on function event_cancel(uuid, text, text) to authenticated;   -- 취소는 운영진만
+
+-- ============================================================
+--  1365 회원명부 등록 (id1365.html)
+--  · 부원이 자기 이름을 적으면 생년월일 · 1365 포털 아이디 · 휴대전화를 적어 낸다
+--  · 자원봉사단체 회원 명부(별지서식 9) 3쪽에 그대로 옮겨 적는 데 쓴다
+-- ============================================================
+create table if not exists member_1365 (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  member_id  uuid not null unique references members(id) on delete cascade,
+  name       text not null,
+  student_id text,
+  birth      date,          -- 생년월일
+  portal_id  text,          -- 1365 포털 아이디
+  phone      text,
+  note       text           -- 비고 (명부의 마지막 칸)
+);
+create index if not exists member_1365_name_idx on member_1365 (name);
+
+alter table club_settings add column if not exists id1365_open     boolean not null default true;
+alter table club_settings add column if not exists id1365_close_at timestamptz;
+
+alter table member_1365 enable row level security;
+drop policy if exists "id1365 admin" on member_1365;
+create policy "id1365 admin" on member_1365 for all to authenticated using (true) with check (true);
+
+do $$
+begin
+  begin
+    execute 'alter publication supabase_realtime add table public.member_1365';
+  exception when duplicate_object then null;
+  end;
+end $$;
+
+drop function if exists id1365_lookup(text);
+drop function if exists id1365_submit(text, text, date, text, text);
+
+-- 내 정보 불러오기
+--  · 이름이 정확히 일치하는 구성원만 돌려준다 (부분검색 불가)
+--  · 전화번호는 가운데를 가려서 준다 — 이름만 알면 번호를 보게 되는 걸 막기 위해
+create or replace function id1365_lookup(p_name text)
+returns table (student_id text, phone_mask text, birth date, portal_id text,
+               submitted boolean, updated_at timestamptz)
+language sql security definer set search_path = public stable
+as $$
+  select m.student_id,
+         case when length(p.d) >= 7 then left(p.d, 3) || '-****-' || right(p.d, 4) end,
+         r.birth, r.portal_id, (r.id is not null), r.updated_at
+    from members m
+    left join member_1365 r on r.member_id = m.id
+    cross join lateral (
+      select regexp_replace(coalesce(r.phone, m.phone, ''), '\D', '', 'g') as d
+    ) p
+   where btrim(m.name) = btrim(p_name)
+   order by m.student_id
+   limit 5;
+$$;
+
+-- 제출 (다시 내면 덮어쓴다 — 한 사람당 한 줄)
+create or replace function id1365_submit(p_name text, p_sid text, p_birth date,
+                                         p_portal text, p_phone text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  s     club_settings%rowtype;
+  mid   uuid;
+  mname text;
+  msid  text;
+  ph    text;
+  cnt   int;
+begin
+  select * into s from club_settings where id = 1;
+  if s.id1365_open is false then return 'closed'; end if;
+  if s.id1365_close_at is not null and now() >= s.id1365_close_at then return 'closed'; end if;
+
+  select count(*) into cnt from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+  if cnt = 0 then return 'nomatch'; end if;
+  if cnt > 1 then return 'many'; end if;
+
+  select m.id, m.name, m.student_id, m.phone
+    into mid, mname, msid, ph
+    from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+
+  if p_birth is null then return 'nobirth'; end if;
+  if btrim(coalesce(p_portal, '')) = '' then return 'noportal'; end if;
+
+  -- 번호를 새로 적었으면 그걸, 아니면 이미 있던 번호를 그대로 쓴다
+  ph := coalesce(
+          nullif(btrim(coalesce(p_phone, '')), ''),
+          (select r.phone from member_1365 r where r.member_id = mid),
+          ph);
+  if coalesce(btrim(ph), '') = '' then return 'nophone'; end if;
+
+  insert into member_1365 (member_id, name, student_id, birth, portal_id, phone)
+  values (mid, mname, msid, p_birth, btrim(p_portal), ph)
+  on conflict (member_id) do update
+     set name       = excluded.name,
+         student_id = excluded.student_id,
+         birth      = excluded.birth,
+         portal_id  = excluded.portal_id,
+         phone      = excluded.phone,
+         updated_at = now();
+  return 'ok';
+end $$;
+
+revoke all on function id1365_lookup(text)                          from public;
+revoke all on function id1365_submit(text, text, date, text, text)  from public;
+grant execute on function id1365_lookup(text)                         to anon, authenticated;
+grant execute on function id1365_submit(text, text, date, text, text) to anon, authenticated;

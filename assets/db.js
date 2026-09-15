@@ -209,6 +209,7 @@
     campaigns: table('campaigns', 'created_at.desc'),
     donations: table('donations', 'date.desc'),
     surveys: table('survey_responses', 'created_at.desc'),
+    id1365: table('member_1365', 'name.asc'),
 
     /* 이번 학기 설문 회차 */
     surveyTopic: () => C.SURVEY_TOPIC || '2026-2',
@@ -229,6 +230,67 @@
         station: String(form.station || '').trim(),
         opinion: String(form.opinion || '').trim(),
         party: ['yes', 'no', 'maybe'].includes(form.party) ? form.party : 'maybe'
+      });
+    },
+
+    /* ---------- 1365 회원명부 등록 ---------- */
+    /* 이름으로 내 정보 찾기 — 전화번호는 가운데를 가린 채로만 돌려준다 */
+    async id1365Lookup(name) {
+      const nm = String(name || '').trim();
+      if (!nm) return [];
+      if (!HAS_SB) {
+        const d = demoRead();
+        const mask = v => {
+          const x = String(v || '').replace(/\D/g, '');
+          return x.length >= 7 ? x.slice(0, 3) + '-****-' + x.slice(-4) : null;
+        };
+        return (d.members || []).filter(m => String(m.name).trim() === nm).map(m => {
+          const r = (d.member_1365 || []).find(x => x.member_id === m.id);
+          return {
+            student_id: m.student_id,
+            phone_mask: mask((r && r.phone) || m.phone),
+            birth: (r && r.birth) || null,
+            portal_id: (r && r.portal_id) || null,
+            submitted: !!r,
+            updated_at: (r && (r.updated_at || r.created_at)) || null
+          };
+        });
+      }
+      return await rest('rpc/id1365_lookup', { method: 'POST', body: { p_name: nm } }) || [];
+    },
+    /* 제출 (다시 내면 덮어쓴다) */
+    async id1365Submit(v) {
+      const name = String(v.name || '').trim();
+      const sid = String(v.student_id || '').trim();
+      const birth = String(v.birth || '').trim();
+      const portal = String(v.portal_id || '').trim();
+      const phone = String(v.phone || '').trim();
+      if (!HAS_SB) {
+        const d = demoRead();
+        const st = DB.id1365State(d.settings || {});
+        if (!st.open) return 'closed';
+        const hits = (d.members || []).filter(m => String(m.name).trim() === name && (!sid || m.student_id === sid));
+        if (!hits.length) return 'nomatch';
+        if (hits.length > 1) return 'many';
+        if (!birth) return 'nobirth';
+        if (!portal) return 'noportal';
+        const m = hits[0];
+        d.member_1365 = d.member_1365 || [];
+        const prev = d.member_1365.find(x => x.member_id === m.id);
+        const ph = phone || (prev && prev.phone) || m.phone || '';
+        if (!ph) return 'nophone';
+        const row = {
+          member_id: m.id, name: m.name, student_id: m.student_id,
+          birth, portal_id: portal, phone: ph, updated_at: new Date().toISOString()
+        };
+        if (prev) Object.assign(prev, row);
+        else d.member_1365.push(Object.assign({ id: uid(), created_at: new Date().toISOString() }, row));
+        demoWrite(d);
+        return 'ok';
+      }
+      return await rest('rpc/id1365_submit', {
+        method: 'POST',
+        body: { p_name: name, p_sid: sid, p_birth: birth || null, p_portal: portal, p_phone: phone }
       });
     },
 
@@ -473,6 +535,16 @@
     if (s.survey_open === false) return { open: false, why: 'manual' };
     if (s.survey_close_at && Date.now() >= Date.parse(s.survey_close_at)) return { open: false, why: 'closed', at: s.survey_close_at };
     return { open: true, until: s.survey_close_at || null };
+  };
+
+  /* 1365 명부 접수 가능 여부 */
+  DB.id1365State = function (s) {
+    s = s || {};
+    if (s.id1365_open === false) return { open: false, why: 'manual' };
+    if (s.id1365_close_at && Date.now() >= Date.parse(s.id1365_close_at)) {
+      return { open: false, why: 'closed', at: s.id1365_close_at };
+    }
+    return { open: true, until: s.id1365_close_at || null };
   };
 
   /* 폼 접수 가능 여부 (예약 마감 포함) */

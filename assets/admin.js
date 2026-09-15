@@ -6,8 +6,8 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
-  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply' };
+  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [] };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply', q4: '', idSeg: 'done' };
   let cur = 'form';
 
   const TABS = [
@@ -37,6 +37,7 @@
   const autoFee = () => localStorage.getItem('baljaguk.autoFee') !== '0';
   const formURL = () => new URL('index.html', location.href).href;
   const surveyURL = () => new URL('survey.html', location.href).href;
+  const id1365URL = () => new URL('id1365.html', location.href).href;
   const PARTY = { yes: ['참여', 'approved'], no: ['불참', 'rejected'], maybe: ['미정', 'pending'] };
   /* ------------------------------------------------------------
      거주지 정리
@@ -192,7 +193,8 @@
       S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date),
       S.camps.map(c => c.id + c.title + c.goal + c.status + c.ends_on),
       S.dons.map(d => d.id + d.amount + d.date + (d.member_id || d.donor_name || '')),
-      S.srv.map(r => r.id + r.party + r.name + (r.station || ''))
+      S.srv.map(r => r.id + r.party + r.name + (r.station || '')),
+      S.ids.map(r => r.id + r.name + (r.birth || '') + (r.portal_id || '') + (r.phone || ''))
     ]);
   }
   function startLive() {
@@ -216,14 +218,16 @@
 
   async function load() {
     try {
-      const [settings, apps, members, events, att, fin, camps, dons, srv] = await Promise.all([
+      const [settings, apps, members, events, att, fin, camps, dons, srv, ids] = await Promise.all([
         DB.settings.get(), DB.applications.list(), DB.members.list(),
         DB.events.list(), DB.attendance.list(), DB.finance.list(),
         DB.campaigns.list(), DB.donations.list(),
         // 설문 테이블을 아직 안 만들었어도 나머지 화면은 그대로 열리게 한다
-        (S.srvError = null, DB.surveys.list().catch(e => { S.srvError = e.message || '불러오지 못했어요'; return []; }))
+        (S.srvError = null, DB.surveys.list().catch(e => { S.srvError = e.message || '불러오지 못했어요'; return []; })),
+        // 1365 명부 표를 아직 안 만들었어도 나머지 화면은 그대로 열리게 한다
+        (S.idsError = null, DB.id1365.list().catch(e => { S.idsError = e.message || '불러오지 못했어요'; return []; }))
       ]);
-      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons, srv });
+      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons, srv, ids });
     } catch (e) {
       toast(e.message || '데이터를 불러오지 못했어요', 'err');
       if (e.status === 401) { DB.logout(); location.reload(); }
@@ -250,7 +254,7 @@
      1. 폼 관리
      ============================================================ */
   function renderForm() {
-    const picks = [['apply', '동아리 신청'], ['survey', '2학기 활동의견 · 개파']];
+    const picks = [['apply', '동아리 신청'], ['survey', '활동의견 · 개파'], ['id1365', '1365 명부']];
     $('#formPick').innerHTML = picks.map(([k, l]) =>
       '<button type="button" class="' + (F.formPick === k ? 'on' : '') + '" data-fp="' + k + '">' + l + '</button>').join('');
     $$('#formPick [data-fp]').forEach(b => b.addEventListener('click', () => {
@@ -258,11 +262,16 @@
     }));
 
     const onSurvey = F.formPick === 'survey';
-    $('#formPanel').hidden = onSurvey;
+    const onIds = F.formPick === 'id1365';
+    $('#formPanel').hidden = onSurvey || onIds;
     $('#surveyPanel').hidden = !onSurvey;
-    $('#formLead').textContent = onSurvey
-      ? '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.'
-      : '신청 접수를 켜고 끄거나 마감 시각을 예약할 수 있어요.';
+    $('#id1365Panel').hidden = !onIds;
+    $('#formLead').textContent = onIds
+      ? '자원봉사센터에 낼 회원 명부를 모으는 곳이에요.'
+      : (onSurvey
+        ? '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.'
+        : '신청 접수를 켜고 끄거나 마감 시각을 예약할 수 있어요.');
+    if (onIds) return renderId1365();
     if (onSurvey) return renderSurvey();
 
     const s = S.settings, st = DB.formState(s, approvedCount());
@@ -1490,6 +1499,315 @@
           splitStations(r.station).join(' / '), placesOf(r.station, true).join(' / '),
           (PARTY[r.party] || PARTY.maybe)[0], r.opinion || '']));
     };
+  }
+
+  /* ============================================================
+     1-③ 1365 회원명부
+       · 부원이 id1365.html 에서 적어 낸 생년월일 · 1365 아이디 · 휴대전화
+       · 자원봉사단체 회원 명부(별지서식 9) 에 그대로 옮겨 적는 데 쓴다
+     ============================================================ */
+  const idDigits = v => String(v || '').replace(/\D/g, '');
+
+  function renderId1365() {
+    const s = S.settings || {};
+    const st = DB.id1365State(s);
+    const why = { manual: '운영진이 등록을 꺼둔 상태예요', closed: '예약 마감 시각이 지났어요' };
+
+    const done = S.ids.length;
+    const total = S.members.length;
+    const pct = total ? Math.round(done / total * 100) : 0;
+
+    $('#id1365Panel').innerHTML =
+      (S.idsError
+        ? '<div class="pill-note"><b>1365 명부 표가 아직 없어요.</b><br>' +
+        'Supabase → SQL Editor 에 <b>supabase/schema.sql</b> 을 다시 한 번 붙여넣고 Run 하면 켜집니다. (' +
+        esc(S.idsError) + ')</div>'
+        : '') +
+
+      '<div class="card">' +
+      '<div class="row between"><div><h3>1365 명부 등록</h3><div class="sub">' +
+      (st.open ? '지금 등록을 받고 있어요' : (why[st.why] || '등록을 받지 않는 중이에요')) + '</div></div>' +
+      '<label class="switch"><input type="checkbox" id="idOpenSw"' + (st.open ? ' checked' : '') +
+      '><span class="track"></span></label></div>' +
+      fold('id1365More', '제출 마감 예약',
+        '<div class="field"><span class="lb">마감 시각</span>' + dtField('idCloseAt', s.id1365_close_at) +
+        '<span class="hint">폼에 남은 시간이 보이고, 이 시각이 지나면 스스로 닫혀요.</span></div>' +
+        '<div class="row" style="gap:8px;margin:-6px 0 14px">' +
+        '<button class="btn ghost sm" data-idquick="3">3일 뒤</button>' +
+        '<button class="btn ghost sm" data-idquick="7">7일 뒤</button>' +
+        '<button class="btn ghost sm" data-idquick="0">지우기</button></div>' +
+        '<button class="btn primary block" id="saveId1365">저장하기</button>') +
+      '</div>' +
+
+      '<div class="card">' +
+      '<h3>등록 폼 주소</h3><div class="sub">부원들에게 보낼 링크예요.</div>' +
+      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(id1365URL()) + '</div>' +
+      '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copyIdLink">링크 복사</button>' +
+      '<button class="btn ghost sm grow" id="openIdLink">폼 열어보기</button></div></div>' +
+      '<button class="btn ghost block sm" id="copyIdNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
+      '</div>' +
+
+      '<div class="card">' +
+      '<div class="row between"><div><h3>제출 현황</h3>' +
+      '<div class="sub">구성원 ' + total + '명 중 <b>' + done + '명</b>이 냈어요</div></div>' +
+      '<div class="money" style="font-size:22px;color:var(--brand-deep)">' + pct + '%</div></div>' +
+      '<div class="bar" style="margin-top:12px"><i style="width:' + Math.min(100, pct) + '%"></i></div>' +
+      '</div>' +
+
+      '<div class="seg" id="idSeg" style="margin-bottom:12px"></div>' +
+      '<div class="search" style="margin-bottom:12px">' +
+      '<span id="idSearchIcon"></span>' +
+      '<input id="idSearch" placeholder="이름·학번·1365 아이디로 찾기" aria-label="명부 검색" value="' + esc(F.q4) + '">' +
+      '</div>' +
+      '<div id="idList" class="stack"></div>' +
+      '<div class="sp"></div>' +
+      '<div class="row" style="gap:8px">' +
+      '<button class="btn soft grow" id="idAdd">대신 적어주기</button>' +
+      '<button class="btn ghost" id="exportId">엑셀 저장</button></div>' +
+      '<button class="btn ghost block sm" id="copyMissing" style="margin-top:8px">아직 안 낸 사람 명단 복사</button>';
+
+    $('#idSearchIcon').innerHTML = ic('search');
+    wireFolds();
+
+    $('#idOpenSw').addEventListener('change', async e => {
+      const on = e.target.checked;
+      const patch = { id1365_open: on };
+      const cur = S.settings || {};
+      if (on && cur.id1365_close_at && Date.parse(cur.id1365_close_at) <= Date.now()) patch.id1365_close_at = null;
+      await save(patch);
+      toast(on ? '명부 등록을 열었어요' : '명부 등록을 닫았어요', 'ok');
+      renderForm();
+    });
+    $$('[data-idquick]').forEach(b => b.addEventListener('click', () => {
+      const n = Number(b.dataset.idquick);
+      if (!n) { setDt('idCloseAt', null); return; }
+      const d = new Date(); d.setDate(d.getDate() + n); d.setHours(23, 59, 0, 0);
+      setDt('idCloseAt', d.toISOString());
+    }));
+    $('#saveId1365').addEventListener('click', async () => {
+      await save({ id1365_close_at: readDt('idCloseAt', '23:59') });
+      toast('저장했어요', 'ok'); renderForm();
+    });
+    $('#copyIdLink').addEventListener('click', () => copy(id1365URL(), '폼 주소를 복사했어요'));
+    $('#openIdLink').addEventListener('click', () => window.open(id1365URL(), '_blank'));
+    $('#copyIdNotice').addEventListener('click', () => {
+      const close = S.settings && S.settings.id1365_close_at
+        ? '\n\n⏰ 마감: ' + fmtDateTime(S.settings.id1365_close_at) : '';
+      copy('🐾 1365 회원명부 등록\n' +
+        '금파하우스 봉사는 1365 봉사시간을 받을 수 있어요.\n' +
+        '받으려면 아래 폼에 생년월일 · 1365 포털 아이디 · 휴대전화를 적어주세요.\n' +
+        '명부에 올라간 분만 시간 지급이 가능해요.' + close +
+        '\n\n📝 ' + id1365URL(), '공지 문구를 복사했어요');
+    });
+
+    const segs = [['done', '낸 사람 ' + done], ['todo', '안 낸 사람 ' + Math.max(0, total - done)]];
+    $('#idSeg').innerHTML = segs.map(([k, l]) =>
+      '<button type="button" class="' + (F.idSeg === k ? 'on' : '') + '" data-idseg="' + k + '">' + l + '</button>').join('');
+    $$('#idSeg [data-idseg]').forEach(b => b.addEventListener('click', () => {
+      F.idSeg = b.dataset.idseg; renderId1365();
+    }));
+
+    const search = $('#idSearch');
+    search.addEventListener('input', debounce(() => { F.q4 = search.value; paintIdList(); }, 150));
+
+    $('#idAdd').onclick = () => pickMemberForId();
+    $('#exportId').onclick = exportId1365;
+    $('#copyMissing').onclick = () => {
+      const list = missingMembers();
+      if (!list.length) return toast('모두 냈어요!', 'ok');
+      copy('🐾 1365 명부 아직 안 내신 분 (' + list.length + '명)\n' +
+        list.map(m => m.name).join(', ') +
+        '\n\n아래 폼에 생년월일 · 1365 아이디 · 휴대전화를 적어주세요.\n' + id1365URL(),
+        '안 낸 사람 명단을 복사했어요');
+    };
+
+    paintIdList();
+  }
+
+  const idRowOf = memberId => S.ids.find(r => r.member_id === memberId);
+  const missingMembers = () => S.members.filter(m => !idRowOf(m.id))
+    .sort((a, b) => (b.role === 'admin') - (a.role === 'admin') || a.name.localeCompare(b.name, 'ko'));
+
+  function paintIdList() {
+    const q = String(F.q4 || '').trim();
+    const box = $('#idList');
+    if (!box) return;
+
+    if (F.idSeg === 'todo') {
+      let list = missingMembers();
+      if (q) list = list.filter(m => (m.name + (m.student_id || '')).includes(q));
+      box.innerHTML = list.length
+        ? '<div class="list">' + list.map(m =>
+          '<div class="item" data-idm="' + m.id + '" tabindex="0" role="button">' + avatar(m) +
+          '<div class="grow"><div class="nm">' + esc(m.name) +
+          (m.role === 'admin' ? '<span class="badge admin">운영진</span>' : '') + '</div>' +
+          '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
+          '<div class="sub"><span>아직 안 냈어요</span>' +
+          (m.phone ? '<span>' + esc(m.phone) + '</span>' : '') + '</div></div>' +
+          '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
+        : empty('check', q ? '조건에 맞는 사람이 없어요' : '모두 냈어요!');
+      $$('#idList [data-idm]').forEach(el => {
+        const go2 = () => idSheet(null, byId(S.members, el.dataset.idm));
+        el.addEventListener('click', go2);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter') go2(); });
+      });
+      return;
+    }
+
+    let list = S.ids.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+    if (q) list = list.filter(r =>
+      (String(r.name) + (r.student_id || '') + (r.portal_id || '') + (r.phone || '')).includes(q));
+
+    box.innerHTML = list.length
+      ? '<div class="list">' + list.map((r, i) => {
+        const m = byId(S.members, r.member_id) || { name: r.name };
+        const moved = m.phone && idDigits(m.phone) !== idDigits(r.phone);
+        return '<div class="item" data-idr="' + r.id + '" tabindex="0" role="button">' + avatar(m) +
+          '<div class="grow"><div class="nm">' + esc(r.name) +
+          (moved ? '<span class="badge pending">번호 바뀜</span>' : '') + '</div>' +
+          '<div class="meta">' + esc(r.student_id || '') + '학번 · ' + fmtDate(r.birth) + '</div>' +
+          '<div class="sub"><span>' + esc(r.portal_id || '아이디 없음') + '</span>' +
+          '<span>' + esc(r.phone || '') + '</span></div></div>' +
+          '<span class="arrow">' + ic('chevron') + '</span></div>';
+      }).join('') + '</div>'
+      : empty('clipboard', q ? '조건에 맞는 사람이 없어요' : '아직 낸 사람이 없어요');
+
+    $$('#idList [data-idr]').forEach(el => {
+      const r = byId(S.ids, el.dataset.idr);
+      const go2 = () => idSheet(r, byId(S.members, r.member_id));
+      el.addEventListener('click', go2);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') go2(); });
+    });
+  }
+
+  /* 대신 적어줄 사람 고르기 */
+  function pickMemberForId() {
+    const list = missingMembers();
+    const ov = sheet({
+      title: '대신 적어주기',
+      body:
+        '<p class="mut sm" style="margin:0 0 12px">폼을 못 낸 사람 대신 운영진이 적어줄 수 있어요.</p>' +
+        '<label class="field"><span class="lb">이름으로 찾기</span>' +
+        '<input class="input" id="pmQ" placeholder="김발자"></label>' +
+        '<div id="pmList" class="stack" style="max-height:46vh;overflow:auto"></div>'
+    });
+    const paint = () => {
+      const q = ov.querySelector('#pmQ').value.trim();
+      const rows = q ? list.filter(m => (m.name + (m.student_id || '')).includes(q)) : list.slice(0, 8);
+      ov.querySelector('#pmList').innerHTML = rows.length
+        ? '<div class="list">' + rows.map(m =>
+          '<div class="item" data-pm="' + m.id + '" tabindex="0" role="button">' + avatar(m) +
+          '<div class="grow"><div class="nm">' + esc(m.name) + '</div>' +
+          '<div class="meta">' + esc(m.student_id || '') + '학번</div></div>' +
+          '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>' +
+        (!q && list.length > 8 ? '<div class="sm mut center" style="margin-top:8px">이름을 적으면 더 찾을 수 있어요</div>' : '')
+        : '<div class="card flat center sm mut" style="padding:18px;margin:0">' +
+        (list.length ? '찾는 사람이 없어요' : '모두 냈어요!') + '</div>';
+      ov.querySelectorAll('[data-pm]').forEach(el =>
+        el.addEventListener('click', () => idSheet(null, byId(S.members, el.dataset.pm))));
+    };
+    ov.querySelector('#pmQ').addEventListener('input', paint);
+    paint();
+  }
+
+  /* 한 사람 적기 · 고치기 */
+  function idSheet(row, member) {
+    if (!member && !row) return;
+    const m = member || byId(S.members, row.member_id) || {};
+    const r = row || {};
+    const known = r.phone || m.phone || '';
+    const moved = m.phone && r.phone && idDigits(m.phone) !== idDigits(r.phone);
+
+    const ov = sheet({
+      title: row ? esc(m.name || r.name) + ' 님 명부' : esc(m.name) + ' 님 대신 적기',
+      body:
+        '<div class="acct" style="margin:0 0 16px"><div class="row between">' +
+        '<div><div class="sm mut">' + esc(m.student_id || r.student_id || '') + '학번</div>' +
+        '<div style="font-weight:800;font-size:17px">' + esc(m.name || r.name) + '</div></div>' +
+        (row ? '<span class="badge approved">등록됨</span>' : '<span class="badge pending">미등록</span>') +
+        '</div>' +
+        (row && r.updated_at ? '<div class="sm mut" style="margin-top:8px">마지막 수정 ' + fmtDateTime(r.updated_at) + '</div>' : '') +
+        '</div>' +
+        (moved ? '<div class="pill-note" style="margin-bottom:14px">명부에 적은 번호가 구성원 정보의 번호(' +
+          esc(m.phone) + ')와 달라요. 아래에서 구성원 번호도 같이 바꿀 수 있어요.</div>' : '') +
+        '<label class="field"><span class="lb">생년월일</span>' +
+        '<input class="input" type="date" id="idBirth" value="' + esc(r.birth || '') + '"></label>' +
+        '<label class="field"><span class="lb">1365 포털 아이디</span>' +
+        '<input class="input" id="idPortal" autocapitalize="off" spellcheck="false" maxlength="40" value="' + esc(r.portal_id || '') + '"></label>' +
+        '<label class="field"><span class="lb">휴대전화</span>' +
+        '<input class="input" id="idPhone" inputmode="numeric" maxlength="20" value="' + esc(known) + '"></label>' +
+        '<label class="field"><span class="lb">비고 (선택)</span>' +
+        '<input class="input" id="idNote" maxlength="40" placeholder="명부 마지막 칸에 들어가요" value="' + esc(r.note || '') + '"></label>' +
+        '<label class="check" id="idSync"><span class="box" aria-hidden="true"></span>' +
+        '<input type="checkbox" hidden><span class="sm">구성원 정보의 연락처도 이 번호로 바꾸기</span></label>' +
+        '<div class="sp"></div>' +
+        '<button class="btn primary block" id="idSave">저장하기</button>' +
+        (row ? '<button class="btn danger block" id="idDel" style="margin-top:10px">명부에서 빼기</button>' : '')
+    });
+
+    const phoneEl = ov.querySelector('#idPhone');
+    phoneEl.addEventListener('input', () => { phoneEl.value = hyphenPhone(phoneEl.value); });
+
+    const sync = ov.querySelector('#idSync');
+    let syncOn = false;
+    sync.addEventListener('click', e => {
+      if (e.target.tagName !== 'INPUT') e.preventDefault();
+      syncOn = !syncOn;
+      sync.classList.toggle('on', syncOn);
+      sync.querySelector('.box').innerHTML = syncOn ? ic('check') : '';
+    });
+
+    ov.querySelector('#idSave').onclick = async () => {
+      const btn = ov.querySelector('#idSave');
+      const birth = ov.querySelector('#idBirth').value;
+      const portal = ov.querySelector('#idPortal').value.trim();
+      const phone = hyphenPhone(phoneEl.value);
+      const note = ov.querySelector('#idNote').value.trim();
+      if (!birth) return toast('생년월일을 골라주세요', 'err');
+      if (!portal) return toast('1365 아이디를 적어주세요', 'err');
+      if (idDigits(phone).length < 10) return toast('연락처를 정확히 적어주세요', 'err');
+      btn.disabled = true; btn.textContent = '저장 중…';
+      try {
+        const patch = {
+          member_id: m.id || r.member_id, name: m.name || r.name,
+          student_id: m.student_id || r.student_id || '',
+          birth, portal_id: portal, phone, note,
+          updated_at: new Date().toISOString()
+        };
+        if (row) await DB.id1365.update(row.id, patch);
+        else await DB.id1365.create(patch);
+        if (syncOn && m.id) await DB.members.update(m.id, { phone });
+        closeSheet();
+        await reload(false);
+        renderId1365();
+        toast('저장했어요', 'ok');
+      } catch (e) {
+        toast(e.message || '저장하지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '저장하기';
+      }
+    };
+
+    const del = ov.querySelector('#idDel');
+    if (del) del.onclick = async () => {
+      if (!await confirmSheet('명부에서 빼기',
+        esc(m.name || r.name) + ' 님을 1365 명부에서 뺄까요? 다시 폼으로 낼 수 있어요.', '빼기', true)) return;
+      try {
+        await DB.id1365.remove(row.id);
+        closeSheet();
+        await reload(false);
+        renderId1365();
+        toast('명부에서 뺐어요', 'ok');
+      } catch (e) { toast(e.message || '빼지 못했어요', 'err'); }
+    };
+  }
+
+  /* 회원 명부(별지서식 9) 칸 순서 그대로 내보내기 */
+  function exportId1365() {
+    if (!S.ids.length) return toast('내보낼 명단이 없어요', 'err');
+    const list = S.ids.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+    downloadCSV('발자국_1365회원명부_' + dkey(new Date()) + '.csv',
+      ['연 번', '이 름', '생년월일', '1365포털 아이디', '휴대전화', '비고'],
+      list.map((r, i) => [i + 1, r.name, fmtDate(r.birth).replace(/\./g, '-'), r.portal_id || '', r.phone || '', r.note || '']));
   }
 
   function renderDonate() {
