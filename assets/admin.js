@@ -22,8 +22,16 @@
   const P2 = n => String(n).padStart(2, '0');
   const dkey = d => d.getFullYear() + '-' + P2(d.getMonth() + 1) + '-' + P2(d.getDate());
   const byId = (arr, id) => arr.find(x => x.id === id);
-  const volCount = id => S.att.filter(a => a.member_id === id).length;
-  const volHours = id => S.att.filter(a => a.member_id === id).reduce((s, a) => s + (Number(a.hours) || 0), 0);
+  /* 오늘 이전에 끝난 모임만 '다녀온 봉사'로 센다.
+     앞으로 있을 모임에 이름이 올라가 있는 건 '예정'일 뿐이라 누적에 넣지 않는다. */
+  const donePast = (eventId) => {
+    const e = byId(S.events, eventId);
+    return !!e && String(e.date) < DB.today();
+  };
+  const volCount = id => S.att.filter(a => a.member_id === id && donePast(a.event_id)).length;
+  const volSoon = id => S.att.filter(a => a.member_id === id && !donePast(a.event_id)).length;
+  const volHours = id => S.att.filter(a => a.member_id === id && donePast(a.event_id))
+    .reduce((s, a) => s + (Number(a.hours) || 0), 0);
   const approvedCount = () => S.apps.filter(a => a.status === 'approved').length;
   const balance = () => S.fin.reduce((s, f) => s + (f.kind === 'income' ? 1 : -1) * (Number(f.amount) || 0), 0);
   const autoFee = () => localStorage.getItem('baljaguk.autoFee') !== '0';
@@ -614,7 +622,9 @@
       (m.role === 'admin' ? '<span class="badge admin">운영진</span>' : '') + '</div>' +
       '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
       '<div class="sub"><span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
-      '<span>누적 봉사 ' + volCount(m.id) + '회</span></div></div>' +
+      '<span>누적 봉사 ' + volCount(m.id) + '회</span>' +
+      (volSoon(m.id) ? '<span style="color:var(--brand-deep)">예정 ' + volSoon(m.id) + '</span>' : '') +
+      '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('users', '해당하는 구성원이 없어요'));
 
@@ -643,7 +653,7 @@
       const cnt = {};
       S.att.forEach(a => {
         const ev = byId(S.events, a.event_id);
-        if (ev && filter(ev)) cnt[a.member_id] = (cnt[a.member_id] || 0) + 1;
+        if (ev && String(ev.date) < DB.today() && filter(ev)) cnt[a.member_id] = (cnt[a.member_id] || 0) + 1;
       });
       let best = null;
       Object.keys(cnt).forEach(id => { if (!best || cnt[id] > best.n) { const m = byId(S.members, id); if (m) best = { m, n: cnt[id] }; } });
@@ -697,9 +707,12 @@
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
         '<div class="divider"></div><div class="row between" style="margin-bottom:8px">' +
-        '<b class="sm">봉사 이력 ' + hist.length + '회</b></div>' +
+        '<b class="sm">다녀온 봉사 ' + volCount(m.id) + '회</b>' +
+        (volSoon(m.id) ? '<span class="mut sm">예정 ' + volSoon(m.id) + '건</span>' : '') + '</div>' +
         (hist.length ? '<div class="card flat" style="padding:4px 12px">' + hist.slice(0, 8).map(h =>
-          '<div class="kv"><span class="k">' + fmtDate(h.ev.date) + '</span><span class="v">' + esc(h.ev.title) + '</span></div>').join('') + '</div>'
+          '<div class="kv"><span class="k">' + fmtDate(h.ev.date) +
+          (String(h.ev.date) < DB.today() ? '' : ' <span class="badge">예정</span>') + '</span>' +
+          '<span class="v">' + esc(h.ev.title) + '</span></div>').join('') + '</div>'
           : '<div class="mut sm">아직 참여 기록이 없어요</div>')) +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>추가하기</button>'
@@ -809,17 +822,24 @@
 
     // 랭킹
     const rank = S.members.map(m => ({ m, n: volCount(m.id), h: volHours(m.id) }))
-      .filter(r => r.n > 0).sort((a, b) => b.n - a.n || b.h - a.h).slice(0, 10);
+      .filter(r => r.n > 0)
+      .sort((a, b) => b.n - a.n || b.h - a.h || a.m.name.localeCompare(b.m.name, 'ko'))
+      .slice(0, 10);
+    const soonTotal = S.members.reduce((t, m) => t + volSoon(m.id), 0);
     $('#volRank').innerHTML =
       '<div class="section-title">' + ic('crown') + '<span>누적 참여 순위</span>' +
       '<span class="more" id="exportVol">내보내기</span></div>' +
+      '<div class="sm mut" style="margin:-4px 4px 10px">다녀온 봉사만 셉니다. ' +
+      (soonTotal ? '앞으로 있을 모임 신청 ' + soonTotal + '건은 빠져 있어요.' : '') + '</div>' +
       (rank.length ? '<div class="list">' + rank.map((r, i) =>
         '<div class="item" data-m3="' + r.m.id + '"><span class="rank' + (i < 3 ? ' g' + (i + 1) : '') + '">' + (i + 1) + '</span>' +
         avatar(r.m, 'sm') + '<div class="grow"><div class="nm">' + esc(r.m.name) + '</div>' +
         '<div class="sub"><span>' + esc(r.m.department || '') + '</span></div></div>' +
         '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + r.n + '회</div>' +
         '<div class="mut sm">' + r.h + '시간</div></div></div>').join('') + '</div>'
-        : empty('paw', '아직 봉사 참여 기록이 없어요'));
+        : empty('paw', soonTotal
+          ? '아직 다녀온 봉사가 없어요. 신청만 ' + soonTotal + '건 잡혀 있어요'
+          : '아직 봉사 참여 기록이 없어요'));
     $$('#volRank [data-m3]').forEach(el => el.addEventListener('click', () => memberSheet(byId(S.members, el.dataset.m3))));
     const ex = $('#exportVol');
     if (ex) ex.onclick = () => {
