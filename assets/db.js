@@ -27,8 +27,8 @@
       m('오세훈', DEPT, '23', 'member', 'active', '2025-03-04', '010-7788-1123')
     ];
     const events = [
-      { id: uid(), date: d(-21), title: '지난달 봉사', place: '천보금 보호소', start_time: null, note: '', created_at: new Date().toISOString() },
-      { id: uid(), date: d(-7), title: '지난주 봉사', place: '천보금 보호소', start_time: null, note: '', created_at: new Date().toISOString() },
+      { id: uid(), date: d(-21), title: '지난달 봉사', place: '천보금 보호소', start_time: null, note: '', confirmed_at: new Date().toISOString(), created_at: new Date().toISOString() },
+      { id: uid(), date: d(-7), title: '지난주 봉사', place: '천보금 보호소', start_time: null, note: '', confirmed_at: new Date().toISOString(), created_at: new Date().toISOString() },
       { id: uid(), date: d(6), title: '다음 봉사', place: '천보금 보호소', start_time: null, note: '', created_at: new Date().toISOString() }
     ];
     const att = [];

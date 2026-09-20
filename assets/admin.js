@@ -22,16 +22,14 @@
   const P2 = n => String(n).padStart(2, '0');
   const dkey = d => d.getFullYear() + '-' + P2(d.getMonth() + 1) + '-' + P2(d.getDate());
   const byId = (arr, id) => arr.find(x => x.id === id);
-  /* 오늘 이전에 끝난 모임만 '다녀온 봉사'로 센다.
-     앞으로 있을 모임에 이름이 올라가 있는 건 '예정'일 뿐이라 누적에 넣지 않는다. */
-  const donePast = (eventId) => {
+  /* 봉사 실적은 운영진이 '확정'을 눌러야 쌓인다.
+     확정 전 명단은 아직 신청·예정일 뿐이라 누적에 넣지 않는다. */
+  const isDone = (eventId) => {
     const e = byId(S.events, eventId);
-    return !!e && String(e.date) < DB.today();
+    return !!(e && e.confirmed_at);
   };
-  const volCount = id => S.att.filter(a => a.member_id === id && donePast(a.event_id)).length;
-  const volSoon = id => S.att.filter(a => a.member_id === id && !donePast(a.event_id)).length;
-  const volHours = id => S.att.filter(a => a.member_id === id && donePast(a.event_id))
-    .reduce((s, a) => s + (Number(a.hours) || 0), 0);
+  const volCount = id => S.att.filter(a => a.member_id === id && isDone(a.event_id)).length;
+  const volSoon = id => S.att.filter(a => a.member_id === id && !isDone(a.event_id)).length;
   const approvedCount = () => S.apps.filter(a => a.status === 'approved').length;
   const balance = () => S.fin.reduce((s, f) => s + (f.kind === 'income' ? 1 : -1) * (Number(f.amount) || 0), 0);
   const autoFee = () => localStorage.getItem('baljaguk.autoFee') !== '0';
@@ -188,7 +186,7 @@
       S.settings,
       S.apps.map(a => a.id + a.status + a.name),
       S.members.map(m => m.id + m.name + m.role + m.student_id),
-      S.events.map(e => e.id + e.date + e.title + e.place + (e.start_time || '')),
+      S.events.map(e => e.id + e.date + e.title + e.place + (e.start_time || '') + (e.confirmed_at || '')),
       S.att.map(a => a.event_id + a.member_id + a.hours),
       S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date),
       S.camps.map(c => c.id + c.title + c.goal + c.status + c.ends_on),
@@ -632,7 +630,7 @@
       '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
       '<div class="sub"><span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
       '<span>누적 봉사 ' + volCount(m.id) + '회</span>' +
-      (volSoon(m.id) ? '<span style="color:var(--brand-deep)">예정 ' + volSoon(m.id) + '</span>' : '') +
+      (volSoon(m.id) ? '<span style="color:var(--brand-deep)">확정 전 ' + volSoon(m.id) + '</span>' : '') +
       '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('users', '해당하는 구성원이 없어요'));
@@ -646,10 +644,10 @@
     $('#addMember').onclick = () => memberSheet(null);
     $('#exportMembers').onclick = () => {
       downloadCSV('발자국_구성원_' + dkey(new Date()) + '.csv',
-        ['이름', '학번', '학과', '연락처', '역할', '가입일', '누적봉사(회)', '누적시간'],
+        ['이름', '학번', '학과', '연락처', '역할', '가입일', '누적봉사(회)'],
         S.members.map(m => [m.name, m.student_id, m.department, m.phone,
         m.role === 'admin' ? '운영진' : '일반회원',
-        m.joined_on || '', volCount(m.id), volHours(m.id)]));
+        m.joined_on || '', volCount(m.id)]));
       toast('명단을 내려받았어요', 'ok');
     };
   }
@@ -662,7 +660,7 @@
       const cnt = {};
       S.att.forEach(a => {
         const ev = byId(S.events, a.event_id);
-        if (ev && String(ev.date) < DB.today() && filter(ev)) cnt[a.member_id] = (cnt[a.member_id] || 0) + 1;
+        if (ev && ev.confirmed_at && filter(ev)) cnt[a.member_id] = (cnt[a.member_id] || 0) + 1;
       });
       let best = null;
       Object.keys(cnt).forEach(id => { if (!best || cnt[id] > best.n) { const m = byId(S.members, id); if (m) best = { m, n: cnt[id] }; } });
@@ -716,11 +714,11 @@
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
         '<div class="divider"></div><div class="row between" style="margin-bottom:8px">' +
-        '<b class="sm">다녀온 봉사 ' + volCount(m.id) + '회</b>' +
-        (volSoon(m.id) ? '<span class="mut sm">예정 ' + volSoon(m.id) + '건</span>' : '') + '</div>' +
+        '<b class="sm">봉사 실적 ' + volCount(m.id) + '회</b>' +
+        (volSoon(m.id) ? '<span class="mut sm">확정 전 ' + volSoon(m.id) + '건</span>' : '') + '</div>' +
         (hist.length ? '<div class="card flat" style="padding:4px 12px">' + hist.slice(0, 8).map(h =>
           '<div class="kv"><span class="k">' + fmtDate(h.ev.date) +
-          (String(h.ev.date) < DB.today() ? '' : ' <span class="badge">예정</span>') + '</span>' +
+          (h.ev.confirmed_at ? '' : ' <span class="badge">확정 전</span>') + '</span>' +
           '<span class="v">' + esc(h.ev.title) + '</span></div>').join('') + '</div>'
           : '<div class="mut sm">아직 참여 기록이 없어요</div>')) +
       '<div class="divider"></div>' +
@@ -809,6 +807,9 @@
           (ev.place ? '<span>' + esc(ev.place) + '</span>' : '') +
           '<span>' + (ev.capacity ? '신청 ' + joined.length + '/' + ev.capacity : '참여 ' + joined.length + '명') + '</span>' +
           (ev.capacity && joined.length >= ev.capacity ? '<span style="color:var(--danger)">마감</span>' : '') +
+          (ev.confirmed_at
+            ? '<span style="color:var(--brand-deep);font-weight:700">확정</span>'
+            : (String(ev.date) <= DB.today() ? '<span style="color:var(--danger)">확정 전</span>' : '')) +
           '</div></div>' +
           '<div class="faces">' + joined.slice(0, 4).map(a => { const m = byId(S.members, a.member_id); return m ? avatar(m) : ''; }).join('') + '</div>' +
           '</div>';
@@ -830,24 +831,24 @@
     $('#newEv').addEventListener('click', () => eventSheet(null));
 
     // 랭킹
-    const rank = S.members.map(m => ({ m, n: volCount(m.id), h: volHours(m.id) }))
+    const rank = S.members.map(m => ({ m, n: volCount(m.id) }))
       .filter(r => r.n > 0)
-      .sort((a, b) => b.n - a.n || b.h - a.h || a.m.name.localeCompare(b.m.name, 'ko'))
+      .sort((a, b) => b.n - a.n || a.m.name.localeCompare(b.m.name, 'ko'))
       .slice(0, 10);
     const soonTotal = S.members.reduce((t, m) => t + volSoon(m.id), 0);
     $('#volRank').innerHTML =
       '<div class="section-title">' + ic('crown') + '<span>누적 참여 순위</span>' +
       '<span class="more" id="exportVol">내보내기</span></div>' +
-      '<div class="sm mut" style="margin:-4px 4px 10px">다녀온 봉사만 셉니다. ' +
-      (soonTotal ? '앞으로 있을 모임 신청 ' + soonTotal + '건은 빠져 있어요.' : '') + '</div>' +
+      '<div class="sm mut" style="margin:-4px 4px 10px">확정한 봉사만 셉니다.' +
+      (soonTotal ? ' 아직 확정 안 한 모임의 명단 ' + soonTotal + '건은 빠져 있어요.' : '') + '</div>' +
       (rank.length ? '<div class="list">' + rank.map((r, i) =>
         '<div class="item" data-m3="' + r.m.id + '"><span class="rank' + (i < 3 ? ' g' + (i + 1) : '') + '">' + (i + 1) + '</span>' +
         avatar(r.m, 'sm') + '<div class="grow"><div class="nm">' + esc(r.m.name) + '</div>' +
         '<div class="sub"><span>' + esc(r.m.department || '') + '</span></div></div>' +
         '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + r.n + '회</div>' +
-        '<div class="mut sm">' + r.h + '시간</div></div></div>').join('') + '</div>'
+        '</div></div>').join('') + '</div>'
         : empty('paw', soonTotal
-          ? '아직 다녀온 봉사가 없어요. 신청만 ' + soonTotal + '건 잡혀 있어요'
+          ? '아직 확정한 봉사가 없어요. 모임을 열고 확정하면 ' + soonTotal + '건이 실적으로 쌓여요'
           : '아직 봉사 참여 기록이 없어요'));
     $$('#volRank [data-m3]').forEach(el => el.addEventListener('click', () => memberSheet(byId(S.members, el.dataset.m3))));
     const ex = $('#exportVol');
@@ -856,10 +857,11 @@
       S.events.slice().sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(ev => {
         S.att.filter(a => a.event_id === ev.id).forEach(a => {
           const m = byId(S.members, a.member_id);
-          rows.push([ev.date, ev.title, ev.place || '', m ? m.name : '(삭제된 구성원)', a.hours]);
+          rows.push([ev.date, ev.title, ev.place || '', m ? m.name : '(삭제된 구성원)',
+            ev.confirmed_at ? '확정' : '확정 전']);
         });
       });
-      downloadCSV('발자국_봉사기록_' + dkey(new Date()) + '.csv', ['날짜', '봉사명', '장소', '이름', '시간'], rows);
+      downloadCSV('발자국_봉사기록_' + dkey(new Date()) + '.csv', ['날짜', '봉사명', '장소', '이름', '확정'], rows);
       toast('봉사 기록을 내려받았어요', 'ok');
     };
   }
@@ -908,7 +910,8 @@
     const isNew = !ev;
     ev = ev || { date: F.day, title: '', place: '', start_time: '', note: '' };
     const joined = isNew ? [] : S.att.filter(a => a.event_id === ev.id);
-    const picked = new Map(joined.map(a => [a.member_id, Number(a.hours) || 0]));
+    const picked = new Set(joined.map(a => a.member_id));
+    const confirmed = !isNew && !!ev.confirmed_at;
 
     const places = volPlaceNames();
     let place = ev.place && places.indexOf(ev.place) >= 0 ? ev.place : (ev.place || places[0]);
@@ -956,8 +959,18 @@
       '<div class="picker" id="picker"></div>' +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>봉사모임 만들기</button>'
-        : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
-        '<button class="btn primary grow" data-save>저장하기</button></div>');
+        : (confirmed
+          ? '<div class="pill-note" style="margin-bottom:12px"><b>확정된 봉사예요.</b> ' +
+            fmtDateTime(ev.confirmed_at) + ' 에 확정했어요.<br>' +
+            '참여한 분들 봉사 실적에 들어가 있어요. 명단을 고치고 저장하면 실적도 같이 바뀌어요.</div>'
+          : '<div class="pill-note" style="margin-bottom:12px">아직 <b>확정 전</b>이에요. ' +
+            '봉사를 다녀온 뒤 아래 <b>봉사 확정하기</b>를 누르면 참여한 분들 봉사 실적에 쌓여요.</div>') +
+        '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
+        '<button class="btn ' + (confirmed ? 'primary' : 'soft') + ' grow" data-save>저장하기</button></div>' +
+        (confirmed
+          ? '<button class="btn ghost block" data-unconfirm style="margin-top:10px">확정 풀기</button>'
+          : '<button class="btn primary lg block" data-confirm style="margin-top:10px">' +
+            ic('check') + '<span>봉사 확정하기</span></button>'));
 
     const ov = sheet({ title: isNew ? fmtDate(F.day) + ' 봉사모임' : '봉사모임 수정', body, noFocus: true });
     const cp = ov.querySelector('[data-copysignup]');
@@ -1000,14 +1013,12 @@
         '<div class="check on" data-p="' + m.id + '"><span class="box">' + ic('check') + '</span>' +
         avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
         '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div>' +
-        '<span class="hr"><input type="number" min="0" max="24" step="0.5" value="' + (picked.get(m.id) || '') +
-        '" placeholder="시간" data-h="' + m.id + '" aria-label="' + esc(m.name) + ' 봉사 시간"></span>' +
         '<button type="button" class="iconbtn" data-rm="' + m.id + '" aria-label="빼기" ' +
         'style="width:32px;height:32px;border-radius:11px">' + ic('x') + '</button></div>'
       ).join('') : '<div class="mut sm center" style="padding:14px">위에서 이름을 검색해 참여한 사람을 추가해주세요</div>';
 
       ov.querySelectorAll('[data-add-m]').forEach(el => el.addEventListener('click', () => {
-        picked.set(el.dataset.addM, 0);
+        picked.add(el.dataset.addM);
         ov.querySelector('#pickCount').textContent = picked.size;
         ov.querySelector('#pickSearch').value = '';
         drawPicker();
@@ -1019,25 +1030,22 @@
         ov.querySelector('#pickCount').textContent = picked.size;
         drawPicker();
       }));
-      ov.querySelectorAll('[data-h]').forEach(inp => inp.addEventListener('input', () => {
-        picked.set(inp.dataset.h, Number(inp.value) || 0);
-      }));
     }
     drawPicker();
     ov.querySelector('#pickSearch').addEventListener('input', drawPicker);
     ov.querySelector('#pickAll').addEventListener('click', () => {
       const allOn = picked.size === S.members.length;
       picked.clear();
-      if (!allOn) S.members.forEach(m => picked.set(m.id, 0));
+      if (!allOn) S.members.forEach(m => picked.add(m.id));
       ov.querySelector('#pickCount').textContent = picked.size;
       ov.querySelector('#pickAll').textContent = allOn ? '전체 선택' : '전체 해제';
       drawPicker();
     });
 
-    ov.querySelector('[data-save]').onclick = async () => {
+    async function saveAll(extra, okMsg) {
       const date = ov.querySelector('#eDate').value || F.day;
       const cap = Number(ov.querySelector('#eCap').value) || null;
-      const patch = {
+      const patch = Object.assign({
         title: autoTitle(date, place, isNew ? null : ev.id),
         date: date,
         start_time: ov.querySelector('#eTime').value || null,
@@ -1045,17 +1053,39 @@
         note: ov.querySelector('#eNote').value.trim(),
         capacity: cap,
         signup_open_at: readDt('evOpen', '00:00')
-      };
+      }, extra || {});
       closeSheet();
       try {
         let id = ev.id;
         if (isNew) { const row = await DB.events.create(patch); id = row.id; }
         else await DB.events.update(id, patch);
-        await DB.saveAttendance(id, Array.from(picked, ([member_id, hours]) => ({ member_id, hours })));
+        await DB.saveAttendance(id, Array.from(picked, member_id => ({ member_id, hours: 0 })));
         F.day = patch.date;
         await reload();
-        toast(isNew ? '봉사모임을 만들었어요' : '저장했어요', 'ok');
+        toast(okMsg, 'ok');
       } catch (e) { toast(e.message || '저장하지 못했어요', 'err'); }
+    }
+
+    ov.querySelector('[data-save]').onclick = () =>
+      saveAll(null, isNew ? '봉사모임을 만들었어요' : '저장했어요');
+
+    const cf = ov.querySelector('[data-confirm]');
+    if (cf) cf.onclick = () => {
+      if (!picked.size) return toast('참여한 구성원을 먼저 추가해주세요', 'err');
+      saveAll({ confirmed_at: new Date().toISOString() },
+        '확정했어요. ' + picked.size + '명 봉사 실적에 쌓였어요');
+    };
+
+    const uncf = ov.querySelector('[data-unconfirm]');
+    if (uncf) uncf.onclick = async () => {
+      closeSheet();
+      if (!await confirmSheet('확정을 풀까요?',
+        '참여한 분들 봉사 실적에서 이 봉사가 빠져요. 명단은 그대로 남아 있어요.', '확정 풀기')) return;
+      try {
+        await DB.events.update(ev.id, { confirmed_at: null });
+        await reload();
+        toast('확정을 풀었어요');
+      } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     };
     const del = ov.querySelector('[data-del]');
     if (del) del.onclick = async () => {

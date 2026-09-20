@@ -582,3 +582,11 @@ revoke all on function id1365_lookup(text)                          from public;
 revoke all on function id1365_submit(text, text, date, text, text)  from public;
 grant execute on function id1365_lookup(text)                         to anon, authenticated;
 grant execute on function id1365_submit(text, text, date, text, text) to anon, authenticated;
+
+-- ============================================================
+--  봉사 실적 확정
+--  · 모임을 만들고 명단을 채운 뒤 운영진이 '확정'을 눌러야
+--    참여한 사람의 봉사 실적(누적 횟수)에 들어간다.
+--  · 확정을 풀면 실적에서 빠지고 명단은 그대로 남는다.
+-- ============================================================
+alter table events add column if not exists confirmed_at timestamptz;
