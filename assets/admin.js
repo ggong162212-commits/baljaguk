@@ -662,9 +662,13 @@
         const ev = byId(S.events, a.event_id);
         if (ev && ev.confirmed_at && filter(ev)) cnt[a.member_id] = (cnt[a.member_id] || 0) + 1;
       });
-      let best = null;
-      Object.keys(cnt).forEach(id => { if (!best || cnt[id] > best.n) { const m = byId(S.members, id); if (m) best = { m, n: cnt[id] }; } });
-      return best;
+      // 1등이 여러 명이면 한 명만 왕으로 세우는 건 사실과 다르니 아무도 안 뽑는다
+      const ids = Object.keys(cnt).filter(id => byId(S.members, id));
+      if (!ids.length) return null;
+      const top = Math.max.apply(null, ids.map(id => cnt[id]));
+      const winners = ids.filter(id => cnt[id] === top);
+      if (winners.length !== 1) return null;
+      return { m: byId(S.members, winners[0]), n: top };
     };
     const month = pick(ev => String(ev.date).slice(0, 7) === ym);
     if (month) return Object.assign(month, { label: '이달의 참여왕', unit: '이번 달 봉사' });
@@ -840,6 +844,10 @@
       .filter(r => r.n > 0)
       .sort((a, b) => b.n - a.n || a.m.name.localeCompare(b.m.name, 'ko'));
     const rank = F.rankAll ? all : all.slice(0, RANK_TOP);
+    /* 같은 횟수면 같은 등수 (1,1,1,4,…) */
+    const places = [];
+    all.forEach((r, i) => { places[i] = (i && all[i - 1].n === r.n) ? places[i - 1] : i + 1; });
+    const place = i => places[i];
     const soonTotal = S.members.reduce((t, m) => t + volSoon(m.id), 0);
     $('#volRank').innerHTML =
       '<div class="section-title">' + ic('crown') + '<span>누적 참여 순위</span>' +
@@ -847,7 +855,8 @@
       '<div class="sm mut" style="margin:-4px 4px 10px">확정한 봉사만 셉니다.' +
       (soonTotal ? ' 아직 확정 안 한 모임의 명단 ' + soonTotal + '건은 빠져 있어요.' : '') + '</div>' +
       (rank.length ? '<div class="list">' + rank.map((r, i) =>
-        '<div class="item" data-m3="' + r.m.id + '"><span class="rank' + (i < 3 ? ' g' + (i + 1) : '') + '">' + (i + 1) + '</span>' +
+        '<div class="item" data-m3="' + r.m.id + '"><span class="rank' +
+        (place(i) <= 3 ? ' g' + place(i) : '') + '">' + place(i) + '</span>' +
         avatar(r.m, 'sm') + '<div class="grow"><div class="nm">' + esc(r.m.name) + '</div>' +
         '<div class="sub"><span>' + esc(r.m.department || '') + '</span></div></div>' +
         '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + r.n + '회</div>' +
