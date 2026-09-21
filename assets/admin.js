@@ -7,7 +7,7 @@
     debounce, toLocalInput, fromLocalInput } = UI;
 
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply', q4: '', idSeg: 'done' };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply', q4: '', idSeg: 'done', rankAll: false };
   let cur = 'form';
 
   const TABS = [
@@ -830,11 +830,16 @@
     $$('#calendar [data-ev]').forEach(el => el.addEventListener('click', () => eventSheet(byId(S.events, el.dataset.ev))));
     $('#newEv').addEventListener('click', () => eventSheet(null));
 
-    // 랭킹
-    const rank = S.members.map(m => ({ m, n: volCount(m.id) }))
+    paintRank();
+  }
+
+  /* 누적 참여 순위 — 기본은 10등까지, 「전체 보기」로 다 펼친다 */
+  const RANK_TOP = 10;
+  function paintRank() {
+    const all = S.members.map(m => ({ m, n: volCount(m.id) }))
       .filter(r => r.n > 0)
-      .sort((a, b) => b.n - a.n || a.m.name.localeCompare(b.m.name, 'ko'))
-      .slice(0, 10);
+      .sort((a, b) => b.n - a.n || a.m.name.localeCompare(b.m.name, 'ko'));
+    const rank = F.rankAll ? all : all.slice(0, RANK_TOP);
     const soonTotal = S.members.reduce((t, m) => t + volSoon(m.id), 0);
     $('#volRank').innerHTML =
       '<div class="section-title">' + ic('crown') + '<span>누적 참여 순위</span>' +
@@ -849,7 +854,18 @@
         '</div></div>').join('') + '</div>'
         : empty('paw', soonTotal
           ? '아직 확정한 봉사가 없어요. 모임을 열고 확정하면 ' + soonTotal + '건이 실적으로 쌓여요'
-          : '아직 봉사 참여 기록이 없어요'));
+          : '아직 봉사 참여 기록이 없어요')) +
+      (all.length > RANK_TOP
+        ? '<button class="btn ghost block sm" id="rankMore" style="margin-top:10px">' +
+          (F.rankAll ? '접기' : '전체 보기 (' + all.length + '명)') + '</button>'
+        : '');
+
+    const more = $('#rankMore');
+    if (more) more.onclick = () => {
+      F.rankAll = !F.rankAll;
+      paintRank();
+      if (!F.rankAll) $('#volRank').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
     $$('#volRank [data-m3]').forEach(el => el.addEventListener('click', () => memberSheet(byId(S.members, el.dataset.m3))));
     const ex = $('#exportVol');
     if (ex) ex.onclick = () => {
