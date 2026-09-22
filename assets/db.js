@@ -210,6 +210,7 @@
     donations: table('donations', 'date.desc'),
     surveys: table('survey_responses', 'created_at.desc'),
     id1365: table('member_1365', 'name.asc'),
+    payouts: table('shelter_payouts', 'date.desc'),
 
     /* 이번 학기 설문 회차 */
     surveyTopic: () => C.SURVEY_TOPIC || '2026-2',

@@ -6,7 +6,7 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
-  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [] };
+  const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [], pays: [] };
   const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply', q4: '', idSeg: 'done', rankAll: false };
   let cur = 'form';
 
@@ -186,13 +186,14 @@
       S.settings,
       S.apps.map(a => a.id + a.status + a.name),
       S.members.map(m => m.id + m.name + m.role + m.student_id),
-      S.events.map(e => e.id + e.date + e.title + e.place + (e.start_time || '') + (e.confirmed_at || '')),
+      S.events.map(e => e.id + e.date + e.title + e.place + (e.start_time || '') + (e.confirmed_at || '') + (e.credit_per_person == null ? '' : e.credit_per_person)),
       S.att.map(a => a.event_id + a.member_id + a.hours),
       S.fin.map(f => f.id + f.kind + f.amount + f.category + f.date),
       S.camps.map(c => c.id + c.title + c.goal + c.status + c.ends_on),
       S.dons.map(d => d.id + d.amount + d.date + (d.member_id || d.donor_name || '')),
       S.srv.map(r => r.id + r.party + r.name + (r.station || '')),
-      S.ids.map(r => r.id + r.name + (r.birth || '') + (r.portal_id || '') + (r.phone || ''))
+      S.ids.map(r => r.id + r.name + (r.birth || '') + (r.portal_id || '') + (r.phone || '')),
+      S.pays.map(r => r.id + r.place + r.amount + r.date)
     ]);
   }
   function startLive() {
@@ -216,16 +217,18 @@
 
   async function load() {
     try {
-      const [settings, apps, members, events, att, fin, camps, dons, srv, ids] = await Promise.all([
+      const [settings, apps, members, events, att, fin, camps, dons, srv, ids, pays] = await Promise.all([
         DB.settings.get(), DB.applications.list(), DB.members.list(),
         DB.events.list(), DB.attendance.list(), DB.finance.list(),
         DB.campaigns.list(), DB.donations.list(),
         // 설문 테이블을 아직 안 만들었어도 나머지 화면은 그대로 열리게 한다
         (S.srvError = null, DB.surveys.list().catch(e => { S.srvError = e.message || '불러오지 못했어요'; return []; })),
         // 1365 명부 표를 아직 안 만들었어도 나머지 화면은 그대로 열리게 한다
-        (S.idsError = null, DB.id1365.list().catch(e => { S.idsError = e.message || '불러오지 못했어요'; return []; }))
+        (S.idsError = null, DB.id1365.list().catch(e => { S.idsError = e.message || '불러오지 못했어요'; return []; })),
+        // 적립금 전달 기록 표가 아직 없어도 나머지 화면은 그대로 열리게 한다
+        DB.payouts.list().catch(() => [])
       ]);
-      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons, srv, ids });
+      Object.assign(S, { settings, apps, members, events, att, fin, camps, dons, srv, ids, pays });
     } catch (e) {
       toast(e.message || '데이터를 불러오지 못했어요', 'err');
       if (e.status === 401) { DB.logout(); location.reload(); }
@@ -898,13 +901,16 @@
     let list = s.places;
     if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
     if (!Array.isArray(list) || !list.length) list = [s.place || '천보금 보호소'];
-    return list.map(x => (typeof x === 'string' ? { name: x, area: '' } : {
-      name: String((x && x.name) || ''), area: String((x && x.area) || '')
+    return list.map(x => (typeof x === 'string' ? { name: x, area: '', credit: 0 } : {
+      name: String((x && x.name) || ''), area: String((x && x.area) || ''),
+      credit: Math.max(0, Number((x && x.credit) || 0) || 0)
     })).filter(x => x.name);
   }
   const volPlaceNames = () => volPlaces().map(x => x.name);
   const volPlace = () => (volPlaces()[0] || {}).name || '천보금 보호소';
   const areaOf = (name) => ((volPlaces().find(x => x.name === name) || {}).area || '');
+  /* 그 봉사지의 1인당 적립금 (0이면 적립하지 않는 곳) */
+  const creditOf = (name) => Number((volPlaces().find(x => x.name === name) || {}).credit || 0) || 0;
   const signupURL = (id) => new URL('volunteer.html?e=' + id, location.href).href;
   function signupNotice(e) {
     const d = new Date(e.date + 'T00:00:00');
@@ -940,6 +946,8 @@
 
     const places = volPlaceNames();
     let place = ev.place && places.indexOf(ev.place) >= 0 ? ev.place : (ev.place || places[0]);
+    let credit = (ev.credit_per_person == null || ev.credit_per_person === '')
+      ? creditOf(place) : Math.max(0, Number(ev.credit_per_person) || 0);
     const body =
       '<div class="grid2">' +
       '<label class="field"><span class="lb">봉사 날짜</span>' +
@@ -959,6 +967,9 @@
       '<label class="field"><span class="lb">최대 인원 (선택)</span>' +
       '<input class="input" type="number" min="1" id="eCap" placeholder="예: 15" value="' + (ev.capacity || '') + '">' +
       '<span class="hint">정하면 신청 폼이 선착순으로 받고, 다 차면 스스로 닫혀요.</span></label>' +
+      '<label class="field"><span class="lb">1인당 적립금</span>' +
+      '<input class="input" type="number" min="0" step="500" id="eCredit" placeholder="0" value="' + (credit || '') + '">' +
+      '<span class="hint" id="eCreditHint"></span></label>' +
       '<div class="field"><span class="lb">신청 열리는 시각 (선택)</span>' + dtField('evOpen', ev.signup_open_at) +
       '<span class="hint">비워두면 만들자마자 바로 신청을 받아요.</span></div>' +
       '<label class="field"><span class="lb">안내 문구 (선택)</span>' +
@@ -989,7 +1000,8 @@
             fmtDateTime(ev.confirmed_at) + ' 에 확정했어요.<br>' +
             '참여한 분들 봉사 실적에 들어가 있어요. 명단을 고치고 저장하면 실적도 같이 바뀌어요.</div>'
           : '<div class="pill-note" style="margin-bottom:12px">아직 <b>확정 전</b>이에요. ' +
-            '봉사를 다녀온 뒤 아래 <b>봉사 확정하기</b>를 누르면 참여한 분들 봉사 실적에 쌓여요.</div>') +
+            '봉사를 다녀온 뒤 아래 <b>봉사 확정하기</b>를 누르면 참여한 분들 봉사 실적' +
+            (credit > 0 ? '과 ' + esc(place) + ' 적립금' : '') + '에 쌓여요.</div>') +
         '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
         '<button class="btn ' + (confirmed ? 'primary' : 'soft') + ' grow" data-save>저장하기</button></div>' +
         (confirmed
@@ -1015,7 +1027,22 @@
     ov.querySelectorAll('#ePlaces [data-pl]').forEach(b => b.addEventListener('click', () => {
       place = b.dataset.pl;
       ov.querySelectorAll('#ePlaces [data-pl]').forEach(x => x.classList.toggle('on', x.dataset.pl === place));
+      const el = ov.querySelector('#eCredit');
+      if (el) el.value = creditOf(place) || '';
+      paintCreditHint();
     }));
+
+    /* 지금 명단이면 얼마가 적립되는지 바로 보여준다 */
+    function paintCreditHint() {
+      const hint = ov.querySelector('#eCreditHint');
+      if (!hint) return;
+      const per = Math.max(0, Number(ov.querySelector('#eCredit').value) || 0);
+      hint.innerHTML = per > 0
+        ? '확정하면 <b>' + esc(place) + '</b> 앞으로 ' + picked.size + '명 × ' + num(per) +
+          '원 = <b>' + won(per * picked.size) + '</b> 적립돼요.'
+        : '0이면 적립하지 않아요. 물품을 직접 지원하는 곳은 비워두세요.';
+    }
+    ov.querySelector('#eCredit').addEventListener('input', paintCreditHint);
 
     function drawPicker() {
       const q = ov.querySelector('#pickSearch').value.trim();
@@ -1045,6 +1072,7 @@
       ov.querySelectorAll('[data-add-m]').forEach(el => el.addEventListener('click', () => {
         picked.add(el.dataset.addM);
         ov.querySelector('#pickCount').textContent = picked.size;
+        paintCreditHint();
         ov.querySelector('#pickSearch').value = '';
         drawPicker();
         ov.querySelector('#pickSearch').focus();
@@ -1053,10 +1081,12 @@
         e.stopPropagation();
         picked.delete(el.dataset.rm);
         ov.querySelector('#pickCount').textContent = picked.size;
+        paintCreditHint();
         drawPicker();
       }));
     }
     drawPicker();
+    paintCreditHint();
     ov.querySelector('#pickSearch').addEventListener('input', drawPicker);
     ov.querySelector('#pickAll').addEventListener('click', () => {
       const allOn = picked.size === S.members.length;
@@ -1064,6 +1094,7 @@
       if (!allOn) S.members.forEach(m => picked.add(m.id));
       ov.querySelector('#pickCount').textContent = picked.size;
       ov.querySelector('#pickAll').textContent = allOn ? '전체 선택' : '전체 해제';
+      paintCreditHint();
       drawPicker();
     });
 
@@ -1077,6 +1108,7 @@
         place: place,
         note: ov.querySelector('#eNote').value.trim(),
         capacity: cap,
+        credit_per_person: Math.max(0, Number(ov.querySelector('#eCredit').value) || 0),
         signup_open_at: readDt('evOpen', '00:00')
       }, extra || {});
       closeSheet();
@@ -1097,8 +1129,10 @@
     const cf = ov.querySelector('[data-confirm]');
     if (cf) cf.onclick = () => {
       if (!picked.size) return toast('참여한 구성원을 먼저 추가해주세요', 'err');
+      const per = Math.max(0, Number(ov.querySelector('#eCredit').value) || 0);
       saveAll({ confirmed_at: new Date().toISOString() },
-        '확정했어요. ' + picked.size + '명 봉사 실적에 쌓였어요');
+        '확정했어요. ' + picked.size + '명 봉사 실적에 쌓였어요' +
+        (per > 0 ? ' · ' + place + ' 적립 ' + won(per * picked.size) : ''));
     };
 
     const uncf = ov.querySelector('[data-unconfirm]');
@@ -1865,17 +1899,248 @@
       list.map((r, i) => [i + 1, r.name, fmtDate(r.birth).replace(/\./g, '-'), r.portal_id || '', r.phone || '', r.note || '']));
   }
 
+  /* ============================================================
+     보호소 적립금
+       · 확정된 봉사의 참여 인원 × 1인당 적립금 만큼 그 보호소 앞으로 쌓인다
+       · 금액은 따로 저장하지 않고 그때그때 계산한다 (명단을 고치면 같이 따라감)
+       · 물품을 사서 전달하면 '전달 기록'을 남겨 잔액에서 뺀다
+     ============================================================ */
+  function creditEntries() {
+    return S.events
+      .filter(e => e.confirmed_at && Number(e.credit_per_person) > 0 && e.place)
+      .map(e => {
+        const people = S.att.filter(a => a.event_id === e.id).length;
+        const per = Number(e.credit_per_person);
+        return { ev: e, place: e.place, people, per, amount: people * per };
+      })
+      .filter(r => r.people > 0)
+      .sort((a, b) => String(b.ev.date).localeCompare(String(a.ev.date)));
+  }
+
+  function creditByPlace() {
+    const map = new Map();
+    const get = k => {
+      if (!map.has(k)) map.set(k, { place: k, saved: 0, paid: 0, rows: [], pays: [] });
+      return map.get(k);
+    };
+    creditEntries().forEach(r => { const g = get(r.place); g.saved += r.amount; g.rows.push(r); });
+    S.pays.forEach(p => { const g = get(p.place); g.paid += Number(p.amount) || 0; g.pays.push(p); });
+    return Array.from(map.values())
+      .map(g => Object.assign(g, { left: g.saved - g.paid }))
+      .sort((a, b) => b.left - a.left || a.place.localeCompare(b.place, 'ko'));
+  }
+
+  /* 이 기능을 켜기 전에 확정해 둔 봉사 — 적립금이 안 잡혀 있다 */
+  const creditMissing = () => S.events.filter(e =>
+    e.confirmed_at && (e.credit_per_person == null || e.credit_per_person === '') &&
+    creditOf(e.place) > 0 && S.att.some(a => a.event_id === e.id));
+
+  function creditPanel() {
+    const groups = creditByPlace();
+    const saved = groups.reduce((t, g) => t + g.saved, 0);
+    const paid = groups.reduce((t, g) => t + g.paid, 0);
+    const miss = creditMissing();
+
+    return '<div class="section-title">' + ic('paw') + '<span>보호소 적립금</span></div>' +
+      '<div class="card">' +
+      '<div class="row between" style="align-items:flex-start">' +
+      '<div><h3>아직 전달 안 한 적립금</h3>' +
+      '<div class="sub">봉사를 확정하면 참여 인원만큼 자동으로 쌓여요</div></div>' +
+      '<div class="money" style="font-size:21px;color:var(--brand-deep);white-space:nowrap">' +
+      won(saved - paid) + '</div></div>' +
+      '<div class="divider"></div>' +
+      '<div class="kv"><span class="k">쌓인 적립금</span><span class="v">' + won(saved) + '</span></div>' +
+      '<div class="kv"><span class="k">전달 완료</span><span class="v">' + won(paid) + '</span></div>' +
+      (miss.length
+        ? '<div class="pill-note" style="margin-top:12px">이 기능을 켜기 전에 확정한 봉사가 ' +
+          miss.length + '건 있어요. 지금 봉사지에 적힌 1인당 금액으로 적립할 수 있어요.</div>' +
+          '<button class="btn soft block sm" id="creditFill" style="margin-top:8px">' +
+          '지난 확정 봉사 ' + miss.length + '건에도 적립하기</button>'
+        : '') +
+      '</div>' +
+      (groups.length
+        ? '<div class="list">' + groups.map(g =>
+          '<div class="item" data-credit="' + esc(g.place) + '" tabindex="0" role="button">' +
+          '<span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' +
+          ic('heart') + '</span>' +
+          '<div class="grow"><div class="nm">' + esc(g.place) + '</div>' +
+          '<div class="sub"><span>적립 ' + won(g.saved) + '</span><span>전달 ' + won(g.paid) + '</span></div></div>' +
+          '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + won(g.left) + '</div>' +
+          '<div class="mut sm">남음</div></div></div>').join('') + '</div>'
+        : '<div class="card empty" style="padding:26px 20px">' +
+          '<div style="display:flex;justify-content:center;color:var(--ink-3)">' + ic('paw') + '</div>' +
+          '<div style="margin-top:8px">봉사를 확정하면 여기에 쌓여요</div>' +
+          '<div class="sm" style="margin-top:4px">설정 → 봉사지에서 1인당 적립금을 먼저 정해주세요</div></div>');
+  }
+
+  function wireCredits() {
+    const fill = $('#creditFill');
+    if (fill) fill.onclick = async () => {
+      const miss = creditMissing();
+      if (!miss.length) return;
+      const total = miss.reduce((t, e) =>
+        t + creditOf(e.place) * S.att.filter(a => a.event_id === e.id).length, 0);
+      if (!await confirmSheet('지난 봉사에도 적립할까요?',
+        miss.length + '건에 지금 봉사지에 적힌 1인당 금액을 넣어요. 모두 합쳐 ' + won(total) + ' 이 쌓여요.',
+        '적립하기')) return;
+      try {
+        for (const e of miss) await DB.events.update(e.id, { credit_per_person: creditOf(e.place) });
+        await reload();
+        toast(won(total) + ' 적립했어요', 'ok');
+      } catch (err) { toast(err.message || '적립하지 못했어요', 'err'); }
+    };
+    $$('#donatePanel [data-credit]').forEach(el => {
+      const open = () => creditSheet(el.dataset.credit);
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+    });
+  }
+
+  function creditSheet(place) {
+    const g = creditByPlace().find(x => x.place === place);
+    if (!g) return;
+    const ov = sheet({
+      title: place + ' 적립금',
+      body:
+        '<div class="acct" style="margin:0 0 16px"><div class="row between" style="align-items:flex-end">' +
+        '<div><div class="sm mut">아직 전달 안 한 금액</div>' +
+        '<div class="money" style="font-size:24px;color:var(--brand-deep)">' + won(g.left) + '</div></div>' +
+        '<div class="sm mut" style="text-align:right">적립 ' + won(g.saved) + '<br>전달 ' + won(g.paid) + '</div>' +
+        '</div></div>' +
+
+        '<div class="row between" style="margin-bottom:8px"><b class="sm">적립 내역 ' + g.rows.length + '건</b>' +
+        '<span class="mut" style="font-size:11.5px">인원 × 1인당</span></div>' +
+        (g.rows.length
+          ? '<div class="card flat" style="padding:4px 12px">' + g.rows.map(r =>
+            '<div class="kv"><span class="k">' + fmtDate(r.ev.date) + '</span>' +
+            '<span class="v">' + r.people + '명 × ' + num(r.per) + '원 = ' + won(r.amount) + '</span></div>').join('') +
+            '</div>'
+          : '<div class="mut sm">아직 적립된 봉사가 없어요</div>') +
+
+        '<div class="divider"></div>' +
+        '<div class="row between" style="margin-bottom:8px"><b class="sm">전달 내역 ' + g.pays.length + '건</b></div>' +
+        (g.pays.length
+          ? '<div class="list">' + g.pays.map(p =>
+            '<div class="item" data-pay="' + p.id + '" tabindex="0" role="button">' +
+            '<div class="grow"><div class="nm">' + won(p.amount) + '</div>' +
+            '<div class="sub"><span>' + fmtDate(p.date) + '</span>' +
+            (p.memo ? '<span>' + esc(p.memo) + '</span>' : '') + '</div></div>' +
+            '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
+          : '<div class="mut sm">아직 전달한 기록이 없어요</div>') +
+
+        '<div class="sp"></div>' +
+        '<div class="row" style="gap:8px">' +
+        '<button class="btn primary grow" data-newpay>전달 기록 추가</button>' +
+        '<button class="btn ghost" data-expcredit>엑셀</button></div>'
+    });
+
+    ov.querySelector('[data-newpay]').onclick = () => payoutSheet(place, null);
+    ov.querySelectorAll('[data-pay]').forEach(el =>
+      el.addEventListener('click', () => payoutSheet(place, byId(S.pays, el.dataset.pay))));
+    ov.querySelector('[data-expcredit]').onclick = () => {
+      const rows = g.rows.map(r => [fmtDate(r.ev.date), '적립', r.ev.title, r.people + '명', num(r.per), r.amount])
+        .concat(g.pays.map(p => [fmtDate(p.date), '전달', p.memo || '', '', '', -Number(p.amount || 0)]))
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      let bal = 0;
+      downloadCSV('발자국_적립금_' + place + '_' + dkey(new Date()) + '.csv',
+        ['날짜', '구분', '내용', '인원', '1인당', '금액', '잔액'],
+        rows.map(r => { bal += Number(r[5]) || 0; return r.concat([bal]); }));
+      toast('적립금 내역을 내려받았어요', 'ok');
+    };
+  }
+
+  function payoutSheet(place, row) {
+    const isNew = !row;
+    const g = creditByPlace().find(x => x.place === place) || { left: 0 };
+    const r = row || { amount: g.left > 0 ? g.left : '', date: DB.today(), memo: '' };
+
+    const ov = sheet({
+      title: isNew ? place + ' 전달 기록' : '전달 기록 고치기',
+      body:
+        (isNew && g.left > 0
+          ? '<div class="pill-note" style="margin-bottom:14px">남은 적립금 <b>' + won(g.left) + '</b> 만큼 미리 채워뒀어요. ' +
+            '나눠서 전달했다면 금액을 고쳐주세요.</div>' : '') +
+        '<label class="field"><span class="lb">전달한 금액</span>' +
+        '<input class="input" id="pyAmt" inputmode="numeric" value="' + (r.amount ? num(r.amount) : '') +
+        '" placeholder="0" style="font-family:var(--font-title);font-size:20px"></label>' +
+        '<label class="field"><span class="lb">날짜</span>' +
+        '<input class="input" type="date" id="pyDate" value="' + esc(String(r.date).slice(0, 10)) + '"></label>' +
+        '<label class="field"><span class="lb">내용 (선택)</span>' +
+        '<input class="input" id="pyMemo" maxlength="60" value="' + esc(r.memo || '') +
+        '" placeholder="예: 사료 10kg · 배변패드"></label>' +
+        (isNew
+          ? '<label class="check on" id="pyFin"><span class="box">' + ic('check') + '</span>' +
+            '<input type="checkbox" hidden checked><span class="sm">동아리 재정에도 지출로 기록하기</span></label>' +
+            '<div class="sp"></div>'
+          : '') +
+        (isNew ? '<button class="btn primary block" data-save>기록하기</button>'
+          : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
+            '<button class="btn primary grow" data-save>저장하기</button></div>')
+    });
+
+    const amt = ov.querySelector('#pyAmt');
+    amt.addEventListener('input', () => {
+      const v = String(amt.value).replace(/[^\d]/g, '');
+      amt.value = v ? num(v) : '';
+    });
+
+    const fin = ov.querySelector('#pyFin');
+    let finOn = true;
+    if (fin) fin.addEventListener('click', e => {
+      if (e.target.tagName !== 'INPUT') e.preventDefault();
+      finOn = !finOn;
+      fin.classList.toggle('on', finOn);
+      fin.querySelector('.box').innerHTML = finOn ? ic('check') : '';
+    });
+
+    ov.querySelector('[data-save]').onclick = async () => {
+      const amount = Number(String(amt.value).replace(/[^\d]/g, '')) || 0;
+      if (amount <= 0) return toast('금액을 적어주세요', 'err');
+      const date = ov.querySelector('#pyDate').value || DB.today();
+      const memo = ov.querySelector('#pyMemo').value.trim();
+      closeSheet();
+      try {
+        if (isNew) {
+          await DB.payouts.create({ place, amount, date, memo });
+          if (finOn) {
+            await DB.finance.create({
+              date, kind: 'expense',
+              category: place + ' 적립금 전달' + (memo ? ' · ' + memo : ''),
+              amount, memo: '', member_id: null
+            });
+          }
+        } else {
+          await DB.payouts.update(row.id, { amount, date, memo });
+        }
+        await reload();
+        toast(isNew ? '전달 기록을 남겼어요' : '저장했어요', 'ok');
+      } catch (e) { toast(e.message || '저장하지 못했어요', 'err'); }
+    };
+
+    const del = ov.querySelector('[data-del]');
+    if (del) del.onclick = async () => {
+      closeSheet();
+      if (!await confirmSheet('전달 기록을 지울까요?',
+        '적립금 잔액이 다시 늘어나요. 재정에 적은 지출은 따로 지워주세요.', '삭제', true)) return;
+      try { await DB.payouts.remove(row.id); await reload(); toast('지웠어요'); }
+      catch (e) { toast(e.message || '지우지 못했어요', 'err'); }
+    };
+  }
+
   function renderDonate() {
     const open = S.camps.filter(c => c.status !== 'closed');
     const closed = S.camps.filter(c => c.status === 'closed');
 
     $('#donatePanel').innerHTML =
+      creditPanel() +
+      '<div class="section-title">' + ic('heart') + '<span>브랜드 후원</span></div>' +
       (S.camps.length ? '' : emptyDonate()) +
       open.map(campCard).join('') +
       (closed.length ? '<div class="section-title">' + ic('clock') + '<span>지난 후원</span></div>' +
         closed.map(campCard).join('') : '') +
       '<button class="btn soft block" id="newCamp" style="margin-top:6px">' + ic('plus') + '<span>후원 만들기</span></button>';
 
+    wireCredits();
     $('#newCamp').onclick = () => campSheet(null);
     $$('#donatePanel [data-camp]').forEach(el => el.addEventListener('click', e => {
       if (e.target.closest('[data-add]') || e.target.closest('[data-detail]')) return;
@@ -2193,9 +2458,13 @@
       '<div class="sp"></div><div id="placeList"></div>' +
       '<div class="grid2" style="margin-top:10px">' +
       '<label class="field" style="margin-bottom:0"><span class="lb">봉사지 이름</span>' +
-      '<input class="input" id="newPlace" placeholder="천사들의 보금자리"></label>' +
+      '<input class="input" id="newPlace" placeholder="보호소 이름"></label>' +
       '<label class="field" style="margin-bottom:0"><span class="lb">소재지</span>' +
       '<input class="input" id="newArea" placeholder="경기 광주"></label></div>' +
+      '<label class="field" style="margin:10px 0 0"><span class="lb">1인당 적립금</span>' +
+      '<input class="input" type="number" min="0" step="500" id="newCredit" placeholder="예: 2000">' +
+      '<span class="hint">봉사를 확정하면 참여 인원 × 이 금액이 그 보호소 앞으로 쌓여요. ' +
+      '물품을 직접 지원하는 곳은 비워두세요.</span></label>' +
       '<button class="btn soft block" id="addPlace" type="button" style="margin-top:10px">추가</button></div>' +
 
       '<div class="card"><h3>승인 옵션</h3><div class="sp"></div>' +
@@ -2243,7 +2512,8 @@
       $('#placeList').innerHTML = list.map((pl, i) =>
         '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
         '<div><span class="sm"><b>' + esc(pl.name) + '</b>' + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
-        (pl.area ? '<div class="mut" style="font-size:11.5px">' + esc(pl.area) + '</div>' : '') + '</div>' +
+        '<div class="mut" style="font-size:11.5px">' + (pl.area ? esc(pl.area) + ' · ' : '') +
+        (pl.credit ? '1인당 ' + num(pl.credit) + '원 적립' : '적립 없음') + '</div></div>' +
         '<div class="row" style="gap:6px">' +
         '<button class="iconbtn" data-edpl="' + i + '" aria-label="소재지 고치기" ' +
         'style="width:30px;height:30px;border-radius:10px">' + ic('edit') + '</button>' +
@@ -2263,6 +2533,10 @@
             '<input class="input" id="plName" value="' + esc(cur.name) + '"></label>' +
             '<label class="field"><span class="lb">소재지</span>' +
             '<input class="input" id="plArea" value="' + esc(cur.area) + '" placeholder="경기 광주"></label>' +
+            '<label class="field"><span class="lb">1인당 적립금</span>' +
+            '<input class="input" type="number" min="0" step="500" id="plCredit" value="' +
+            (cur.credit || '') + '" placeholder="예: 2000">' +
+            '<span class="hint">봉사를 확정하면 참여 인원 × 이 금액이 쌓여요. 비워두면 적립하지 않아요.</span></label>' +
             '<button class="btn primary block" data-save>저장하기</button>'
         });
         ov.querySelector('[data-save]').onclick = async () => {
@@ -2270,7 +2544,7 @@
           if (!name) return toast('봉사지 이름을 적어주세요', 'err');
           const area = ov.querySelector('#plArea').value.trim();
           const next = volPlaces();
-          next[i] = { name, area };
+          next[i] = { name, area, credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0) };
           closeSheet();
           await save({ places: next, place: next[0].name });
           paintPlaces(); toast('저장했어요', 'ok');
@@ -2283,9 +2557,12 @@
       if (!v) return toast('봉사지 이름을 적어주세요', 'err');
       const list = volPlaces();
       if (list.some(x => x.name === v)) return toast('이미 있는 봉사지예요', 'err');
-      const next = list.concat([{ name: v, area: $('#newArea').value.trim() }]);
+      const next = list.concat([{
+        name: v, area: $('#newArea').value.trim(),
+        credit: Math.max(0, Number($('#newCredit').value) || 0)
+      }]);
       await save({ places: next, place: next[0].name });
-      $('#newPlace').value = ''; $('#newArea').value = '';
+      $('#newPlace').value = ''; $('#newArea').value = ''; $('#newCredit').value = '';
       paintPlaces(); toast(v + ' 추가했어요', 'ok');
     };
 

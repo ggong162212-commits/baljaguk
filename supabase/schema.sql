@@ -590,3 +590,34 @@ grant execute on function id1365_submit(text, text, date, text, text) to anon, a
 --  · 확정을 풀면 실적에서 빠지고 명단은 그대로 남는다.
 -- ============================================================
 alter table events add column if not exists confirmed_at timestamptz;
+
+-- ============================================================
+--  보호소 적립금
+--  · 봉사를 확정하면 (참여 인원 × 1인당 적립금) 만큼 그 보호소 앞으로 쌓인다.
+--  · 적립액은 따로 저장하지 않고 확정된 봉사에서 그때그때 계산한다
+--    (명단을 고치면 금액도 같이 따라간다). 1인당 금액만 확정 시점에 박아둔다.
+--  · 실제로 물품을 사서 전달하면 shelter_payouts 에 기록해 잔액에서 뺀다.
+-- ============================================================
+alter table events add column if not exists credit_per_person integer;
+
+create table if not exists shelter_payouts (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  place      text not null,                 -- 보호소(봉사지) 이름
+  amount     integer not null,
+  date       date not null default current_date,
+  memo       text
+);
+create index if not exists shelter_payouts_place_idx on shelter_payouts (place, date desc);
+
+alter table shelter_payouts enable row level security;
+drop policy if exists "payouts admin" on shelter_payouts;
+create policy "payouts admin" on shelter_payouts for all to authenticated using (true) with check (true);
+
+do $$
+begin
+  begin
+    execute 'alter publication supabase_realtime add table public.shelter_payouts';
+  exception when duplicate_object then null;
+  end;
+end $$;
