@@ -916,14 +916,11 @@
     const d = new Date(e.date + 'T00:00:00');
     const area = areaOf(e.place);
     const t = e.start_time ? timeLabel(e.start_time) : '';
-    // 안내 문구는 말머리 없이 한 칸 띄워서 따로 보여준다 (적은 그대로 나감)
-    const note = String(e.note || '').trim();
     return '🐾 ' + (e.place || '봉사') + ' 봉사 신청받아요\n\n' +
       '📍 장소 : ' + (e.place || '') + (area ? ' (' + area + ')' : '') + '\n' +
       '📅 날짜 : ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일(' + weekday(e.date) + ')\n' +
       (t ? '⏰ 시간 : ' + t + '\n' : '') +
       (e.capacity ? '👥 선착순 ' + e.capacity + '명\n' : '') +
-      (note ? '\n' + note + '\n' : '') +
       '\n아래 링크로 신청해주세요\n' + signupURL(e.id);
   }
   function timeLabel(t) {
