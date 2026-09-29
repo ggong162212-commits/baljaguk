@@ -923,8 +923,19 @@
       '📅 날짜 : ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일(' + weekday(e.date) + ')\n' +
       (t ? '⏰ 시간 : ' + t + '\n' : '') +
       (e.capacity ? '👥 선착순 ' + e.capacity + '명\n' : '') +
+      (e.signup_open_at && Date.parse(e.signup_open_at) > Date.now()
+        ? '🔔 신청 오픈 : ' + openLabel(e.signup_open_at) + '\n' : '') +
       (addressOf(e.place) ? '\n📍 상세 주소 : ' + addressOf(e.place) + '\n' : '') +
       '\n아래 링크로 신청해주세요\n' + signupURL(e.id);
+  }
+  /* 폼이 열리는 시각 — 10월 1일(수) 오후 7시 */
+  function openLabel(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const p2 = n => String(n).padStart(2, '0');
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일(' +
+      ['일', '월', '화', '수', '목', '금', '토'][d.getDay()] + ') ' +
+      timeLabel(p2(d.getHours()) + ':' + p2(d.getMinutes()));
   }
   function timeLabel(t) {
     const [h, m] = String(t).split(':');
