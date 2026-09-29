@@ -8,7 +8,7 @@
 
   const EV = new URLSearchParams(location.search).get('e') || '';
   const MINE = 'baljaguk.vol.' + EV;      // 이 기기에서 신청한 이름
-  let ev = null, timer = null;
+  let ev = null, timer = null, settings = null;
 
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', boot);
@@ -23,7 +23,6 @@
     $('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
     UI.paintThemeButtons();
 
-    let settings = null;
     try { settings = await DB.settings.get(); } catch (e) { }
     if (settings) {
       $('#brandName').textContent = settings.club_name || '발자국';
@@ -34,6 +33,14 @@
     await load();
     wire();
     setInterval(load, 15000);   // 남은 자리를 계속 맞춰준다
+  }
+  /* 봉사지에 적어둔 상세 주소 (설정에서 관리) */
+  function addressOf(place) {
+    let list = (settings || {}).places;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
+    if (!Array.isArray(list)) return '';
+    const hit = list.find(x => x && typeof x === 'object' && x.name === place);
+    return (hit && hit.address) || '';
   }
   const circle = (name, bg) =>
     '<span style="width:54px;height:54px;border-radius:50%;background:' + bg +
@@ -78,6 +85,7 @@
     $('#evDetail').innerHTML =
       row2('날짜', fmtDate(ev.date) + ' (' + weekday(ev.date) + ')') +
       row2('장소', ev.place || '-') +
+      (addressOf(ev.place) ? row2('주소', addressOf(ev.place)) : '') +
       (ev.start_time ? row2('시간', timeLabel(ev.start_time)) : '') +
       row2('인원', st.cap ? st.taken + ' / ' + st.cap + '명' : st.taken + '명 신청');
     $('#evNote').innerHTML = ev.note

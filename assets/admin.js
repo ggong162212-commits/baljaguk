@@ -901,14 +901,16 @@
     let list = s.places;
     if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
     if (!Array.isArray(list) || !list.length) list = [s.place || '천보금 보호소'];
-    return list.map(x => (typeof x === 'string' ? { name: x, area: '', credit: 0 } : {
+    return list.map(x => (typeof x === 'string' ? { name: x, area: '', address: '', credit: 0 } : {
       name: String((x && x.name) || ''), area: String((x && x.area) || ''),
+      address: String((x && x.address) || ''),
       credit: Math.max(0, Number((x && x.credit) || 0) || 0)
     })).filter(x => x.name);
   }
   const volPlaceNames = () => volPlaces().map(x => x.name);
   const volPlace = () => (volPlaces()[0] || {}).name || '천보금 보호소';
   const areaOf = (name) => ((volPlaces().find(x => x.name === name) || {}).area || '');
+  const addressOf = (name) => ((volPlaces().find(x => x.name === name) || {}).address || '');
   /* 그 봉사지의 1인당 적립금 (0이면 적립하지 않는 곳) */
   const creditOf = (name) => Number((volPlaces().find(x => x.name === name) || {}).credit || 0) || 0;
   const signupURL = (id) => new URL('volunteer.html?e=' + id, location.href).href;
@@ -921,6 +923,7 @@
       '📅 날짜 : ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일(' + weekday(e.date) + ')\n' +
       (t ? '⏰ 시간 : ' + t + '\n' : '') +
       (e.capacity ? '👥 선착순 ' + e.capacity + '명\n' : '') +
+      (addressOf(e.place) ? '\n📍 상세 주소 : ' + addressOf(e.place) + '\n' : '') +
       '\n아래 링크로 신청해주세요\n' + signupURL(e.id);
   }
   function timeLabel(t) {
@@ -2460,6 +2463,9 @@
       '<input class="input" id="newPlace" placeholder="보호소 이름"></label>' +
       '<label class="field" style="margin-bottom:0"><span class="lb">소재지</span>' +
       '<input class="input" id="newArea" placeholder="경기 광주"></label></div>' +
+      '<label class="field" style="margin:10px 0 0"><span class="lb">상세 주소</span>' +
+      '<input class="input" id="newAddr" placeholder="서울 동대문구 제기로21길 59-6, 2층">' +
+      '<span class="hint">봉사 공지와 신청 폼에 그대로 들어가요.</span></label>' +
       '<label class="field" style="margin:10px 0 0"><span class="lb">1인당 적립금</span>' +
       '<input class="input" type="number" min="0" step="500" id="newCredit" placeholder="예: 2000">' +
       '<span class="hint">봉사를 확정하면 참여 인원 × 이 금액이 그 보호소 앞으로 쌓여요. ' +
@@ -2512,7 +2518,8 @@
         '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
         '<div><span class="sm"><b>' + esc(pl.name) + '</b>' + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
         '<div class="mut" style="font-size:11.5px">' + (pl.area ? esc(pl.area) + ' · ' : '') +
-        (pl.credit ? '1인당 ' + num(pl.credit) + '원 적립' : '적립 없음') + '</div></div>' +
+        (pl.credit ? '1인당 ' + num(pl.credit) + '원 적립' : '적립 없음') +
+        (pl.address ? '<br>' + esc(pl.address) : '') + '</div></div>' +
         '<div class="row" style="gap:6px">' +
         '<button class="iconbtn" data-edpl="' + i + '" aria-label="소재지 고치기" ' +
         'style="width:30px;height:30px;border-radius:10px">' + ic('edit') + '</button>' +
@@ -2532,6 +2539,8 @@
             '<input class="input" id="plName" value="' + esc(cur.name) + '"></label>' +
             '<label class="field"><span class="lb">소재지</span>' +
             '<input class="input" id="plArea" value="' + esc(cur.area) + '" placeholder="경기 광주"></label>' +
+            '<label class="field"><span class="lb">상세 주소</span>' +
+            '<input class="input" id="plAddr" value="' + esc(cur.address) + '" placeholder="서울 동대문구 제기로21길 59-6, 2층"></label>' +
             '<label class="field"><span class="lb">1인당 적립금</span>' +
             '<input class="input" type="number" min="0" step="500" id="plCredit" value="' +
             (cur.credit || '') + '" placeholder="예: 2000">' +
@@ -2543,7 +2552,11 @@
           if (!name) return toast('봉사지 이름을 적어주세요', 'err');
           const area = ov.querySelector('#plArea').value.trim();
           const next = volPlaces();
-          next[i] = { name, area, credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0) };
+          next[i] = {
+            name, area,
+            address: ov.querySelector('#plAddr').value.trim(),
+            credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0)
+          };
           closeSheet();
           await save({ places: next, place: next[0].name });
           paintPlaces(); toast('저장했어요', 'ok');
@@ -2558,10 +2571,12 @@
       if (list.some(x => x.name === v)) return toast('이미 있는 봉사지예요', 'err');
       const next = list.concat([{
         name: v, area: $('#newArea').value.trim(),
+        address: $('#newAddr').value.trim(),
         credit: Math.max(0, Number($('#newCredit').value) || 0)
       }]);
       await save({ places: next, place: next[0].name });
-      $('#newPlace').value = ''; $('#newArea').value = ''; $('#newCredit').value = '';
+      $('#newPlace').value = ''; $('#newArea').value = '';
+      $('#newAddr').value = ''; $('#newCredit').value = '';
       paintPlaces(); toast(v + ' 추가했어요', 'ok');
     };
 
