@@ -622,10 +622,17 @@ begin
   end;
 end $$;
 -- ============================================================
---  후원금 현황 공개 (fund.html) — 참여자 이름 포함
+--  후원금 현황 공개 (fund.html)
 --  · 금액 · 인원수 · 참여자 이름까지. 연락처·학번은 내려주지 않는다.
---  · 함께한 사람들은 적립 없는 봉사(천보금 등)까지 모두 센다.
+--  · 이름은 적립이 쌓이는 봉사지(1인당 금액 > 0)에 다녀온 사람만.
+--  · 전달 기록에 사진을 붙일 수 있고, 사진은 목록에 싣지 않고 따로 받아간다.
 -- ============================================================
+
+-- 전달 기록 사진 (축소된 data URL)
+alter table shelter_payouts add column if not exists photo text;
+alter table shelter_payouts add column if not exists has_photo boolean
+  generated always as (photo is not null and photo <> '') stored;
+
 create or replace function public_funds()
 returns json
 language sql
@@ -683,7 +690,7 @@ select json_build_object(
                 from (select date, place, people, per, amount, names
                         from rows_ order by date desc, place limit 100) y),
   'payouts', (select coalesce(json_agg(row_to_json(z)), '[]'::json)
-                from (select date, place, amount, memo
+                from (select id, date, place, amount, memo, coalesce(has_photo, false) as has_photo
                         from shelter_payouts order by date desc limit 50) z),
   'campaigns', (select coalesce(json_agg(row_to_json(c)), '[]'::json)
                   from (select c.title, c.partner, c.goal, c.starts_on, c.ends_on, c.status,
@@ -694,5 +701,18 @@ select json_build_object(
 );
 $$;
 
+-- 전달 사진 한 장만 따로 받아가기 (목록에는 안 싣는다)
+create or replace function public_payout_photo(p_id uuid)
+returns text
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select photo from shelter_payouts where id = p_id;
+$$;
+
 revoke all on function public_funds() from public;
+revoke all on function public_payout_photo(uuid) from public;
 grant execute on function public_funds() to anon, authenticated;
+grant execute on function public_payout_photo(uuid) to anon, authenticated;

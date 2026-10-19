@@ -210,7 +210,8 @@
     donations: table('donations', 'date.desc'),
     surveys: table('survey_responses', 'created_at.desc'),
     id1365: table('member_1365', 'name.asc'),
-    payouts: table('shelter_payouts', 'date.desc'),
+    payouts: table('shelter_payouts', 'date.desc',
+      'id,created_at,place,amount,date,memo,has_photo'),
 
     /* 이번 학기 설문 회차 */
     surveyTopic: () => C.SURVEY_TOPIC || '2026-2',
@@ -275,7 +276,11 @@
           total_helpers: helpers.length,
           total_visits: helpers.reduce((t, h) => t + h.times, 0),
           helpers,
-          places, entries: rows, payouts: pays,
+          places, entries: rows,
+          payouts: pays.map(p => ({
+            id: p.id, date: p.date, place: p.place, amount: p.amount,
+            memo: p.memo, has_photo: !!p.photo
+          })),
           campaigns: (d.campaigns || []).map(c => Object.assign({}, c, {
             raised: (d.donations || []).filter(x => x.campaign_id === c.id)
               .reduce((t, x) => t + (Number(x.amount) || 0), 0),
@@ -568,14 +573,25 @@
     },
 
     /* 사진 한 장만 따로 받아오기 */
-    async getReceipt(table, id) {
+    async getReceipt(table, id, col) {
+      col = col || 'receipt';
       if (!HAS_SB) {
         const d = demoRead();
         const row = (d[table] || []).find(x => x.id === id);
-        return (row && row.receipt) || '';
+        return (row && row[col]) || '';
       }
-      const rows = await rest(table + '?select=receipt&id=eq.' + enc(id));
-      return (rows && rows[0] && rows[0].receipt) || '';
+      const rows = await rest(table + '?select=' + col + '&id=eq.' + enc(id));
+      return (rows && rows[0] && rows[0][col]) || '';
+    },
+
+    /* 전달 기록 사진 — 공개 페이지에서도 한 장씩 받아간다 */
+    async payoutPhoto(id) {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const row = (d.shelter_payouts || []).find(x => x.id === id);
+        return (row && row.photo) || '';
+      }
+      return await rest('rpc/public_payout_photo', { method: 'POST', body: { p_id: id } }) || '';
     },
 
     resetDemo() { localStorage.removeItem(DKEY); localStorage.removeItem('baljaguk.demoAuth'); },

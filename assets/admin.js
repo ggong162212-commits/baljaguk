@@ -2062,7 +2062,8 @@
             '<div class="item" data-pay="' + p.id + '" tabindex="0" role="button">' +
             '<div class="grow"><div class="nm">' + won(p.amount) + '</div>' +
             '<div class="sub"><span>' + fmtDate(p.date) + '</span>' +
-            (p.memo ? '<span>' + esc(p.memo) + '</span>' : '') + '</div></div>' +
+            (p.memo ? '<span>' + esc(p.memo) + '</span>' : '') +
+            (p.has_photo ? '<span style="color:var(--brand-deep)">사진</span>' : '') + '</div></div>' +
             '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
           : '<div class="mut sm">아직 전달한 기록이 없어요</div>') +
 
@@ -2106,6 +2107,16 @@
         '<label class="field"><span class="lb">내용 (선택)</span>' +
         '<input class="input" id="pyMemo" maxlength="60" value="' + esc(r.memo || '') +
         '" placeholder="예: 사료 10kg · 배변패드"></label>' +
+        '<div class="field"><span class="lb">전달 사진 <span class="mut" style="font-weight:400">(선택)</span></span>' +
+        '<div class="dropzone" id="pyDrop" tabindex="0" role="button" aria-label="전달 사진 첨부">' +
+        '<div id="pyIdle"' + (r.has_photo ? ' hidden' : '') + '><div class="big">' + ic('image') + '</div>' +
+        '<div class="sm mut" style="margin-top:4px">물품 사진을 올리면 공개 현황 페이지에 같이 보여요</div></div>' +
+        '<div id="pyDone"' + (r.has_photo ? '' : ' hidden') + '>' +
+        '<img id="pyPrev" alt="전달 사진">' +
+        '<div class="sm mut" style="margin-top:6px">다시 탭하면 바꿀 수 있어요</div></div></div>' +
+        '<input type="file" id="pyFile" accept="image/*" hidden>' +
+        '<button type="button" class="btn ghost sm block" id="pyClear" style="margin-top:8px"' +
+        (r.has_photo ? '' : ' hidden') + '>사진 지우기</button></div>' +
         (isNew
           ? '<label class="check on" id="pyFin"><span class="box">' + ic('check') + '</span>' +
             '<input type="checkbox" hidden checked><span class="sm">동아리 재정에도 지출로 기록하기</span></label>' +
@@ -2114,6 +2125,40 @@
         (isNew ? '<button class="btn primary block" data-save>기록하기</button>'
           : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
             '<button class="btn primary grow" data-save>저장하기</button></div>')
+    });
+
+    /* 사진 — 올린 그대로 두면 용량이 커서 1280px 로 줄여 넣는다 */
+    let photo = '';
+    let photoLoaded = !r.has_photo;
+    if (r.has_photo) {
+      DB.getReceipt('shelter_payouts', row.id, 'photo').then(src => {
+        photo = src || ''; photoLoaded = true;
+        const img = ov.querySelector('#pyPrev'); if (img) img.src = photo;
+      }).catch(() => { photoLoaded = true; });
+    }
+    const pdrop = ov.querySelector('#pyDrop');
+    const pfile = ov.querySelector('#pyFile');
+    const pclr = ov.querySelector('#pyClear');
+    pdrop.addEventListener('click', () => pfile.click());
+    pdrop.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pfile.click(); }
+    });
+    pfile.addEventListener('change', async () => {
+      const x = pfile.files[0]; if (!x) return;
+      try {
+        photo = await UI.resizeImage(x, 1280, .72);
+        photoLoaded = true;
+        ov.querySelector('#pyPrev').src = photo;
+        ov.querySelector('#pyIdle').hidden = true;
+        ov.querySelector('#pyDone').hidden = false;
+        pclr.hidden = false;
+      } catch (e) { toast(e.message || '사진을 처리하지 못했어요', 'err'); }
+    });
+    pclr.addEventListener('click', e => {
+      e.stopPropagation(); photo = ''; photoLoaded = true; pfile.value = '';
+      ov.querySelector('#pyIdle').hidden = false;
+      ov.querySelector('#pyDone').hidden = true;
+      pclr.hidden = true;
     });
 
     const amt = ov.querySelector('#pyAmt');
@@ -2138,8 +2183,10 @@
       const memo = ov.querySelector('#pyMemo').value.trim();
       closeSheet();
       try {
+        const patch = { place, amount, date, memo };
+        if (photoLoaded) patch.photo = photo || null;
         if (isNew) {
-          await DB.payouts.create({ place, amount, date, memo });
+          await DB.payouts.create(patch);
           if (finOn) {
             await DB.finance.create({
               date, kind: 'expense',
@@ -2148,7 +2195,8 @@
             });
           }
         } else {
-          await DB.payouts.update(row.id, { amount, date, memo });
+          delete patch.place;
+          await DB.payouts.update(row.id, patch);
         }
         await reload();
         toast(isNew ? '전달 기록을 남겼어요' : '저장했어요', 'ok');
