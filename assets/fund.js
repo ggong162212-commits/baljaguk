@@ -1,12 +1,16 @@
 /* ============================================================
    후원금 현황 (fund.html)
    · 부원·외부에 그대로 공유하는 공개 페이지
-   · 금액과 인원수만 보여준다 — 이름·연락처는 서버에서 아예 안 내려온다
+   · 금액 · 인원수 · 참여자 이름까지. 연락처·학번은 서버에서 안 내려온다
    ============================================================ */
 (function () {
   const { $, $$, esc, won, num, fmtDate, fmtDateTime } = UI;
 
+  const OPEN = 'baljaguk.fund.entriesOpen';
   let data = null;
+  let entriesOpen = false;
+
+  try { entriesOpen = localStorage.getItem(OPEN) === '1'; } catch (e) { }
 
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', boot);
@@ -53,6 +57,7 @@
   }
 
   const int = v => Number(v) || 0;
+  const names = r => (r && Array.isArray(r.names)) ? r.names : [];
 
   function paint() {
     const saved = int(data.total_saved);
@@ -85,6 +90,28 @@
       '그 보호소 앞으로 적립돼요.<br>' +
       '모인 돈은 사료·배변패드처럼 보호소에 필요한 물품으로 전달합니다.' +
       '</div>';
+
+    /* ---------- 함께한 사람들 ---------- */
+    const helpers = data.helpers || [];
+    const visits = int(data.total_visits);
+    $('#helperList').innerHTML = helpers.length
+      ? '<div class="section-title">' + ic('users') + '<span>함께한 사람들</span></div>' +
+        '<div class="card">' +
+        '<div class="sm mut" style="margin-bottom:12px">' +
+        '<b style="color:var(--ink)">' + helpers.length + '명</b>이 모두 <b style="color:var(--ink)">' +
+        visits + '번</b> 봉사에 다녀왔어요.</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:7px">' +
+        helpers.map(h =>
+          '<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);' +
+          'border-radius:999px;padding:6px 12px;font-size:13.5px;font-weight:600">' +
+          esc(h.name) +
+          (int(h.times) > 1
+            ? '<span style="background:var(--brand-soft);color:var(--brand-deep);border-radius:999px;' +
+              'padding:0 7px;font-size:11.5px">' + h.times + '번</span>'
+            : '') +
+          '</span>').join('') +
+        '</div></div>'
+      : '';
 
     /* ---------- 보호소별 ---------- */
     const places = data.places || [];
@@ -125,17 +152,39 @@
         }).join('') + '<div class="sp"></div>'
       : '';
 
-    /* ---------- 적립 내역 ---------- */
+    /* ---------- 봉사별 적립 내역 (접었다 펴기) ---------- */
     const entries = data.entries || [];
+    const shown = entries.slice(0, 30);
     $('#entryList').innerHTML =
       '<div class="section-title">' + ic('calendar') + '<span>봉사별 적립 내역</span></div>' +
       (entries.length
-        ? '<div class="card flat" style="padding:4px 12px">' + entries.slice(0, 30).map(r =>
-            '<div class="kv"><span class="k">' + fmtDate(r.date) + ' · ' + esc(r.place) + '</span>' +
-            '<span class="v">' + r.people + '명 × ' + num(r.per) + '원 = ' + won(r.amount) + '</span></div>').join('') +
-          '</div>' +
-          (entries.length > 30 ? '<div class="sm mut center" style="margin-top:8px">최근 30건만 보여요</div>' : '')
+        ? '<button type="button" class="foldbtn' + (entriesOpen ? ' on' : '') + '" id="entryFold">' +
+          '<span>' + (entriesOpen ? '접기' : '자세히 보기 (' + entries.length + '건)') + '</span>' + ic('down') + '</button>' +
+          '<div id="entryBody" style="margin-top:12px"' + (entriesOpen ? '' : ' hidden') + '>' +
+          '<div class="card" style="padding:4px 16px">' + shown.map((r, i) =>
+            '<div style="padding:12px 0' + (i < shown.length - 1 ? ';border-bottom:1px solid var(--line-2)' : '') + '">' +
+            '<div class="row between"><b class="sm">' + fmtDate(r.date) + ' · ' + esc(r.place) + '</b>' +
+            '<span class="money" style="color:var(--brand-deep)">' + won(r.amount) + '</span></div>' +
+            '<div class="sm mut" style="margin-top:3px">' + r.people + '명 × ' + num(r.per) + '원</div>' +
+            (names(r).length
+              ? '<div class="sm" style="margin-top:5px;line-height:1.6">' +
+                names(r).map(n => esc(n)).join(', ') + '</div>'
+              : '') +
+            '</div>').join('') + '</div>' +
+          (entries.length > 30 ? '<div class="sm mut center" style="margin-top:8px">최근 30건만 보여요</div>' : '') +
+          '</div>'
         : '<div class="card empty" style="padding:24px 20px">아직 적립된 봉사가 없어요</div>');
+
+    const fold = $('#entryFold');
+    if (fold) fold.onclick = () => {
+      entriesOpen = !entriesOpen;
+      try { localStorage.setItem(OPEN, entriesOpen ? '1' : '0'); } catch (e) { }
+      const body = $('#entryBody');
+      body.hidden = !entriesOpen;
+      fold.classList.toggle('on', entriesOpen);
+      fold.querySelector('span').textContent =
+        entriesOpen ? '접기' : '자세히 보기 (' + entries.length + '건)';
+    };
 
     /* ---------- 전달 내역 ---------- */
     const payouts = data.payouts || [];

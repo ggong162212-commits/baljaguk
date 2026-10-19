@@ -242,9 +242,11 @@
         const rows = (d.events || [])
           .filter(e => e.confirmed_at && Number(e.credit_per_person) > 0)
           .map(e => {
-            const people = (d.attendance || []).filter(a => a.event_id === e.id).length;
+            const att = (d.attendance || []).filter(a => a.event_id === e.id);
+            const nameOf = id => ((d.members || []).find(m => m.id === id) || {}).name;
+            const names = att.map(a => nameOf(a.member_id)).filter(Boolean).sort();
             const per = Number(e.credit_per_person);
-            return { date: e.date, place: e.place, people, per, amount: people * per };
+            return { date: e.date, place: e.place, people: att.length, per, amount: att.length * per, names };
           })
           .filter(r => r.people > 0)
           .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -257,10 +259,22 @@
           map[k].remain = map[k].saved - map[k].paid;
           return map[k];
         }).sort((a, b) => b.remain - a.remain);
+        const tally = {};
+        (d.events || []).filter(e => e.confirmed_at).forEach(e => {
+          (d.attendance || []).filter(a => a.event_id === e.id).forEach(a => {
+            const m = (d.members || []).find(x => x.id === a.member_id);
+            if (m) tally[m.name] = (tally[m.name] || 0) + 1;
+          });
+        });
+        const helpers = Object.keys(tally).map(n => ({ name: n, times: tally[n] }))
+          .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name, 'ko'));
         return {
           generated_at: new Date().toISOString(),
           total_saved: places.reduce((t, p) => t + p.saved, 0),
           total_paid: places.reduce((t, p) => t + p.paid, 0),
+          total_helpers: helpers.length,
+          total_visits: helpers.reduce((t, h) => t + h.times, 0),
+          helpers,
           places, entries: rows, payouts: pays,
           campaigns: (d.campaigns || []).map(c => Object.assign({}, c, {
             raised: (d.donations || []).filter(x => x.campaign_id === c.id)

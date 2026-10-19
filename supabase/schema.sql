@@ -621,11 +621,10 @@ begin
   exception when duplicate_object then null;
   end;
 end $$;
-
 -- ============================================================
---  후원금 현황 공개 (fund.html)
---  · 부원·외부에 공유하는 링크에서 쓰는 집계 함수
---  · 이름·연락처 같은 개인정보는 내려주지 않는다 (금액·인원수만)
+--  후원금 현황 공개 (fund.html) — 참여자 이름 포함
+--  · 금액 · 인원수 · 참여자 이름까지. 연락처·학번은 내려주지 않는다.
+--  · 함께한 사람들은 적립 없는 봉사(천보금 등)까지 모두 센다.
 -- ============================================================
 create or replace function public_funds()
 returns json
@@ -635,15 +634,18 @@ set search_path = public
 stable
 as $$
 with ent as (
-  select e.date, e.place,
+  select e.id, e.date, e.place,
          (select count(*)::int from attendance a where a.event_id = e.id) as people,
-         coalesce(e.credit_per_person, 0)::int as per
+         coalesce(e.credit_per_person, 0)::int as per,
+         (select coalesce(array_agg(m.name order by m.name), '{}')
+            from attendance a join members m on m.id = a.member_id
+           where a.event_id = e.id) as names
     from events e
    where e.confirmed_at is not null
      and coalesce(e.credit_per_person, 0) > 0
 ),
 rows_ as (
-  select date, place, people, per, (people * per)::int as amount
+  select date, place, people, per, (people * per)::int as amount, names
     from ent where people > 0
 ),
 saved as (select place, sum(amount)::int as saved from rows_ group by place),
@@ -655,15 +657,31 @@ places as (
          coalesce(s.saved, 0) - coalesce(p.paid, 0) as remain
     from saved s
     full outer join paid p on p.place = s.place
+),
+-- 확정된 봉사 전부 (적립이 없는 곳도 포함)
+joined as (
+  select m.id as mid, m.name
+    from events e
+    join attendance a on a.event_id = e.id
+    join members m    on m.id = a.member_id
+   where e.confirmed_at is not null
+),
+helpers as (
+  select name, count(*)::int as times
+    from joined group by mid, name
 )
 select json_build_object(
   'generated_at', now(),
   'total_saved', (select coalesce(sum(saved), 0) from places),
   'total_paid',  (select coalesce(sum(paid), 0)  from places),
+  'total_helpers', (select count(*)::int from helpers),
+  'total_visits',  (select count(*)::int from joined),
   'places',  (select coalesce(json_agg(row_to_json(x) order by x.remain desc, x.place), '[]'::json)
                 from places x),
+  'helpers', (select coalesce(json_agg(row_to_json(h) order by h.times desc, h.name), '[]'::json)
+                from helpers h),
   'entries', (select coalesce(json_agg(row_to_json(y)), '[]'::json)
-                from (select date, place, people, per, amount
+                from (select date, place, people, per, amount, names
                         from rows_ order by date desc, place limit 100) y),
   'payouts', (select coalesce(json_agg(row_to_json(z)), '[]'::json)
                 from (select date, place, amount, memo
