@@ -12,6 +12,15 @@
   /* 로그인하고 돌아올 주소 — 주소에 ? 나 # 가 붙어 있어도 깨끗한 쪽으로 */
   const backHere = () => location.origin + location.pathname;
 
+  /* 지금 몇 단계인지 — 처음 오는 사람이 길을 잃지 않게 */
+  const steps = n =>
+    '<div class="steps" style="margin:0 2px 14px">' +
+    '<i class="' + (n >= 1 ? 'on' : '') + '"></i>' +
+    '<i class="' + (n >= 2 ? 'on' : '') + '"></i></div>' +
+    '<div class="row" style="justify-content:space-between;margin:-10px 4px 14px;font-size:12px">' +
+    '<span style="' + (n >= 1 ? 'color:var(--brand-deep);font-weight:700' : 'color:var(--ink-3)') + '">1 카카오 로그인</span>' +
+    '<span style="' + (n >= 2 ? 'color:var(--brand-deep);font-weight:700' : 'color:var(--ink-3)') + '">2 본인 확인</span></div>';
+
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', boot);
 
@@ -45,12 +54,21 @@
     $('#headLead').textContent = '발자국 구성원만 쓸 수 있는 공간이에요.';
     paint(
       (err ? '<div class="pill-note">' + esc(err) + '</div>' : '') +
+      steps(0) +
       '<div class="card mecard">' +
       '<span class="big" style="background:var(--brand-soft);color:var(--brand-deep)">' + ic('paw') + '</span>' +
       '<h3 style="margin-top:14px;font-size:19px">카카오로 시작하기</h3>' +
       '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
-      '내 봉사 기록과 적립 내역을 볼 수 있어요.<br>처음 한 번만 본인 확인을 합니다.</p>' +
-      '<div style="margin-top:18px"><button class="kakao" id="go">' + KAKAO +
+      '내 봉사 기록과 적립 내역을 볼 수 있어요.</p>' +
+      '<div class="card flat" style="margin-top:16px;text-align:left;padding:14px 16px">' +
+      '<div class="sm" style="font-weight:700;margin-bottom:8px">두 단계면 끝나요</div>' +
+      '<div class="sm mut" style="line-height:1.9">' +
+      '<b style="color:var(--brand-deep)">1</b> 카카오로 로그인하고<br>' +
+      '<b style="color:var(--brand-deep)">2</b> 이름과 휴대폰 뒤 4자리로 본인 확인</div>' +
+      '<div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.6">' +
+      '카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인해요. 다음부터는 카카오 로그인만 하면 바로 들어와요.</div>' +
+      '</div>' +
+      '<div style="margin-top:16px"><button class="kakao" id="go">' + KAKAO +
       '<span>카카오로 로그인</span></button></div>' +
       '<p class="mut" style="font-size:11.5px;margin-top:12px">닉네임만 받아와요. 카카오톡 친구목록이나 메시지는 보지 않습니다.</p>' +
       '</div>');
@@ -59,11 +77,16 @@
 
   /* ---------- ② 로그인했지만 아직 명부와 안 이어짐 ---------- */
   function paintClaim() {
-    $('#headLead').textContent = '처음이시네요. 명부에서 본인을 찾아볼게요.';
+    $('#headLead').textContent = '거의 다 됐어요. 한 단계만 남았습니다.';
+    const nick = DB.authNickname();
     paint(
+      steps(1) +
       '<div class="card">' +
+      '<div class="row" style="gap:8px;color:var(--brand-deep);font-weight:700;font-size:13.5px">' +
+      ic('check') + '<span>카카오 로그인 완료' + (nick ? ' — ' + esc(nick) + '님' : '') + '</span></div>' +
+      '<div class="divider"></div>' +
       '<h3>본인 확인</h3>' +
-      '<div class="sub">명부에 적힌 이름과 휴대폰 번호 뒤 4자리를 넣어주세요.</div>' +
+      '<div class="sub">카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인할게요.</div>' +
       '<div class="sp"></div>' +
       '<label class="field"><span class="lb">이름</span>' +
       '<input class="input" id="nm" autocomplete="name" placeholder="홍길동"></label>' +

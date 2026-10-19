@@ -255,6 +255,20 @@
         '&redirect_to=' + enc(back);
     },
 
+    /* 카카오에서 받아온 닉네임 — 열쇠 안에 들어 있다 */
+    authNickname() {
+      if (!HAS_SB) return localStorage.getItem('baljaguk.demoLogin') === '1' ? '카카오친구' : '';
+      if (!session || !session.access_token) return '';
+      try {
+        const raw = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const txt = decodeURIComponent(Array.prototype.map.call(
+          atob(raw + '='.repeat((4 - raw.length % 4) % 4)),
+          c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        const m = JSON.parse(txt).user_metadata || {};
+        return String(m.name || m.full_name || m.preferred_username || '').trim();
+      } catch (e) { return ''; }
+    },
+
     memberLogout() {
       if (!HAS_SB) {
         localStorage.removeItem('baljaguk.demoLogin');
