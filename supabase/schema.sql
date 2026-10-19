@@ -742,3 +742,311 @@ create trigger applications_generation_trg
   for each row execute function applications_set_generation();
 
 create index if not exists applications_generation_idx on applications (generation, created_at desc);
+
+-- ============================================================
+--  1단계 · 권한 재설계 + 카카오 계정 연결
+--  ------------------------------------------------------------
+--  지금은 「로그인한 사람 = 운영진」이다.
+--  카카오 로그인을 열면 부원 70명이 그 칸에 들어와 신청자 연락처·
+--  입금증·재정을 보게 되므로, 그 전에 규칙을 다시 쓴다.
+--
+--  · 운영진 : 지금 쓰는 비밀번호 계정 + 명부에서 역할이 '운영진'인 사람
+--  · 구성원 : 명부에 있고 졸업·탈퇴하지 않은 사람
+--  · 그 외  : 지금과 똑같이 공개 페이지만
+--
+--  이 파일만 돌려도 화면은 하나도 안 바뀐다.
+--  되돌리는 SQL은 맨 아래에 주석으로 넣어두었다.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 1) 명부에 카카오 계정을 이어붙일 자리
+-- ------------------------------------------------------------
+alter table members add column if not exists auth_user_id uuid;
+create unique index if not exists members_auth_user_idx
+  on members (auth_user_id) where auth_user_id is not null;
+
+-- 졸업·탈퇴 상태를 새로 둔다 (active 활동중 / rest 휴식 / left 졸업·탈퇴)
+alter table members drop constraint if exists members_status_check;
+alter table members add constraint members_status_check
+  check (status in ('active', 'rest', 'left'));
+
+-- ------------------------------------------------------------
+-- 2) 누가 운영진이고 누가 구성원인가
+-- ------------------------------------------------------------
+create or replace function is_admin()
+returns boolean
+language sql security definer stable
+set search_path = public
+as $$
+  select
+    -- 지금 쓰는 운영진 계정 (config.js 의 ADMIN_EMAIL)
+    coalesce((auth.jwt() ->> 'email') = 'unyoung@baljaguk.club', false)
+    or exists (
+      select 1 from members m
+       where m.auth_user_id = auth.uid()
+         and m.role = 'admin'
+         and m.status <> 'left'
+    );
+$$;
+
+create or replace function is_member()
+returns boolean
+language sql security definer stable
+set search_path = public
+as $$
+  select is_admin() or exists (
+    select 1 from members m
+     where m.auth_user_id = auth.uid()
+       and m.status <> 'left'      -- 졸업·탈퇴하면 그날로 막힌다
+  );
+$$;
+
+create or replace function my_member_id()
+returns uuid
+language sql security definer stable
+set search_path = public
+as $$
+  select m.id from members m
+   where m.auth_user_id = auth.uid()
+     and m.status <> 'left'
+   limit 1;
+$$;
+
+revoke all on function is_admin()     from public;
+revoke all on function is_member()    from public;
+revoke all on function my_member_id() from public;
+grant execute on function is_admin()     to anon, authenticated;
+grant execute on function is_member()    to anon, authenticated;
+grant execute on function my_member_id() to anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 3) 규칙 다시 쓰기 — 11개
+--    바뀌는 건 딱 하나다. authenticated(로그인한 사람) → is_admin()
+--    공개 읽기 규칙(settings read, events read, apply insert,
+--    survey insert)은 손대지 않는다.
+-- ------------------------------------------------------------
+drop policy if exists "settings write"   on club_settings;
+create policy "settings write" on club_settings for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "apply admin"      on applications;
+create policy "apply admin" on applications for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "members admin"    on members;
+create policy "members admin" on members for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "events admin"     on events;
+create policy "events admin" on events for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "attendance admin" on attendance;
+create policy "attendance admin" on attendance for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "finance admin"    on finance;
+create policy "finance admin" on finance for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "survey admin"     on survey_responses;
+create policy "survey admin" on survey_responses for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "campaigns admin"  on campaigns;
+create policy "campaigns admin" on campaigns for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "donations admin"  on donations;
+create policy "donations admin" on donations for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "id1365 admin"     on member_1365;
+create policy "id1365 admin" on member_1365 for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "payouts admin"    on shelter_payouts;
+create policy "payouts admin" on shelter_payouts for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+-- ------------------------------------------------------------
+-- 4) 규칙을 건너뛰는 함수 두 개에도 자물쇠
+-- ------------------------------------------------------------
+create or replace function event_cancel(p_event uuid, p_name text, p_sid text)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare mid uuid; cnt int; gone int;
+begin
+  if not is_admin() then raise exception '운영진만 취소할 수 있어요'; end if;
+
+  select count(*) into cnt from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+  if cnt = 0 then return 'nomatch'; end if;
+  if cnt > 1 then return 'many'; end if;
+
+  select m.id into mid from members m
+   where btrim(m.name) = btrim(p_name)
+     and (p_sid is null or p_sid = '' or m.student_id = p_sid);
+
+  delete from attendance where event_id = p_event and member_id = mid;
+  get diagnostics gone = row_count;
+  if gone = 0 then return 'none'; end if;
+  return 'ok';
+end $$;
+
+create or replace function add_fee_income(fee integer)
+returns void
+language plpgsql
+as $$
+declare
+  target finance%rowtype;
+  parts  text[];
+begin
+  if not is_admin() then raise exception '운영진만 쓸 수 있어요'; end if;
+
+  select * into target
+    from finance
+   where kind = 'income'
+     and (category like '%동아리비%' or category like '%회비%')
+   order by date desc, created_at desc
+   limit 1
+   for update;
+
+  if not found then
+    insert into finance (date, kind, category, amount, memo)
+    values (current_date, 'income', '동아리비 (1명)', fee, '');
+    return;
+  end if;
+
+  parts := regexp_match(target.category, '^(.*?)\((\d+)\s*명\)\s*$');
+
+  if parts is null then
+    update finance set amount = amount + fee where id = target.id;
+  else
+    update finance
+       set amount   = amount + fee,
+           category = parts[1] || '(' || (parts[2]::int + 1) || '명)'
+     where id = target.id;
+  end if;
+end $$;
+
+revoke all on function add_fee_income(integer) from public, anon;
+grant execute on function add_fee_income(integer) to authenticated;
+
+-- ============================================================
+--  여기부터 카카오 로그인용
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- 5) 내가 누구인지 (연락처·학번은 절대 안 내려준다)
+-- ------------------------------------------------------------
+create or replace function me()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case
+    when auth.uid() is null then json_build_object('login', false)
+    else coalesce(
+      (select json_build_object(
+                'login', true, 'linked', true,
+                'id', m.id, 'name', m.name, 'role', m.role, 'status', m.status)
+         from members m where m.auth_user_id = auth.uid()),
+      json_build_object('login', true, 'linked', false))
+  end;
+$$;
+
+revoke all on function me() from public;
+grant execute on function me() to anon, authenticated;
+
+-- ------------------------------------------------------------
+-- 6) 카카오 계정을 명부의 내 이름에 잇기
+--    이름 + 휴대폰 뒤 4자리로 확인한다.
+--    · 한 번 이어지면 다른 카카오 계정은 그 이름을 못 가져간다
+--    · 1시간에 5번 틀리면 잠긴다 (뒤 4자리를 찍어서 맞히는 걸 막는다)
+-- ------------------------------------------------------------
+create table if not exists claim_attempts (
+  auth_user_id uuid primary key,
+  tries        int not null default 0,
+  last_at      timestamptz not null default now()
+);
+alter table claim_attempts enable row level security;   -- 아무도 직접 못 읽는다
+
+create or replace function claim_member(p_name text, p_last4 text)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  m     members%rowtype;
+  n     int;
+  t     claim_attempts%rowtype;
+  digits text;
+begin
+  if auth.uid() is null then
+    return json_build_object('ok', false, 'why', 'nologin');
+  end if;
+
+  -- 이미 이어져 있으면 그대로
+  select * into m from members where auth_user_id = auth.uid();
+  if found then
+    return json_build_object('ok', true, 'name', m.name, 'role', m.role, 'already', true);
+  end if;
+
+  -- 너무 많이 틀렸으면 잠근다
+  select * into t from claim_attempts where auth_user_id = auth.uid();
+  if found and t.tries >= 5 and t.last_at > now() - interval '1 hour' then
+    return json_build_object('ok', false, 'why', 'locked');
+  end if;
+
+  digits := regexp_replace(coalesce(p_last4, ''), '[^0-9]', '', 'g');
+
+  select count(*) into n from members
+   where btrim(name) = btrim(p_name)
+     and status <> 'left'
+     and right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 4) = digits
+     and digits <> '';
+
+  if n <> 1 then
+    insert into claim_attempts (auth_user_id, tries, last_at)
+    values (auth.uid(), 1, now())
+    on conflict (auth_user_id) do update
+      set tries = case when claim_attempts.last_at > now() - interval '1 hour'
+                       then claim_attempts.tries + 1 else 1 end,
+          last_at = now();
+    return json_build_object('ok', false, 'why', case when n = 0 then 'nomatch' else 'many' end);
+  end if;
+
+  select * into m from members
+   where btrim(name) = btrim(p_name)
+     and status <> 'left'
+     and right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 4) = digits;
+
+  -- 이미 다른 카카오 계정이 그 이름을 쓰고 있으면 막는다
+  if m.auth_user_id is not null then
+    return json_build_object('ok', false, 'why', 'taken');
+  end if;
+
+  update members set auth_user_id = auth.uid() where id = m.id;
+  delete from claim_attempts where auth_user_id = auth.uid();
+
+  return json_build_object('ok', true, 'name', m.name, 'role', m.role);
+end $$;
+
+revoke all on function claim_member(text, text) from public, anon;
+grant execute on function claim_member(text, text) to authenticated;
+
+-- ------------------------------------------------------------
+-- 7) 확인
+-- ------------------------------------------------------------
+-- 규칙 11개가 모두 '운영진만' 으로 나와야 한다
+select tablename as 테이블, policyname as 규칙,
+       case when qual like '%is_admin%' then '운영진만' else coalesce(qual, '(없음)') end as 조건
+  from pg_policies
+ where schemaname = 'public'
+   and (policyname like '%admin%' or policyname = 'settings write')
+ order by tablename;
+
+-- 운영진 화면(admin.html)에서 신청 목록·재정이 그대로 보이면 제대로 된 것.

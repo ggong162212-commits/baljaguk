@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 내 활동</title>
+<meta name="description" content="발자국 구성원 전용 공간">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css?v=202610191733">
+<style>
+  /* 카카오 버튼 — 카카오가 정해둔 색 그대로 */
+  .kakao{
+    display:flex;align-items:center;justify-content:center;gap:9px;width:100%;
+    padding:15px 22px;border:none;border-radius:17px;cursor:pointer;
+    background:#FEE500;color:#191600;font-weight:700;font-size:15.5px;
+    font-family:inherit;transition:.16s
+  }
+  .kakao:hover{filter:brightness(.97)}
+  .kakao:active{transform:scale(.985)}
+  .kakao svg{width:20px;height:20px;flex:none}
+  .mecard{text-align:center;padding:30px 22px}
+  .mecard .big{width:72px;height:72px;border-radius:26px;display:grid;place-items:center;
+    margin:0 auto;font-family:var(--font-title);font-size:30px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark">발자국</span>
+    </div>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<main class="app" id="app">
+  <div class="pagehead">
+    <h1 id="headTitle">내 활동</h1>
+    <p id="headLead">발자국 구성원만 쓸 수 있는 공간이에요.</p>
+  </div>
+  <div id="view" class="stack"></div>
+  <div class="linkline"><a href="fund.html">후원금 현황 보기 →</a></div>
+  <div style="height:40px"></div>
+</main>
+
+<script src="assets/config.js?v=202610191733"></script>
+<script src="assets/icons.js?v=202610191733"></script>
+<script src="assets/ui.js?v=202610191733"></script>
+<script src="assets/db.js?v=202610191733"></script>
+<script src="assets/me.js?v=202610191733"></script>
+</body>
+</html>

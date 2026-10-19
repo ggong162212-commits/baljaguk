@@ -83,6 +83,30 @@
   let session = null;
   try { session = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) { }
 
+  /* ---------------- 카카오 로그인에서 돌아왔을 때 ----------------
+     Supabase 가 주소 뒤 #access_token=... 에 열쇠를 담아 보내준다.
+     한 번 받아 보관하고 주소창은 깨끗이 지운다. */
+  let authError = '';
+  (function catchHash() {
+    if (!HAS_SB || !location.hash || location.hash.length < 2) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    const tok = p.get('access_token');
+    const err = p.get('error_description') || p.get('error');
+    if (!tok && !err) return;
+    if (tok) {
+      session = {
+        access_token: tok,
+        refresh_token: p.get('refresh_token') || '',
+        expires_at: Number(p.get('expires_at') || 0),
+        token_type: p.get('token_type') || 'bearer'
+      };
+      try { localStorage.setItem(SKEY, JSON.stringify(session)); } catch (e) { }
+    } else {
+      authError = decodeURIComponent(String(err).replace(/\+/g, ' '));
+    }
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+  })();
+
   async function auth(path, body) {
     const r = await fetch(C.SUPABASE_URL + '/auth/v1/' + path, {
       method: 'POST',
@@ -212,6 +236,63 @@
     id1365: table('member_1365', 'name.asc'),
     payouts: table('shelter_payouts', 'date.desc',
       'id,created_at,place,amount,date,memo,has_photo'),
+
+    /* ---------------- 구성원 로그인 (카카오) ----------------
+       체험 모드에서는 카카오를 거치지 않고 바로 로그인한 척한다. */
+    authError: () => authError,
+
+    kakaoLogin(returnTo) {
+      const back = returnTo || (location.origin + location.pathname);
+      if (!HAS_SB) {
+        localStorage.setItem('baljaguk.demoLogin', '1');
+        location.href = back;
+        return;
+      }
+      /* 이메일은 안 받는다 — 카카오 비즈 앱이라야 주기 때문 */
+      location.href = C.SUPABASE_URL + '/auth/v1/authorize?provider=kakao' +
+        '&scopes=' + enc('profile_nickname') +
+        '&redirect_to=' + enc(back);
+    },
+
+    memberLogout() {
+      if (!HAS_SB) {
+        localStorage.removeItem('baljaguk.demoLogin');
+        localStorage.removeItem('baljaguk.demoMe');
+        return;
+      }
+      session = null;
+      try { localStorage.removeItem(SKEY); } catch (e) { }
+    },
+
+    /* 내가 누구인지 — 연락처·학번은 안 내려온다 */
+    async me() {
+      if (!HAS_SB) {
+        if (localStorage.getItem('baljaguk.demoLogin') !== '1') return { login: false };
+        const id = localStorage.getItem('baljaguk.demoMe');
+        const m = id && (demoRead().members || []).find(x => x.id === id);
+        return m
+          ? { login: true, linked: true, id: m.id, name: m.name, role: m.role, status: m.status }
+          : { login: true, linked: false };
+      }
+      if (!session) return { login: false };
+      return await rest('rpc/me', { method: 'POST', body: {} });
+    },
+
+    /* 카카오 계정을 명부의 내 이름에 잇기 (이름 + 휴대폰 뒤 4자리) */
+    async claimMember(name, last4) {
+      if (!HAS_SB) {
+        const digits = String(last4 || '').replace(/[^0-9]/g, '');
+        const hit = (demoRead().members || []).filter(m =>
+          String(m.name).trim() === String(name).trim() && m.status !== 'left' &&
+          digits && String(m.phone || '').replace(/[^0-9]/g, '').slice(-4) === digits);
+        if (hit.length !== 1) return { ok: false, why: hit.length ? 'many' : 'nomatch' };
+        localStorage.setItem('baljaguk.demoMe', hit[0].id);
+        return { ok: true, name: hit[0].name, role: hit[0].role };
+      }
+      return await rest('rpc/claim_member', {
+        method: 'POST', body: { p_name: String(name || '').trim(), p_last4: String(last4 || '').trim() }
+      });
+    },
 
     /* 이번 학기 설문 회차 */
     surveyTopic: () => C.SURVEY_TOPIC || '2026-2',
