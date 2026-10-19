@@ -234,6 +234,44 @@
       });
     },
 
+    /* ---------- 후원금 현황 (공개 페이지) ---------- */
+    /* 금액·인원수만 내려받는다. 이름·연락처는 서버에서 아예 빼고 준다 */
+    async publicFunds() {
+      if (!HAS_SB) {
+        const d = demoRead();
+        const rows = (d.events || [])
+          .filter(e => e.confirmed_at && Number(e.credit_per_person) > 0)
+          .map(e => {
+            const people = (d.attendance || []).filter(a => a.event_id === e.id).length;
+            const per = Number(e.credit_per_person);
+            return { date: e.date, place: e.place, people, per, amount: people * per };
+          })
+          .filter(r => r.people > 0)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const pays = d.shelter_payouts || [];
+        const map = {};
+        const get = k => (map[k] = map[k] || { place: k, saved: 0, paid: 0, remain: 0 });
+        rows.forEach(r => { get(r.place).saved += r.amount; });
+        pays.forEach(p => { get(p.place).paid += Number(p.amount) || 0; });
+        const places = Object.keys(map).map(k => {
+          map[k].remain = map[k].saved - map[k].paid;
+          return map[k];
+        }).sort((a, b) => b.remain - a.remain);
+        return {
+          generated_at: new Date().toISOString(),
+          total_saved: places.reduce((t, p) => t + p.saved, 0),
+          total_paid: places.reduce((t, p) => t + p.paid, 0),
+          places, entries: rows, payouts: pays,
+          campaigns: (d.campaigns || []).map(c => Object.assign({}, c, {
+            raised: (d.donations || []).filter(x => x.campaign_id === c.id)
+              .reduce((t, x) => t + (Number(x.amount) || 0), 0),
+            donors: (d.donations || []).filter(x => x.campaign_id === c.id).length
+          }))
+        };
+      }
+      return await rest('rpc/public_funds', { method: 'POST', body: {} });
+    },
+
     /* ---------- 1365 회원명부 등록 ---------- */
     /* 이름으로 내 정보 찾기 — 전화번호는 가운데를 가린 채로만 돌려준다 */
     async id1365Lookup(name) {

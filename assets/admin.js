@@ -36,6 +36,7 @@
   const formURL = () => new URL('index.html', location.href).href;
   const surveyURL = () => new URL('survey.html', location.href).href;
   const id1365URL = () => new URL('id1365.html', location.href).href;
+  const fundURL = () => new URL('fund.html', location.href).href;
   const PARTY = { yes: ['참여', 'approved'], no: ['불참', 'rejected'], maybe: ['미정', 'pending'] };
   /* ------------------------------------------------------------
      거주지 정리
@@ -1971,6 +1972,14 @@
           '지난 확정 봉사 ' + miss.length + '건에도 적립하기</button>'
         : '') +
       '</div>' +
+      '<div class="card">' +
+      '<h3>후원금 현황 공개 링크</h3>' +
+      '<div class="sub">누구나 볼 수 있는 주소예요. 금액만 보이고 이름·연락처는 안 나와요.</div>' +
+      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(fundURL()) + '</div>' +
+      '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copyFund">링크 복사</button>' +
+      '<button class="btn ghost sm grow" id="openFund">열어보기</button></div></div>' +
+      '<button class="btn ghost block sm" id="copyFundNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
+      '</div>' +
       (groups.length
         ? '<div class="list">' + groups.map(g =>
           '<div class="item" data-credit="' + esc(g.place) + '" tabindex="0" role="button">' +
@@ -2001,6 +2010,22 @@
         await reload();
         toast(won(total) + ' 적립했어요', 'ok');
       } catch (err) { toast(err.message || '적립하지 못했어요', 'err'); }
+    };
+    const cf = $('#copyFund');
+    if (cf) cf.onclick = () => copy(fundURL(), '현황 링크를 복사했어요');
+    const of2 = $('#openFund');
+    if (of2) of2.onclick = () => window.open(fundURL(), '_blank');
+    const cfn = $('#copyFundNotice');
+    if (cfn) cfn.onclick = () => {
+      const gs = creditByPlace();
+      const saved = gs.reduce((t, g) => t + g.saved, 0);
+      const paid = gs.reduce((t, g) => t + g.paid, 0);
+      copy('🐾 발자국 후원금 현황' + '\n\n' +
+        '지금까지 모인 후원금 ' + won(saved) + '\n' +
+        '보호소에 전달 완료 ' + won(paid) + '\n\n' +
+        '봉사에 참여한 인원수만큼 보호소 앞으로 적립하고 있어요.' + '\n' +
+        '아래 링크에서 언제든 볼 수 있어요' + '\n' + fundURL(),
+        '공지 문구를 복사했어요');
     };
     $$('#donatePanel [data-credit]').forEach(el => {
       const open = () => creditSheet(el.dataset.credit);

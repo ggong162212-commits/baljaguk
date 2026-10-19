@@ -621,3 +621,61 @@ begin
   exception when duplicate_object then null;
   end;
 end $$;
+
+-- ============================================================
+--  후원금 현황 공개 (fund.html)
+--  · 부원·외부에 공유하는 링크에서 쓰는 집계 함수
+--  · 이름·연락처 같은 개인정보는 내려주지 않는다 (금액·인원수만)
+-- ============================================================
+create or replace function public_funds()
+returns json
+language sql
+security definer
+set search_path = public
+stable
+as $$
+with ent as (
+  select e.date, e.place,
+         (select count(*)::int from attendance a where a.event_id = e.id) as people,
+         coalesce(e.credit_per_person, 0)::int as per
+    from events e
+   where e.confirmed_at is not null
+     and coalesce(e.credit_per_person, 0) > 0
+),
+rows_ as (
+  select date, place, people, per, (people * per)::int as amount
+    from ent where people > 0
+),
+saved as (select place, sum(amount)::int as saved from rows_ group by place),
+paid  as (select place, sum(amount)::int as paid  from shelter_payouts group by place),
+places as (
+  select coalesce(s.place, p.place) as place,
+         coalesce(s.saved, 0) as saved,
+         coalesce(p.paid, 0)  as paid,
+         coalesce(s.saved, 0) - coalesce(p.paid, 0) as remain
+    from saved s
+    full outer join paid p on p.place = s.place
+)
+select json_build_object(
+  'generated_at', now(),
+  'total_saved', (select coalesce(sum(saved), 0) from places),
+  'total_paid',  (select coalesce(sum(paid), 0)  from places),
+  'places',  (select coalesce(json_agg(row_to_json(x) order by x.remain desc, x.place), '[]'::json)
+                from places x),
+  'entries', (select coalesce(json_agg(row_to_json(y)), '[]'::json)
+                from (select date, place, people, per, amount
+                        from rows_ order by date desc, place limit 100) y),
+  'payouts', (select coalesce(json_agg(row_to_json(z)), '[]'::json)
+                from (select date, place, amount, memo
+                        from shelter_payouts order by date desc limit 50) z),
+  'campaigns', (select coalesce(json_agg(row_to_json(c)), '[]'::json)
+                  from (select c.title, c.partner, c.goal, c.starts_on, c.ends_on, c.status,
+                               (select coalesce(sum(d.amount), 0)::int from donations d where d.campaign_id = c.id) as raised,
+                               (select count(*)::int from donations d where d.campaign_id = c.id) as donors
+                          from campaigns c
+                         order by (c.status = 'closed'), c.created_at desc) c)
+);
+$$;
+
+revoke all on function public_funds() from public;
+grant execute on function public_funds() to anon, authenticated;
