@@ -260,7 +260,7 @@
           return map[k];
         }).sort((a, b) => b.remain - a.remain);
         const tally = {};
-        (d.events || []).filter(e => e.confirmed_at).forEach(e => {
+        (d.events || []).filter(e => e.confirmed_at && Number(e.credit_per_person) > 0).forEach(e => {
           (d.attendance || []).filter(a => a.event_id === e.id).forEach(a => {
             const m = (d.members || []).find(x => x.id === a.member_id);
             if (m) tally[m.name] = (tally[m.name] || 0) + 1;

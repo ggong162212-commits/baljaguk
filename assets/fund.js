@@ -2,6 +2,7 @@
    후원금 현황 (fund.html)
    · 부원·외부에 그대로 공유하는 공개 페이지
    · 금액 · 인원수 · 참여자 이름까지. 연락처·학번은 서버에서 안 내려온다
+   · 이름은 적립이 쌓이는 봉사지(1인당 금액 > 0)에 다녀온 사람만
    ============================================================ */
 (function () {
   const { $, $$, esc, won, num, fmtDate, fmtDateTime } = UI;
@@ -91,15 +92,27 @@
       '모인 돈은 사료·배변패드처럼 보호소에 필요한 물품으로 전달합니다.' +
       '</div>';
 
-    /* ---------- 함께한 사람들 ---------- */
-    const helpers = data.helpers || [];
-    const visits = int(data.total_visits);
+    /* ---------- 후원금을 쌓아준 사람들 ----------
+       적립이 쌓이는 봉사지에 다녀온 사람만 (천보금은 1인당 금액이 0원이라 빠진다) */
+    /* 적립 내역(entries)은 이미 적립이 쌓이는 봉사지만 담고 있다.
+       서버의 helpers 를 그대로 쓰지 않고 여기서 세는 이유 — 공개 함수를 아직 안 바꿔도 화면은 맞게 나온다. */
+    const tally = {};
+    (data.entries || []).forEach(r => names(r).forEach(n => { tally[n] = (tally[n] || 0) + 1; }));
+    const helpers = Object.keys(tally).map(n => ({ name: n, times: tally[n] }))
+      .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name, 'ko'));
+    const visits = helpers.reduce((t, h) => t + h.times, 0);
+    const creditPlaces = (data.places || []).filter(p => int(p.saved) > 0).map(p => p.place)
+      .filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), 'ko'));
     $('#helperList').innerHTML = helpers.length
-      ? '<div class="section-title">' + ic('users') + '<span>함께한 사람들</span></div>' +
+      ? '<div class="section-title">' + ic('users') + '<span>후원금을 쌓아준 사람들</span></div>' +
         '<div class="card">' +
         '<div class="sm mut" style="margin-bottom:12px">' +
-        '<b style="color:var(--ink)">' + helpers.length + '명</b>이 모두 <b style="color:var(--ink)">' +
-        visits + '번</b> 봉사에 다녀왔어요.</div>' +
+        '이분들이 <b style="color:var(--ink)">' + visits + '번</b> 다녀와 준 덕분에 후원금이 쌓였어요.' +
+        (creditPlaces.length
+          ? '<br>' + creditPlaces.map(n => esc(n)).join(' · ') + ' 봉사에 다녀온 ' +
+            '<b style="color:var(--ink)">' + helpers.length + '명</b>이에요.'
+          : '') +
+        '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:7px">' +
         helpers.map(h =>
           '<span style="display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);' +

@@ -658,13 +658,12 @@ places as (
     from saved s
     full outer join paid p on p.place = s.place
 ),
--- 확정된 봉사 전부 (적립이 없는 곳도 포함)
+-- 적립이 쌓이는 봉사지에 다녀온 사람만 (1인당 금액이 0인 천보금은 빠진다)
 joined as (
   select m.id as mid, m.name
-    from events e
+    from ent e
     join attendance a on a.event_id = e.id
     join members m    on m.id = a.member_id
-   where e.confirmed_at is not null
 ),
 helpers as (
   select name, count(*)::int as times
