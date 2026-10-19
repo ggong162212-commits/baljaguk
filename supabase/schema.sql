@@ -716,3 +716,29 @@ revoke all on function public_funds() from public;
 revoke all on function public_payout_photo(uuid) from public;
 grant execute on function public_funds() to anon, authenticated;
 grant execute on function public_payout_photo(uuid) to anon, authenticated;
+
+-- ============================================================
+--  가입 신청에 기수 기록 (새 신청이 들어오면 지금 기수를 같이 저장)
+-- ============================================================
+alter table applications add column if not exists generation text;
+
+create or replace function applications_set_generation()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.generation is null or new.generation = '' then
+    select generation into new.generation from club_settings where id = 1;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists applications_generation_trg on applications;
+create trigger applications_generation_trg
+  before insert on applications
+  for each row execute function applications_set_generation();
+
+create index if not exists applications_generation_idx on applications (generation, created_at desc);

@@ -7,7 +7,7 @@
     debounce, toLocalInput, fromLocalInput } = UI;
 
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [], pays: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'apply', q4: '', idSeg: 'done', rankAll: false };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'survey', q4: '', idSeg: 'done', rankAll: false };
   let cur = 'form';
 
   const TABS = [
@@ -31,6 +31,8 @@
   const volCount = id => S.att.filter(a => a.member_id === id && isDone(a.event_id)).length;
   const volSoon = id => S.att.filter(a => a.member_id === id && !isDone(a.event_id)).length;
   const approvedCount = () => S.apps.filter(a => a.status === 'approved').length;
+  /* 운영진 표시 — 아바타는 모두 이니셜이고, 구분은 이름 옆 배지로만 한다 */
+  const staffBadge = m => (m && m.role === 'admin') ? '<span class="badge admin">운영진</span>' : '';
   const balance = () => S.fin.reduce((s, f) => s + (f.kind === 'income' ? 1 : -1) * (Number(f.amount) || 0), 0);
   const autoFee = () => localStorage.getItem('baljaguk.autoFee') !== '0';
   const formURL = () => new URL('index.html', location.href).href;
@@ -256,35 +258,61 @@
      1. 폼 관리
      ============================================================ */
   function renderForm() {
-    const picks = [['apply', '동아리 신청'], ['survey', '활동의견 · 개파'], ['id1365', '1365 명부']];
+    const picks = [['survey', '활동의견 · 개파'], ['id1365', '1365 명부']];
+    if (F.formPick !== 'id1365') F.formPick = 'survey';
     $('#formPick').innerHTML = picks.map(([k, l]) =>
       '<button type="button" class="' + (F.formPick === k ? 'on' : '') + '" data-fp="' + k + '">' + l + '</button>').join('');
     $$('#formPick [data-fp]').forEach(b => b.addEventListener('click', () => {
       F.formPick = b.dataset.fp; renderForm(); window.scrollTo({ top: 0 });
     }));
+    $('#formMoved').innerHTML = '동아리 신청 접수는 <button type="button" class="linkbtn" id="goApplyTab">가입</button> 탭으로 옮겼어요.';
+    $('#goApplyTab').onclick = () => go('apply');
 
-    const onSurvey = F.formPick === 'survey';
     const onIds = F.formPick === 'id1365';
-    $('#formPanel').hidden = onSurvey || onIds;
-    $('#surveyPanel').hidden = !onSurvey;
+    $('#surveyPanel').hidden = onIds;
     $('#id1365Panel').hidden = !onIds;
     $('#formLead').textContent = onIds
       ? '자원봉사센터에 낼 회원 명부를 모으는 곳이에요.'
-      : (onSurvey
-        ? '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.'
-        : '신청 접수를 켜고 끄거나 마감 시각을 예약할 수 있어요.');
-    if (onIds) return renderId1365();
-    if (onSurvey) return renderSurvey();
+      : '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.';
+    return onIds ? renderId1365() : renderSurvey();
+  }
 
+  /* ------------------------------------------------------------
+     모집 카드 + 신청 폼 설정
+     신청 받기와 승인은 한 흐름이라 가입 탭 맨 위에 둔다.
+     ------------------------------------------------------------ */
+  function renderRecruit() {
     const s = S.settings, st = DB.formState(s, approvedCount());
-    const why ={ manual: '운영진이 접수를 꺼둔 상태예요', before: '예약된 오픈 시각을 기다리는 중이에요', closed: '예약 마감 시각이 지났어요', full: '정원이 다 찼어요' };
+    const why = { manual: '운영진이 접수를 꺼둔 상태예요', before: '예약된 오픈 시각을 기다리는 중이에요', closed: '예약 마감 시각이 지났어요', full: '정원이 다 찼어요' };
+    const gen = String(s.generation || '').trim();
+    const nApps = S.apps.length;
+    const nWait = S.apps.filter(a => a.status === 'pending').length;
+    const sw = '<label class="switch"><input type="checkbox" id="openSw"' + (st.open ? ' checked' : '') +
+      '><span class="track"></span></label>';
 
-    $('#formPanel').innerHTML =
-      '<div class="card">' +
-      '<div class="row between"><div><h3>동아리 신청 접수</h3><div class="sub" id="formStateText">' +
-      (st.open ? '지금 신청을 받고 있어요' : (why[st.why] || '접수를 받지 않는 중이에요')) + '</div></div>' +
-      '<label class="switch"><input type="checkbox" id="openSw"' + (st.open ? ' checked' : '') + '><span class="track"></span></label></div>' +
-      fold('applyMore', '예약·정원·안내 문구',
+    /* 모집이 꺼져 있으면 한 줄로 줄어든다 */
+    const card = st.open
+      ? '<div class="card recruit">' +
+        '<div class="row between" style="align-items:flex-start">' +
+        '<div><div class="ttl">' + ic('mail') + '<span>' + esc(gen ? gen + ' 모집 중' : '부원 모집 중') + '</span></div>' +
+        '<div class="sub">지금 신청을 받고 있어요</div></div>' + sw + '</div>' +
+        '<div class="row" style="gap:8px;margin-top:14px">' +
+        '<button class="btn soft sm grow" id="copyLink">링크 복사</button>' +
+        '<button class="btn ghost sm grow" id="copyNotice">공지 문구 복사</button></div>' +
+        '<div class="cnt">신청 <b>' + nApps + '명</b> · 대기 <b>' + nWait + '명</b></div></div>'
+      : '<div class="card tight recruit">' +
+        '<div class="row between">' +
+        '<div><div class="sm" style="font-weight:700;color:var(--ink-2)">' +
+        esc(gen ? gen + ' 모집 마감' : '부원 모집 마감') + '</div>' +
+        '<div class="mut" style="font-size:11.5px;margin-top:2px">' +
+        (why[st.why] || '접수를 받지 않는 중이에요') + ' · 신청 ' + nApps + '명</div></div>' + sw + '</div></div>';
+
+    $('#formPanel').innerHTML = card +
+      '<div class="card"><h3>신청 폼 설정</h3>' +
+      '<div class="sub">아래 내용이 신청 폼에 그대로 보여요.</div>' +
+      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(formURL()) + '</div>' +
+      '<button class="btn ghost sm block" id="openLink">폼 열어보기</button></div>' +
+      fold('applyMore', '예약 · 정원 · 안내 문구',
         '<div class="field"><span class="lb">접수 시작 예약</span>' + dtField('openAt', s.form_open_at) +
         '<span class="hint">비워두면 바로 접수해요.</span></div>' +
         '<div class="field"><span class="lb">자동 마감 예약</span>' + dtField('closeAt', s.form_close_at) +
@@ -299,20 +327,7 @@
         '<label class="field"><span class="lb">마감 중 안내 문구</span>' +
         '<textarea class="input" id="closedMsg" style="min-height:80px">' + esc(s.closed_message || '') + '</textarea></label>' +
         '<button class="btn primary block" id="saveForm">저장하기</button>') +
-      '</div>' +
-
-      '<div class="card">' +
-      '<h3>신청 폼 주소</h3><div class="sub">구성원에게 공유할 링크예요. 운영진 주소와는 다릅니다.</div>' +
-      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(formURL()) + '</div>' +
-      '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copyLink">링크 복사</button>' +
-      '<button class="btn ghost sm grow" id="openLink">폼 열어보기</button></div></div>' +
-      '<button class="btn ghost block sm" id="copyNotice" style="margin-top:10px">공지 문구 통째로 복사</button>' +
-      '</div>' +
-
-      /* 신청 폼에 그대로 보이는 내용 — 폼을 고치는 곳에서 같이 고친다 */
-      '<div class="card"><h3>신청 폼 내용</h3>' +
-      '<div class="sub">아래 내용이 신청 폼에 그대로 보여요.</div>' +
-      fold('applyContent', '공지·회비·계좌 고치기',
+      fold('applyContent', '공지 · 회비 · 계좌',
         '<label class="field"><span class="lb">공지 (선택)</span>' +
         '<textarea class="input" id="sNotice" style="min-height:70px" placeholder="폼 상단에 노란 박스로 보여요">' + esc(s.notice || '') + '</textarea></label>' +
         '<label class="field"><span class="lb">회비</span>' +
@@ -326,7 +341,38 @@
       '</div>';
 
     wireFolds();
-    $('#saveApplyContent').addEventListener('click', async () => {
+    $('#openSw').addEventListener('change', async e => {
+      const on = e.target.checked;
+      const patch = { form_open: on };
+      let cleared = false;
+      if (on) {
+        // 지난 마감 시각·미래의 오픈 예약이 남아 있으면 켜도 안 열리므로 같이 정리한다
+        const now = S.settings || {};
+        if (now.form_close_at && Date.parse(now.form_close_at) <= Date.now()) { patch.form_close_at = null; cleared = true; }
+        if (now.form_open_at && Date.parse(now.form_open_at) > Date.now()) { patch.form_open_at = null; cleared = true; }
+      }
+      await save(patch);
+      toast(on ? (cleared ? '예약을 지우고 접수를 다시 열었어요' : '접수를 열었어요') : '접수를 닫았어요', 'ok');
+      renderApply();
+    });
+    $$('#formPanel [data-quick]').forEach(b => b.addEventListener('click', () => {
+      const n = Number(b.dataset.quick);
+      if (!n) { setDt('closeAt', null); return; }
+      const d = new Date(); d.setDate(d.getDate() + (n === 1 ? 0 : n)); d.setHours(23, 59, 0, 0);
+      setDt('closeAt', d.toISOString());
+    }));
+    const sf = $('#saveForm');
+    if (sf) sf.addEventListener('click', async () => {
+      await save({
+        form_open_at: readDt('openAt', '00:00'),
+        form_close_at: readDt('closeAt', '23:59'),
+        capacity: $('#cap').value ? Number($('#cap').value) : null,
+        closed_message: $('#closedMsg').value.trim()
+      });
+      toast('저장했어요', 'ok'); renderApply();
+    });
+    const sa = $('#saveApplyContent');
+    if (sa) sa.addEventListener('click', async () => {
       await save({
         notice: $('#sNotice').value.trim(),
         fee: Number(String($('#sFee').value).replace(/[^\d]/g, '')) || 0,
@@ -334,40 +380,13 @@
         holder: $('#sHolder').value.trim(),
         account: $('#sAcct').value.trim()
       });
-      toast('저장했어요', 'ok'); renderForm();
+      toast('저장했어요', 'ok'); renderApply();
     });
-    $('#openSw').addEventListener('change', async e => {
-      const on = e.target.checked;
-      const patch = { form_open: on };
-      let cleared = false;
-      if (on) {
-        // 지난 마감 시각·미래의 오픈 예약이 남아 있으면 켜도 안 열리므로 같이 정리한다
-        const cur = S.settings || {};
-        if (cur.form_close_at && Date.parse(cur.form_close_at) <= Date.now()) { patch.form_close_at = null; cleared = true; }
-        if (cur.form_open_at && Date.parse(cur.form_open_at) > Date.now()) { patch.form_open_at = null; cleared = true; }
-      }
-      await save(patch);
-      toast(on ? (cleared ? '예약을 지우고 접수를 다시 열었어요' : '접수를 열었어요') : '접수를 닫았어요', 'ok');
-      renderForm();
-    });
-    $$('[data-quick]').forEach(b => b.addEventListener('click', () => {
-      const n = Number(b.dataset.quick);
-      if (!n) { setDt('closeAt', null); return; }
-      const d = new Date(); d.setDate(d.getDate() + (n === 1 ? 0 : n)); d.setHours(23, 59, 0, 0);
-      setDt('closeAt', d.toISOString());
-    }));
-    $('#saveForm').addEventListener('click', async () => {
-      await save({
-        form_open_at: readDt('openAt', '00:00'),
-        form_close_at: readDt('closeAt', '23:59'),
-        capacity: $('#cap').value ? Number($('#cap').value) : null,
-        closed_message: $('#closedMsg').value.trim()
-      });
-      toast('저장했어요', 'ok'); renderForm();
-    });
-    $('#copyLink').addEventListener('click', () => copy(formURL(), '폼 주소를 복사했어요'));
     $('#openLink').addEventListener('click', () => window.open(formURL(), '_blank'));
-    $('#copyNotice').addEventListener('click', () => {
+    const cl = $('#copyLink');
+    if (cl) cl.addEventListener('click', () => copy(formURL(), '폼 주소를 복사했어요'));
+    const cn = $('#copyNotice');
+    if (cn) cn.addEventListener('click', () => {
       const s2 = S.settings;
       const close = s2.form_close_at ? '\n마감: ' + fmtDateTime(s2.form_close_at) : '';
       copy('🐾 ' + s2.club_name + ' ' + (s2.generation || '') + ' 부원 모집\n' +
@@ -376,6 +395,7 @@
         close, '공지 문구를 복사했어요');
     });
   }
+
   /* 접었다 펴는 영역. 접힌 상태를 이 기기에 기억해 둔다 (기본은 접힘) */
   const foldOpen = id => localStorage.getItem('baljaguk.fold.' + id) === '1';
   function fold(id, label, inner) {
@@ -427,6 +447,7 @@
      2. 가입 신청
      ============================================================ */
   function renderApply() {
+    renderRecruit();
     const counts = {
       pending: S.apps.filter(a => a.status === 'pending').length,
       approved: S.apps.filter(a => a.status === 'approved').length,
@@ -716,8 +737,7 @@
       '<option value="admin"' + (m.role === 'admin' ? ' selected' : '') + '>운영진</option></select></label></div>' +
       '<label class="field"><span class="lb">연락처</span><input class="input" id="mPhone" inputmode="numeric" value="' + esc(m.phone || '') + '" placeholder="010-0000-0000"></label>' +
       '<div class="grid2">' +
-      '<label class="field"><span class="lb">가입일</span><input class="input" type="date" id="mJoin" value="' + esc((m.joined_on || '').slice(0, 10)) + '"></label>' +
-      '<label class="field"><span class="lb">프로필 이모지 (선택)</span><input class="input" id="mEmoji" maxlength="2" value="' + esc(m.emoji || '') + '" placeholder="🐶"></label></div>' +
+      '<label class="field"><span class="lb">가입일</span><input class="input" type="date" id="mJoin" value="' + esc((m.joined_on || '').slice(0, 10)) + '"></label></div>' +
 
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
@@ -753,7 +773,6 @@
         department: (S.settings && S.settings.department) || m.department || '',
         status: 'active',
         joined_on: ov.querySelector('#mJoin').value || null,
-        emoji: ov.querySelector('#mEmoji').value.trim(),
         memo: m.memo || ''
       };
       if (!patch.name) return toast('이름을 입력해주세요', 'err');
@@ -789,10 +808,13 @@
       const inMonth = dnum >= 1 && dnum <= dim;
       const dt = new Date(y, mo, dnum);
       const key = dkey(dt);
-      const has = S.events.some(e => e.date === key);
+      const onDay = S.events.filter(e => e.date === key);
+      /* 모두 확정이면 초록, 하나라도 확정 전이면 주황 */
+      const mk = onDay.length
+        ? '<span class="mk ' + (onDay.every(e => e.confirmed_at) ? 'ok' : 'wait') + '"></span>' : '';
       cells += '<button type="button" class="day' + (inMonth ? '' : ' dim') + (dt.getDay() === 0 ? ' sun' : '') +
         (key === todayKey ? ' today' : '') + (key === F.day ? ' on' : '') + '" data-d="' + key + '">' +
-        dt.getDate() + (has ? '<span class="mk"></span>' : '') + '</button>';
+        dt.getDate() + mk + '</button>';
     }
 
     const dayEvents = S.events.filter(e => e.date === F.day)
@@ -810,10 +832,11 @@
       (dayEvents.length ? dayEvents.map(ev => {
         const joined = S.att.filter(a => a.event_id === ev.id);
         return '<div class="evrow" data-ev="' + ev.id + '"><span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' + ic('paw') + '</span>' +
-          '<div class="grow"><div class="tt">' + esc(ev.title) + '</div><div class="mt">' +
-          (ev.start_time ? '<span>' + esc(ev.start_time) + '</span>' : '') +
-          (ev.place ? '<span>' + esc(ev.place) + '</span>' : '') +
-          '<span>' + (ev.capacity ? '신청 ' + joined.length + '/' + ev.capacity : '참여 ' + joined.length + '명') + '</span>' +
+          '<div class="grow"><div class="tt">' + esc(shortTitle(ev)) + '</div><div class="mt">' +
+          (ev.start_time ? '<span>' + timeLabel(ev.start_time) + '</span>' : '') +
+          '<span>' + (ev.confirmed_at
+            ? '참석 ' + joined.length + '명'
+            : '신청 ' + joined.length + (ev.capacity ? '/' + ev.capacity : '') + '명') + '</span>' +
           (ev.capacity && joined.length >= ev.capacity ? '<span style="color:var(--danger)">마감</span>' : '') +
           (ev.confirmed_at
             ? '<span style="color:var(--brand-deep);font-weight:700">확정</span>'
@@ -843,8 +866,18 @@
 
   /* 누적 참여 순위 — 기본은 10등까지, 「전체 보기」로 다 펼친다 */
   const RANK_TOP = 10;
+  /* 그 사람이 마지막으로 다녀온 확정 봉사 날짜 → '10.11' */
+  function lastVisit(memberId) {
+    let last = '';
+    S.att.forEach(a => {
+      if (a.member_id !== memberId || !isDone(a.event_id)) return;
+      const e = byId(S.events, a.event_id);
+      if (e && String(e.date) > last) last = String(e.date);
+    });
+    return last ? last.slice(5, 7) + '.' + last.slice(8, 10) : '';
+  }
   function paintRank() {
-    const all = S.members.map(m => ({ m, n: volCount(m.id) }))
+    const all = S.members.map(m => ({ m, n: volCount(m.id), last: lastVisit(m.id) }))
       .filter(r => r.n > 0)
       .sort((a, b) => b.n - a.n || a.m.name.localeCompare(b.m.name, 'ko'));
     const rank = F.rankAll ? all : all.slice(0, RANK_TOP);
@@ -861,8 +894,8 @@
       (rank.length ? '<div class="list">' + rank.map((r, i) =>
         '<div class="item" data-m3="' + r.m.id + '"><span class="rank' +
         (place(i) <= 3 ? ' g' + place(i) : '') + '">' + place(i) + '</span>' +
-        avatar(r.m, 'sm') + '<div class="grow"><div class="nm">' + esc(r.m.name) + '</div>' +
-        '<div class="sub"><span>' + esc(r.m.department || '') + '</span></div></div>' +
+        avatar(r.m, 'sm') + '<div class="grow"><div class="nm">' + esc(r.m.name) + staffBadge(r.m) + '</div>' +
+        '<div class="sub"><span>' + (r.last ? '마지막 참여 ' + r.last : '') + '</span></div></div>' +
         '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + r.n + '회</div>' +
         '</div></div>').join('') + '</div>'
         : empty('paw', soonTotal
@@ -944,9 +977,13 @@
     return (hh < 12 ? '오전 ' : '오후 ') + (hh % 12 === 0 ? 12 : hh % 12) + '시' +
       (m && m !== '00' ? ' ' + m + '분' : '');
   }
+  /* 카드 위에 이미 날짜가 있으니 제목의 '10월 11일 ' 앞머리는 떼고 보여준다 */
+  function shortTitle(ev) {
+    const t = String(ev.title || '').replace(/^\d{1,2}월\s*\d{1,2}일\s*/, '').trim();
+    return t || ev.place || ev.title || '봉사';
+  }
   function autoTitle(date, place, skipId) {
-    const d = new Date(date + 'T00:00:00');
-    const base = (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + (place || volPlace());
+    const base = place || volPlace();
     const same = S.events.filter(e => e.date === date && e.place === place && e.id !== skipId).length;
     return same ? base + ' ' + (same + 1) : base;
   }
@@ -1067,7 +1104,7 @@
         ? (res.length
           ? '<div class="picker" style="margin-bottom:10px">' + res.map(m =>
             '<div class="check" data-add-m="' + m.id + '"><span class="box">' + ic('plus') + '</span>' +
-            avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
+            avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' + staffBadge(m) +
             '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번 · 누적 ' + volCount(m.id) + '회</div></div></div>'
           ).join('') + '</div>'
           : '<div class="mut sm center" style="padding:10px">찾는 구성원이 없어요</div>')
@@ -1077,7 +1114,7 @@
       const chosen = S.members.filter(m => picked.has(m.id));
       ov.querySelector('#picker').innerHTML = chosen.length ? chosen.map(m =>
         '<div class="check on" data-p="' + m.id + '"><span class="box">' + ic('check') + '</span>' +
-        avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
+        avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' + staffBadge(m) +
         '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div>' +
         '<button type="button" class="iconbtn" data-rm="' + m.id + '" aria-label="빼기" ' +
         'style="width:32px;height:32px;border-radius:11px">' + ic('x') + '</button></div>'
@@ -1956,15 +1993,11 @@
     const miss = creditMissing();
 
     return '<div class="section-title">' + ic('paw') + '<span>보호소 적립금</span></div>' +
-      '<div class="card">' +
-      '<div class="row between" style="align-items:flex-start">' +
-      '<div><h3>아직 전달 안 한 적립금</h3>' +
-      '<div class="sub">봉사를 확정하면 참여 인원만큼 자동으로 쌓여요</div></div>' +
-      '<div class="money" style="font-size:21px;color:var(--brand-deep);white-space:nowrap">' +
-      won(saved - paid) + '</div></div>' +
-      '<div class="divider"></div>' +
-      '<div class="kv"><span class="k">쌓인 적립금</span><span class="v">' + won(saved) + '</span></div>' +
-      '<div class="kv"><span class="k">전달 완료</span><span class="v">' + won(paid) + '</span></div>' +
+      '<div class="card center" style="padding:20px 18px">' +
+      '<div class="mut sm">아직 전달 안 한 적립금</div>' +
+      '<div class="money" style="font-size:34px;color:var(--brand-deep);margin-top:2px">' + won(saved - paid) + '</div>' +
+      '<div class="sm mut" style="margin-top:6px">쌓임 ' + won(saved) + ' · 전달 ' + won(paid) + '</div>' +
+      '<div class="sm mut" style="margin-top:10px;line-height:1.5">봉사를 확정하면 참여 인원만큼 자동으로 쌓여요</div>' +
       (miss.length
         ? '<div class="pill-note" style="margin-top:12px">이 기능을 켜기 전에 확정한 봉사가 ' +
           miss.length + '건 있어요. 지금 봉사지에 적힌 1인당 금액으로 적립할 수 있어요.</div>' +
@@ -1974,7 +2007,7 @@
       '</div>' +
       '<div class="card">' +
       '<h3>후원금 현황 공개 링크</h3>' +
-      '<div class="sub">누구나 볼 수 있는 주소예요. 금액만 보이고 이름·연락처는 안 나와요.</div>' +
+      '<div class="sub">금액과 봉사에 다녀온 사람 이름이 보여요. 연락처·학번은 안 나와요.</div>' +
       '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' + esc(fundURL()) + '</div>' +
       '<div class="row" style="gap:8px"><button class="btn soft sm grow" id="copyFund">링크 복사</button>' +
       '<button class="btn ghost sm grow" id="openFund">열어보기</button></div></div>' +
@@ -2537,7 +2570,7 @@
       '<span class="hint">신청 폼에 안내로 뜨고, 승인된 구성원의 학과로 자동 입력돼요.</span></label>' +
       '<button class="btn primary block" id="saveClub">저장하기</button>' +
       '<p class="sm mut" style="margin:12px 0 0">회비·계좌·공지처럼 <b>신청 폼에만</b> 쓰는 건 ' +
-      '<button type="button" class="linkbtn" id="goFormSettings">폼 관리</button> 에서 고쳐요.</p></div>' +
+      '<button type="button" class="linkbtn" id="goFormSettings">가입 탭</button> 에서 고쳐요.</p></div>' +
 
       '<div class="card"><h3>봉사지</h3>' +
       '<div class="sub">정기적으로 가는 곳을 등록해두면 봉사모임 만들 때 골라서 쓸 수 있어요.</div>' +
@@ -2590,7 +2623,7 @@
       });
       toast('저장했어요', 'ok'); renderSettings();
     };
-    $('#goFormSettings').onclick = () => { F.formPick = 'apply'; go('form'); };
+    $('#goFormSettings').onclick = () => go('apply');
     $('#lockSw').onchange = e => {
       localStorage.setItem('baljaguk.lock', e.target.checked ? '1' : '0');
       toast(e.target.checked ? '이제 들어올 때 비밀번호를 물어봐요' : '잠금을 껐어요. 주소만 알면 바로 들어와요');

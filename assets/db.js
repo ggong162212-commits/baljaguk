@@ -218,10 +218,19 @@
 
     /* 신청 접수 (비로그인 상태에서 호출) */
     async apply(form) {
-      return DB.applications.create({
+      const row = {
         name: form.name, student_id: form.student_id, department: form.department,
         phone: form.phone, motivation: form.motivation, receipt: form.receipt || '', status: 'pending'
-      });
+      };
+      /* 어느 기수의 신청인지 같이 남긴다.
+         실제 데이터베이스에서는 트리거가 채워주고, 체험 모드에서는 여기서 채운다. */
+      if (!HAS_SB) {
+        try {
+          const s = await DB.settings.get();
+          row.generation = String((s && s.generation) || '').trim();
+        } catch (e) { }
+      }
+      return DB.applications.create(row);
     },
 
     /* 설문 응답 접수 (비로그인 상태에서 호출) */

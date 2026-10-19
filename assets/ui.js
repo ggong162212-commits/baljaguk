@@ -178,7 +178,8 @@
     const name = (m && m.name) || '?';
     let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
     const [bg, fg] = AV[h % AV.length];
-    const face = (m && m.emoji) ? m.emoji : name.slice(0, 1);
+    /* 운영진 왕관 같은 그림 없이 모두 이름 첫 글자로. 구분은 이름 옆 배지로 한다 */
+    const face = name.slice(0, 1);
     return '<div class="avatar' + (cls ? ' ' + cls : '') + '" style="background:' + bg + ';color:' + fg + '" aria-hidden="true">' + esc(face) + '</div>';
   }
 
