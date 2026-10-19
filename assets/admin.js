@@ -158,12 +158,36 @@
     return v === null ? !!(window.CONFIG || {}).ADMIN_LOCK : v === '1';
   };
   async function start() {
-    if (DB.isAuthed()) return enter();
+    /* 구성원이 카카오로 로그인한 상태로 이 주소에 들어올 수 있다.
+       그 열쇠로는 아무것도 못 보지만, 빈 운영진 화면을 보여줄 이유도 없다. */
+    if (DB.isAuthed()) {
+      if (await DB.isAdmin()) return enter();
+      return denied();
+    }
     if (!locked()) {
       try { await DB.login((window.CONFIG || {}).ADMIN_PASSWORD || (window.CONFIG || {}).DEMO_PASSWORD || '260324'); return enter(); }
       catch (e) { toast('자동 입장에 실패했어요. 비밀번호로 들어와주세요', 'err'); }
     }
     $('#pw').focus();
+  }
+
+  /* 구성원 계정으로 운영진 주소에 들어온 경우 */
+  function denied() {
+    $('#login').hidden = false;
+    $('#loginForm').hidden = true;
+    $('#loginHint').textContent = '';
+    const box = $('#login').querySelector('.card');
+    box.innerHTML =
+      '<div style="display:flex;justify-content:center">' +
+      '<span style="width:60px;height:60px;border-radius:22px;background:var(--surface-2);color:var(--ink-3);display:grid;place-items:center">' +
+      ic('lock') + '</span></div>' +
+      '<h2 style="margin-top:14px;font-size:22px">운영진만 들어올 수 있어요</h2>' +
+      '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+      '여기는 신청자 연락처와 재정을 다루는 곳이에요.<br>내 봉사 기록은 아래에서 볼 수 있어요.</p>' +
+      '<div style="margin-top:18px;display:grid;gap:8px">' +
+      '<a class="btn primary lg block" href="me.html">내 활동으로 가기</a>' +
+      '<button class="btn ghost block sm" type="button" id="relog">운영진 비밀번호로 들어가기</button></div>';
+    $('#relog').onclick = () => { DB.memberLogout(); location.reload(); };
   }
 
   async function login(e) {

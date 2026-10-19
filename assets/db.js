@@ -183,7 +183,9 @@
   const DB = {
     mode: HAS_SB ? 'supabase' : 'demo',
     isDemo: () => !HAS_SB,
-    isAuthed: () => HAS_SB ? !!(session && session.access_token) : localStorage.getItem('baljaguk.demoAuth') === '1',
+    /* 로그인한 상태인가 — 운영진이든 구성원이든 열쇠는 하나다 */
+    isAuthed: () => HAS_SB ? !!(session && session.access_token)
+      : (localStorage.getItem('baljaguk.demoAuth') === '1' || localStorage.getItem('baljaguk.demoLogin') === '1'),
 
     async login(password) {
       if (!HAS_SB) {
@@ -253,6 +255,14 @@
       location.href = C.SUPABASE_URL + '/auth/v1/authorize?provider=kakao' +
         '&scope=' + enc('profile_nickname') +
         '&redirect_to=' + enc(back);
+    },
+
+    /* 이 사람이 운영진인가 — 데이터베이스에 직접 물어본다 */
+    async isAdmin() {
+      if (!HAS_SB) return localStorage.getItem('baljaguk.demoAuth') === '1';
+      if (!session || !session.access_token) return false;
+      try { return !!(await rest('rpc/is_admin', { method: 'POST', body: {} })); }
+      catch (e) { return false; }
     },
 
     /* 카카오에서 받아온 닉네임 — 열쇠 안에 들어 있다 */
