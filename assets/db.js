@@ -248,9 +248,10 @@
         location.href = back;
         return;
       }
-      /* 이메일은 안 받는다 — 카카오 비즈 앱이라야 주기 때문 */
+      /* 이메일·프로필 사진은 안 받는다 (카카오 비즈 앱이라야 주는 항목).
+         scopes(복수)는 기본값에 더하기만 하고, scope(단수)라야 통째로 바뀐다. */
       location.href = C.SUPABASE_URL + '/auth/v1/authorize?provider=kakao' +
-        '&scopes=' + enc('profile_nickname') +
+        '&scope=' + enc('profile_nickname') +
         '&redirect_to=' + enc(back);
     },
 
