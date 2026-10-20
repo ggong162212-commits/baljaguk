@@ -5,7 +5,7 @@
    · 이름은 적립이 쌓이는 봉사지(1인당 금액 > 0)에 다녀온 사람만
    ============================================================ */
 (function () {
-  const { $, $$, esc, won, credit, num, fmtDate, fmtDateTime, toast, copy, debounce } = UI;
+  const { $, $$, esc, won, credit, num, fmtDate, fmtDateTime, toast, copy, debounce, sheet } = UI;
 
   const OPEN = 'baljaguk.fund.entriesOpen';
   const NEW_DAYS = 14;                       // 최근 며칠까지 NEW 로 볼지
@@ -97,9 +97,7 @@
     const helpers = tally();
     const meetings = (data.entries || []).length;   // 적립이 쌓인 봉사 건수
 
-    paintTotal(saved, paid, remain, helpers.length, meetings);
-    paintFeed();
-    paintHow();
+    paintSummary(saved, paid, helpers.length, meetings);
     paintPeople(helpers, meetings);
     paintPlaces();
     paintCampaigns();
@@ -114,79 +112,79 @@
   /* ============================================================
      ① 합계
      ============================================================ */
-  function paintTotal(saved, paid, remain, people, meetings) {
+  function paintSummary(saved, paid, people, meetings) {
+    const savedKg = int(data.total_saved_kg);
+    const paidKg = int(data.total_paid_kg);
+    const hasKg = savedKg > 0 || paidKg > 0;
     const ym = dayKey(new Date()).slice(0, 7);
     const thisMonth = (data.entries || [])
       .filter(r => String(r.date).slice(0, 7) === ym && (r.unit || 'won') !== 'kg')
       .reduce((t, r) => t + int(r.amount), 0);
-    const pct = saved > 0 ? Math.round(paid / saved * 100) : 0;
+
+    const badges = [];
+    if (thisMonth) badges.push('<span class="badge approved">이번 달 +' + won(thisMonth) + '</span>');
+    if (paid) badges.push('<span class="badge">' + won(paid) + ' 전달</span>');
+    if (paidKg) badges.push('<span class="badge">' + credit(paidKg, 'kg') + ' 전달</span>');
 
     $('#totalCard').innerHTML =
-      '<div class="card">' +
-      '<div class="center" style="padding:6px 0 2px">' +
-      '<div class="sm mut">지금까지 모인 후원금</div>' +
-      '<div class="money" style="font-size:34px;color:var(--brand-deep);margin-top:4px" id="bigSum">' +
-      won(saved) + '</div>' +
-      (people
-        ? '<div class="sm mut" style="margin-top:6px">' + people + '명이 ' + meetings + '번의 봉사로 모았어요' +
-          (paid ? ' · ' + won(paid) + ' 전달 완료' : '') + '</div>'
-        : '') +
-      (thisMonth
-        ? '<div style="margin-top:9px"><span class="badge approved">이번 달 +' + won(thisMonth) + '</span></div>'
+      '<div class="card" style="padding:15px 16px">' +
+      '<div class="row between" style="align-items:center">' +
+      '<span class="sm mut">지금까지 모인 것</span>' +
+      '<button class="iconbtn" type="button" id="howBtn" aria-label="적립 안내 보기" ' +
+      'style="width:28px;height:28px;border-radius:9px">' + ic('info') + '</button></div>' +
+
+      '<div class="stat3" style="margin-top:9px">' +
+      '<div><div class="v"><span id="bigSum">' + num(saved) + '</span><span class="u">원</span></div>' +
+      '<div class="k">후원금</div></div>' +
+      (hasKg
+        ? '<div><div class="v">' + num(savedKg) + '<span class="u">kg</span></div>' +
+          '<div class="k">사료</div></div>'
         : '') +
       '</div>' +
-      (saved > 0
-        ? '<div class="divider"></div>' +
-          '<div class="bar"><i style="width:' + Math.max(2, Math.min(100, pct)) + '%"></i></div>' +
-          '<div class="sm mut center" style="margin-top:8px;line-height:1.6">' +
-          (paid
-            ? '<b style="color:var(--ink)">' + won(paid) + '</b>은 보호소에 전달했고,<br>' +
-              '<b style="color:var(--ink)">' + won(remain) + '</b>은 모으는 중이에요.'
-            : '<b style="color:var(--ink)">' + won(remain) + '</b>을 모아 보호소에 전달할 예정이에요.') +
-          '</div>'
+
+      (people
+        ? '<div class="sm mut center" style="margin-top:10px">' +
+          people + '명이 ' + meetings + '번의 봉사로 모았어요</div>'
+        : '') +
+      (badges.length
+        ? '<div class="row center" style="gap:6px;flex-wrap:wrap;margin-top:9px">' +
+          badges.join('') + '</div>'
         : '') +
       '</div>';
+
+
+    const hb = $('#howBtn');
+    if (hb) hb.onclick = howSheet;
 
     if (!counted && saved > 0) { counted = true; countUp($('#bigSum'), saved); }
   }
 
-  /* ============================================================
-     ①-2 사료 적립 — 천보금처럼 돈 대신 사료로 받는 곳
-     ============================================================ */
-  function paintFeed() {
-    const savedKg = int(data.total_saved_kg);
-    const paidKg = int(data.total_paid_kg);
-    const el = $('#feedCard');
-    if (!el) return;
-    if (!savedKg && !paidKg) { el.innerHTML = ''; return; }
+  /* 설명은 평소엔 접어두고 ⓘ 를 누르면 보여준다 */
+  function howSheet() {
+    const entries = data.entries || [];
+    const perWon = entries.filter(r => (r.unit || 'won') !== 'kg')
+      .reduce((t, r) => Math.max(t, int(r.per)), 0);
+    const perKg = entries.filter(r => r.unit === 'kg')
+      .reduce((t, r) => Math.max(t, int(r.per)), 0);
+    const spots = spotsByUnit();
+    const line = (label, names, per, unit) =>
+      '<div class="kv"><span class="k">' + label +
+      '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+      esc(names.join(', ')) + '</span></span>' +
+      '<span class="v">1인당 ' + (per ? credit(per, unit) : '—') + '</span></div>';
 
-    const remainKg = savedKg - paidKg;
-    const spots = (data.places || []).filter(p => p.unit === 'kg');
-    const pct = savedKg > 0 ? Math.round(paidKg / savedKg * 100) : 0;
-
-    el.innerHTML =
-      '<div class="card">' +
-      '<div class="center" style="padding:6px 0 2px">' +
-      '<div class="sm mut">지금까지 모인 사료</div>' +
-      '<div class="money" style="font-size:30px;color:var(--brand-deep);margin-top:4px">' +
-      credit(savedKg, 'kg') + '</div>' +
-      '<div class="sm mut" style="margin-top:6px">' +
-      (spots.length ? esc(spots.map(p => p.place).join(' · ')) + '은 ' : '') +
-      '돈 대신 사료로 후원해요</div>' +
-      (paidKg ? '<div style="margin-top:9px"><span class="badge approved">' +
-        credit(paidKg, 'kg') + ' 전달 완료</span></div>' : '') +
-      '</div>' +
-      (savedKg > 0
-        ? '<div class="divider"></div>' +
-          '<div class="bar"><i style="width:' + Math.max(2, Math.min(100, pct)) + '%"></i></div>' +
-          '<div class="sm mut center" style="margin-top:8px;line-height:1.6">' +
-          (paidKg
-            ? '<b style="color:var(--ink)">' + credit(paidKg, 'kg') + '</b>은 전달했고,<br>' +
-              '<b style="color:var(--ink)">' + credit(remainKg, 'kg') + '</b>은 모으는 중이에요.'
-            : '<b style="color:var(--ink)">' + credit(remainKg, 'kg') + '</b>을 모아 전달할 예정이에요.') +
-          '</div>'
-        : '') +
-      '</div>';
+    sheet({
+      title: '어떻게 쌓이나요',
+      body:
+        '<p class="sm" style="margin:0 0 12px;line-height:1.7;color:var(--ink-3)">' +
+        '봉사를 다녀오면 <b style="color:var(--ink)">참여한 인원수 × 정해진 양</b>만큼 ' +
+        '그 보호소 앞으로 쌓여요.</p>' +
+        (spots.won.length ? line('후원금', spots.won, perWon, 'won') : '') +
+        (spots.kg.length ? line('사료', spots.kg, perKg, 'kg') : '') +
+        '<p class="sm mut" style="margin:14px 0 0;line-height:1.7">' +
+        '모인 후원금은 사료·배변패드처럼 보호소에 필요한 물품으로 바꿔 전달하고, ' +
+        '전달한 내역은 아래에 모두 적어둬요.</p>'
+    });
   }
 
   /* 0에서 올라가는 짧은 효과 — 동작 줄이기가 켜져 있으면 건너뛴다 */
@@ -194,14 +192,14 @@
     if (!el || reduceMotion() || document.hidden) return;
     const dur = 800, t0 = performance.now();
     // 탭이 가려져 있으면 rAF 가 안 돌 수 있어 끝값은 따로 한 번 더 박아둔다
-    setTimeout(() => { el.textContent = won(to); }, dur + 300);
+    setTimeout(() => { el.textContent = num(to); }, dur + 300);
     const tick = now => {
       const p = Math.min(1, (now - t0) / dur);
       const eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = won(Math.round(to * eased));
+      el.textContent = num(Math.round(to * eased));
       if (p < 1) requestAnimationFrame(tick);
     };
-    el.textContent = won(0);
+    el.textContent = num(0);
     requestAnimationFrame(tick);
   }
 
@@ -230,29 +228,6 @@
       });
     }
     return { won, kg };
-  }
-
-  function paintHow() {
-    const entries = data.entries || [];
-    const perWon = entries.filter(r => (r.unit || 'won') !== 'kg')
-      .reduce((t, r) => Math.max(t, int(r.per)), 0);
-    const perKg = entries.filter(r => r.unit === 'kg')
-      .reduce((t, r) => Math.max(t, int(r.per)), 0);
-    const spots = spotsByUnit();
-
-    $('#howCard').innerHTML =
-      '<div class="pill-note">' +
-      '봉사를 다녀오면 <b>참여한 인원수 × 정해진 양</b>만큼 그 보호소 앞으로 쌓여요.' +
-      (spots.won.length
-        ? '<br><br><b>후원금</b> · ' + esc(spots.won.join(', ')) +
-          (perWon ? ' — 1인당 ' + num(perWon) + '원' : '')
-        : '') +
-      (spots.kg.length
-        ? '<br><b>사료</b> · ' + esc(spots.kg.join(', ')) +
-          (perKg ? ' — 1인당 ' + num(perKg) + 'kg' : '')
-        : '') +
-      '<br><br>모인 후원금은 사료·배변패드처럼 보호소에 필요한 물품으로 바꿔 전달합니다.' +
-      '</div>';
   }
 
   /* ============================================================
