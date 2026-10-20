@@ -537,7 +537,8 @@ window.Community = (function () {
         '<span class="box" aria-hidden="true">' + ic('check') + '</span>' +
         '<span class="grow"><span class="sm" style="font-weight:700">' +
         '발자국 인스타그램에 올려도 괜찮아요</span>' +
-        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
+        '다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.<br>' +
         '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>' +
 
         '<label class="field" style="margin-top:12px"><span class="lb">어떤 하루였나요</span>' +
@@ -770,8 +771,7 @@ window.Community = (function () {
     if (!rows.length) return paint(
       '<div class="card center" style="padding:32px 22px">' +
       '<div style="font-size:28px">🐾</div>' +
-      '<h3 style="margin-top:10px;font-size:17px">아직 투표가 없어요</h3>' +
-      '<p class="mut sm" style="margin-top:8px">누구나 만들 수 있어요.</p></div>');
+      '<h3 style="margin-top:10px;font-size:17px">아직 투표가 없어요</h3></div>');
     paint(rows.map(postCard).join(''));
     bindOnce();
     loadPhotos($('#view'));
