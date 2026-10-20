@@ -84,7 +84,10 @@ a{color:inherit;text-decoration:none}
 .view{display:none;animation:fade .32s ease}
 .view.on{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.stack{display:grid;gap:14px}
+/* grid 자식은 기본이 min-width:auto 라 내용이 넓으면 칸을 밀어낸다.
+   칩 줄처럼 가로로 긴 것이 들어오면 화면 전체가 옆으로 벌어진다. */
+.stack{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.stack>*{min-width:0}
 .row{display:flex;align-items:center;gap:10px}
 /* display 를 지정한 요소도 hidden 이면 확실히 숨긴다 */
 [hidden]{display:none!important}
@@ -351,7 +354,8 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 /* ---------- 글쓰기 버튼 ---------- */
 /* 하단 탭 바로 위, 오른쪽에 뜬다 */
 .fab{
-  position:fixed;right:18px;bottom:92px;z-index:51;
+  /* 넓은 화면에서도 앱 기둥(480px) 안쪽에 붙어 있게 */
+  position:fixed;right:max(18px, calc(50vw - 222px));bottom:92px;z-index:51;
   width:52px;height:52px;border-radius:19px;border:none;cursor:pointer;
   display:grid;place-items:center;
   background:var(--brand);color:#fff;box-shadow:var(--shadow-pop);
@@ -363,6 +367,11 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 
 /* ---------- 피드 ---------- */
 .post{padding:16px 16px 12px}
+.post .tapzone{cursor:pointer}
+.post .tapzone:active{opacity:.75}
+/* 제목 줄 오른쪽 작은 아이콘 버튼 */
+.titlerow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;min-width:0}
+.iconbtn.sq{width:36px;height:36px;border-radius:12px}
 .post .who{display:flex;align-items:center;gap:9px;margin-bottom:10px}
 .post .who .nm{font-weight:700;font-size:14px}
 .post .who .at{font-size:11.5px;color:var(--ink-3)}
@@ -390,16 +399,16 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 /* 반응 — 이모지 칩 + 개수 */
 .reacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .react{
-  display:inline-flex;align-items:center;gap:5px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;cursor:pointer;
   border:1px solid var(--line);background:var(--surface);border-radius:999px;
-  padding:5px 10px;font-size:13px;color:var(--ink-3);transition:.14s;
-  font-family:inherit
+  min-height:34px;padding:5px 12px;font-size:17px;color:var(--ink-3);transition:.14s;
+  font-family:inherit;line-height:1
 }
 .react:active{transform:scale(.94)}
 .react.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-deep);font-weight:700}
-.react .n{font-size:11.5px}
+.react .n{font-size:12.5px;font-weight:700}
 .react.add{color:var(--ink-3)}
-.react.add .svg{width:15px;height:15px}
+.react.add .svg{width:17px;height:17px}
 
 /* ---------- 선 일러스트 ---------- */
 /* 빈 화면·오류·배지에만. 선은 아이콘과 같은 색, 포인트는 그린 하나 */

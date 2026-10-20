@@ -38,7 +38,6 @@ window.Community = (function () {
     ME = me;
     try { AM_ADMIN = await DB.isAdmin(); } catch (e) { AM_ADMIN = false; }
 
-    $('#headTitle').textContent = '발자국';
     $('#footLink').hidden = true;
 
     const bar = $('#tabbar');
@@ -88,13 +87,18 @@ window.Community = (function () {
      ============================================================ */
   async function renderHome(reset) {
     if (reset) { F.rows = []; F.cursor = null; F.done = false; F.pinned = null; }
+    $('#headTitle').textContent = '안녕하세요, ' + ME.name + '님';
     $('#headLead').textContent = '우리가 함께 걸은 기록이에요.';
 
     paint(
       '<div id="pin"></div>' +
-      '<div class="chips" id="chips"></div>' +
+      '<div class="titlerow">' +
+      '<div class="chips" id="chips" style="flex:1;min-width:0"></div>' +
+      '<button class="iconbtn sq" type="button" id="wallBtn" aria-label="사진 모아보기">' +
+      ic('grid') + '</button></div>' +
       '<div id="list">' + loading() + '</div>' +
       '<div id="more"></div>');
+    $('#wallBtn').onclick = photoWall;
 
     paintChips();
     await loadMore(true);
@@ -108,12 +112,10 @@ window.Community = (function () {
       mk('all', '전체', !F.type && !F.place) +
       mk('review', '후기', F.type === 'review') +
       mk('poll', '투표', F.type === 'poll') +
-      mk('photos', '사진 모아보기', false) +
       places.map(p => mk('place:' + p, p, F.place === p)).join('');
 
     $$('#chips [data-chip]').forEach(b => b.addEventListener('click', async () => {
       const k = b.dataset.chip;
-      if (k === 'photos') return photoWall();
       if (k === 'all') { F.type = null; F.place = null; }
       else if (k.indexOf('place:') === 0) { F.type = null; F.place = k.slice(6); }
       else { F.type = k; F.place = null; }
@@ -224,8 +226,10 @@ window.Community = (function () {
       (who.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
       '<div class="at">' + relTime(p.created_at) +
       (p.edited_at ? ' · 수정됨' : '') + '</div></div>' +
-      '<button class="iconbtn sm" type="button" data-menu="' + esc(p.id) + '" aria-label="더보기">' +
-      ic('chevron') + '</button></div>' +
+      '<button class="iconbtn sq" type="button" data-menu="' + esc(p.id) + '" aria-label="이 글 메뉴">' +
+      ic('more') + '</button></div>' +
+
+      '<div class="tapzone" data-open="' + esc(p.id) + '">' +
 
       (p.hidden
         ? '<div class="pill-note">운영진이 숨긴 글이에요. 나와 운영진에게만 보여요.</div>'
@@ -247,6 +251,7 @@ window.Community = (function () {
         ? '<div class="mut" style="font-size:11.5px;margin-top:7px">' +
         '인스타그램 사용에 동의한 사진이에요</div>'
         : '') +
+      '</div>' +
       (p.poll ? pollBlock(p) : '') +
       reactRow(p) +
       commentBlock(p) +
@@ -308,15 +313,13 @@ window.Community = (function () {
     const more = (p.comment_count || 0) - list.length;
     return '<div class="cmts" data-cmts="' + esc(p.id) + '">' +
       (more > 0
-        ? '<button class="morecmt" type="button" data-all="' + esc(p.id) + '">' +
+        ? '<button class="morecmt" type="button" data-open="' + esc(p.id) + '">' +
         '댓글 ' + (p.comment_count || 0) + '개 모두 보기</button>'
         : '') +
       '<div data-clist="' + esc(p.id) + '">' + list.map(commentLine).join('') + '</div>' +
-      '<div class="cwrite">' +
-      '<input class="input" type="text" data-cin="' + esc(p.id) + '" ' +
-      'placeholder="댓글 달기…" autocomplete="off" enterkeyhint="send">' +
-      '<button class="btn primary sm" type="button" data-csend="' + esc(p.id) + '">전송</button>' +
-      '</div></div>';
+      (list.length || more > 0 ? '' :
+        '<button class="morecmt" type="button" data-open="' + esc(p.id) + '">댓글 남기기</button>') +
+      '</div>';
   }
 
   function commentLine(c) {
@@ -348,17 +351,9 @@ window.Community = (function () {
       if ((b = hit('data-pick'))) return pickReaction(b.dataset.pick);
       if ((b = hit('data-who'))) return whoSheet(b.dataset.who);
       if ((b = hit('data-menu'))) return postMenu(b.dataset.menu);
-      if ((b = hit('data-open'))) return;
-      if ((b = hit('data-csend'))) return sendComment(b.dataset.csend);
-      if ((b = hit('data-all'))) return expandComments(b.dataset.all);
-      if ((b = hit('data-cmenu'))) return openCommentMenu(b.dataset.cmenu);
+      if ((b = hit('data-open'))) return openPost(b.dataset.open);
+      if ((b = hit('data-cmenu'))) return feedCommentMenu(b.dataset.cmenu);
       if ((b = hit('data-vote'))) return toast('투표는 다음 단계에서 열려요');
-    });
-
-    /* 엔터로도 보낸다 — 카톡처럼 */
-    view.addEventListener('keydown', e => {
-      const inp = e.target.closest('[data-cin]');
-      if (inp && e.key === 'Enter') { e.preventDefault(); sendComment(inp.dataset.cin); }
     });
 
     /* 반응을 길게 누르면 누가 눌렀는지 */
@@ -652,64 +647,99 @@ window.Community = (function () {
   }
 
   /* ============================================================
+     글 상세 — 카드를 누르면 열린다. 댓글 전체와 입력칸은 여기에만.
+     ============================================================ */
+  async function openPost(id) {
+    const p = findRow(id);
+    if (!p) return;
+    const who = p.author || { name: '?' };
+
+    const ov = sheet({
+      title: '',
+      body:
+        '<div class="who" style="margin-bottom:10px">' + avatar(who) +
+        '<div class="grow"><div class="nm">' + esc(who.name) +
+        (who.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
+        '<div class="at">' + relTime(p.created_at) +
+        (p.edited_at ? ' · 수정됨' : '') + '</div></div></div>' +
+
+        (p.date || p.place
+          ? '<div class="meta">' + ic('calendar') +
+          (p.date ? fmtDate(p.date) : '') +
+          (p.place ? ' · ' + esc(p.place) : '') + '</div>'
+          : '') +
+
+        (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
+        photoStrip(p) +
+        ((p.photos || []).length && p.insta_ok
+          ? '<div class="mut" style="font-size:11.5px;margin-top:7px">' +
+            '인스타그램 사용에 동의한 사진이에요</div>'
+          : '') +
+
+        '<div class="divider"></div>' +
+        '<div id="dList" class="mut sm">' + paws() + '</div>' +
+        '<div class="cwrite" style="margin-top:12px">' +
+        '<input class="input" type="text" id="dIn" placeholder="댓글 달기…" ' +
+        'autocomplete="off" enterkeyhint="send" aria-label="댓글 입력">' +
+        '<button class="btn primary sm" type="button" id="dSend">전송</button></div>'
+    });
+
+    loadPhotos(ov);
+
+    async function draw() {
+      let list = [];
+      try { list = await DB.community.comments(id); }
+      catch (e) {
+        ov.querySelector('#dList').innerHTML =
+          '<div class="mut sm">댓글을 불러오지 못했어요.</div>';
+        return;
+      }
+      const shown = list.filter(c => !c.hidden || c.mine || AM_ADMIN);
+      ov.querySelector('#dList').innerHTML = shown.length
+        ? shown.map(commentLine).join('')
+        : '<div class="mut sm">아직 댓글이 없어요. 처음 남겨보세요.</div>';
+      ov.querySelectorAll('[data-cmenu]').forEach(b =>
+        b.onclick = () => openCommentMenu(
+          shown.filter(c => c.id === b.dataset.cmenu)[0], draw));
+      /* 피드 카드도 같이 맞춰둔다 */
+      const row = findRow(id);
+      if (row) {
+        row.comment_count = list.filter(c => !c.hidden).length;
+        row.recent_comments = shown.slice(-2);
+      }
+    }
+
+    const send = async () => {
+      const inp = ov.querySelector('#dIn');
+      const v = inp.value.trim();
+      if (!v) return;
+      inp.disabled = true;
+      try { await DB.community.addComment(id, v); inp.value = ''; await draw(); }
+      catch (e) { toast(e.message || '남기지 못했어요', 'err'); }
+      finally { inp.disabled = false; inp.focus(); }
+    };
+    ov.querySelector('#dSend').onclick = send;
+    ov.querySelector('#dIn').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); send(); }
+    });
+
+    draw();
+  }
+
+  /* ============================================================
      댓글 — 카드 안에서 바로 쓰고 바로 보인다
      ============================================================ */
-  async function sendComment(postId) {
-    const inp = $('#view').querySelector('[data-cin="' + postId + '"]');
-    if (!inp) return;
-    const v = inp.value.trim();
-    if (!v) return;
-    inp.disabled = true;
-    try {
-      await DB.community.addComment(postId, v);
-      inp.value = '';
-      const row = findRow(postId);
-      if (row) row.comment_count = (row.comment_count || 0) + 1;
-      await refreshComments(postId);
-    } catch (e) {
-      toast(e.message || '남기지 못했어요', 'err');
-    } finally {
-      inp.disabled = false;
-      inp.focus();
-    }
-  }
-
-  /* 최근 2개만 다시 그린다 (모두 보기를 펼친 상태면 전부) */
-  async function refreshComments(postId, all) {
-    const box = $('#view').querySelector('[data-clist="' + postId + '"]');
-    const row = findRow(postId);
-    if (!box || !row) return;
-    let list = [];
-    try { list = await DB.community.comments(postId); } catch (e) { return; }
-    const shown = list.filter(c => !c.hidden || c.mine || AM_ADMIN);
-    row.comment_count = list.filter(c => !c.hidden).length;
-    const use = all ? shown : shown.slice(-2);
-    row.recent_comments = use;
-    box.innerHTML = use.map(commentLine).join('');
-
-    const wrap = $('#view').querySelector('[data-cmts="' + postId + '"]');
-    const btn = wrap && wrap.querySelector('[data-all]');
-    const rest = shown.length - use.length;
-    if (btn) {
-      if (rest > 0) { btn.hidden = false; btn.textContent = '댓글 ' + shown.length + '개 모두 보기'; }
-      else btn.hidden = true;
-    } else if (rest > 0 && wrap) {
-      wrap.insertAdjacentHTML('afterbegin',
-        '<button class="morecmt" type="button" data-all="' + esc(postId) + '">' +
-        '댓글 ' + shown.length + '개 모두 보기</button>');
-    }
-  }
-
-  function expandComments(postId) { refreshComments(postId, true); }
-
-  async function openCommentMenu(commentId) {
-    /* 어느 글의 댓글인지 찾아서 그 목록에서 집어온다 */
-    let found = null, postId = null;
+  /* 피드 카드에 보이는 최근 댓글의 메뉴 */
+  function feedCommentMenu(commentId) {
     for (let i = 0; i < F.rows.length; i++) {
       const hit = (F.rows[i].recent_comments || []).filter(c => c.id === commentId)[0];
-      if (hit) { found = hit; postId = F.rows[i].id; break; }
+      if (hit) return openCommentMenu(hit, () => renderHome(true));
     }
+  }
+
+  function openCommentMenu(found, after) {
     if (!found) return;
+    const commentId = found.id;
 
     const btns = [];
     if (found.mine) {
@@ -737,7 +767,7 @@ window.Community = (function () {
             if (!v) return toast('내용을 적어주세요', 'err');
             closeSheet();
             await DB.community.updateComment(commentId, v);
-            refreshComments(postId);
+            after && after();
           };
           return;
         }
@@ -746,7 +776,7 @@ window.Community = (function () {
           await DB.community.removeComment(commentId);
         }
         if (a === 'hide') await DB.community.hideComment(commentId, !found.hidden);
-        refreshComments(postId);
+        after && after();
       } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     });
   }
@@ -792,6 +822,7 @@ window.Community = (function () {
   }
 
   async function renderPolls() {
+    $('#headTitle').textContent = '투표';
     $('#headLead').textContent = '모두의 생각을 모아요.';
     paint(loading());
     let res;
@@ -811,6 +842,7 @@ window.Community = (function () {
      봉사 탭
      ============================================================ */
   async function renderVol() {
+    $('#headTitle').textContent = '봉사';
     $('#headLead').textContent = '다가오는 봉사와 지난 기록이에요.';
     paint('<div class="card"><h3>봉사 일정</h3>' +
       '<div class="sub">신청과 취소는 봉사 화면에서 할 수 있어요.</div><div class="sp"></div>' +
@@ -833,6 +865,7 @@ window.Community = (function () {
      나
      ============================================================ */
   async function renderMe() {
+    $('#headTitle').textContent = '나';
     $('#headLead').textContent = ME.name + '님의 발자국이에요.';
     paint(
       '<div class="card mecard" style="text-align:center;padding:30px 22px">' +
