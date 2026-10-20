@@ -7,7 +7,7 @@
 <title>발자국 · 사용법</title>
 <meta name="description" content="발자국 구성원 사용법 안내">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=202610201555">
+<link rel="stylesheet" href="assets/style.css?v=202610201559">
 <style>
   /* 목차 — 누르면 그 자리로 */
   .toc a{
@@ -20,6 +20,14 @@
     background:var(--brand-soft);color:var(--brand-deep);font-size:12px;font-weight:700
   }
   /* 단계 — 번호와 설명 */
+  /* 3분 요약 — 길어진 매뉴얼의 맨 앞 */
+  .quick{background:var(--brand-soft);border:1px solid var(--brand-line,var(--line))}
+  .qline{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px;
+    line-height:1.6;color:var(--ink-2)}
+  .qline .n{flex:none;width:19px;height:19px;border-radius:50%;background:var(--brand);
+    color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;margin-top:2px}
+  /* 목차는 따라다닌다 — 11장이라 위로 올라가기 번거롭다 */
+  .toc-wrap{position:sticky;top:60px;z-index:20}
   .step{display:flex;gap:12px;padding:14px 0;border-bottom:1px dashed var(--line-2)}
   .step:last-child{border-bottom:none}
   .step .no{
@@ -67,7 +75,23 @@
     <p>처음 오셨다면 1번부터 보시면 돼요.</p>
   </div>
 
-  <div class="card">
+  <div class="card quick">
+    <h3 style="font-size:15px;margin:0 0 4px">3분 요약</h3>
+    <div class="sub" style="margin-bottom:12px">이것만 알면 바로 쓸 수 있어요.</div>
+    <div class="qline"><span class="n">1</span>
+      <span><b>들어가기</b> — 카카오 로그인 → 이름 + 휴대폰 뒤 4자리. 한 번만 해요.</span></div>
+    <div class="qline"><span class="n">2</span>
+      <span><b>봉사 신청</b> — 아래 <b>봉사</b> 탭 → <b>신청하기</b>. 못 가면 <b>신청 취소</b>.</span></div>
+    <div class="qline"><span class="n">3</span>
+      <span><b>후기</b> — 다녀오면 홈 맨 위에 물어봐요. <b>후기 남기기</b>를 누르면 돼요.</span></div>
+    <div class="qline"><span class="n">4</span>
+      <span><b>알림</b> — 오른쪽 위 동그라미 → <b>알림 설정</b>.
+        <b>카카오톡 안에서는 안 켜져요</b> — 크롬·사파리로 열어주세요.</span></div>
+  </div>
+
+  <details class="card" id="tocCard" open>
+    <summary style="font-weight:800;font-size:14px;cursor:pointer;margin-bottom:10px">
+      목차 · 11장</summary>
     <div class="toc">
       <a href="#s1"><span class="no">1</span>처음 들어가기 — 본인 확인</a>
       <a href="#s2"><span class="no">2</span>홈 화면에 추가하기</a>
@@ -81,7 +105,7 @@
       <a href="#s10"><span class="no">10</span>자주 묻는 질문</a>
       <a href="#s11"><span class="no">🔑</span>운영진용</a>
     </div>
-  </div>
+  </details>
 
   <!-- 1 -->
   <div class="card" id="s1">
@@ -471,9 +495,9 @@
   <div style="height:40px"></div>
 </main>
 
-<script src="assets/config.js?v=202610201555"></script>
-<script src="assets/icons.js?v=202610201555"></script>
-<script src="assets/ui.js?v=202610201555"></script>
+<script src="assets/config.js?v=202610201559"></script>
+<script src="assets/icons.js?v=202610201559"></script>
+<script src="assets/ui.js?v=202610201559"></script>
 <script>
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', function () {

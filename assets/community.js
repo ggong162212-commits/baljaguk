@@ -351,6 +351,7 @@ window.Community = (function () {
         '<button class="btn ghost block" type="button" id="pfTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
+        '<a class="btn ghost block" href="privacy.html?from=app">' + ic('lock') + '<span>개인정보 처리방침</span></a>' +
         '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
         '</div>'
     });
