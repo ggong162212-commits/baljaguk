@@ -236,6 +236,16 @@ a{color:inherit;text-decoration:none}
   box-shadow:0 0 0 1px var(--line-2)
 }
 .avatar.sm{width:38px;height:38px;font-size:18px}
+/* 사진이 채워지면 글자는 가린다 */
+.avatar.has-photo{background-size:cover;background-position:center;color:transparent}
+/* 상단바 프로필 동그라미 */
+.avatar.tiny{width:32px;height:32px;font-size:15px;border-width:1.5px;cursor:pointer}
+.prof-big{
+  width:132px;height:132px;border-radius:50%;margin:0 auto;display:grid;place-items:center;
+  background:var(--brand-soft);color:var(--brand-deep);font-family:var(--font-title);font-size:52px;
+  background-size:cover;background-position:center
+}
+.prof-big.has-photo{color:transparent}
 /* 그린 한 계열 4단계 — 사람은 구분되고 화면 색은 늘지 않는다 */
 .avatar.av0{background:#E7F2DC;color:#3F7A2A}
 .avatar.av1{background:#D9EBC9;color:#36691F}
@@ -354,6 +364,35 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   .tabbar button{padding:8px 12px;font-size:11px;min-width:58px}
 }
 .tabbar button.on{background:var(--brand-soft);color:var(--brand-deep)}
+/* 새 소식 — 안 읽은 줄은 진하게, 왼쪽에 초록 점 */
+.newsrow{
+  display:flex;align-items:flex-start;gap:9px;width:100%;
+  border:none;background:none;text-align:left;font-family:inherit;cursor:pointer;
+  padding:10px 0;border-bottom:1px dashed var(--line-2)
+}
+.newsrow:last-child{border-bottom:none}
+.newsrow .pt{
+  width:7px;height:7px;border-radius:50%;background:var(--brand);
+  flex:none;margin-top:6px;transition:.14s
+}
+.newsrow .tx{flex:1;min-width:0;font-size:13px;line-height:1.6;color:var(--ink)}
+.newsrow .at{flex:none;font-size:11px;color:var(--ink-3)}
+.newsrow.read{opacity:.55}
+.newsrow.read .pt{background:transparent}
+.newsrow.read .tx{font-weight:400}
+.newsrow:not(.read) .tx{font-weight:600}
+
+/* 지난 봉사 줄 — 누를 수 있다 */
+.pastrow{
+  display:flex;align-items:center;gap:10px;width:100%;
+  border:none;background:none;text-align:left;font-family:inherit;cursor:pointer;
+  padding:11px 0;border-bottom:1px dashed var(--line-2);font-size:13.5px;color:var(--ink)
+}
+.pastrow:last-child{border-bottom:none}
+.pastrow .nm{flex:1;min-width:0}
+.pastrow .rt{flex:none;font-size:12px;color:var(--ink-3)}
+.pastrow .go{flex:none;font-size:12px;color:var(--brand-deep);font-weight:700}
+
 /* 안 읽은 새 소식이 있으면 탭에 점 */
 .tabbar button.dotted{position:relative}
 .tabbar button.dotted::before{
@@ -370,7 +409,7 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 @media (prefers-reduced-motion:reduce){ .tabbar button .pawdot{transition:none} }
 
 /* 하단 탭에 가리지 않도록 본문 끝에 두는 여백 */
-.tabgap{height:96px}
+.tabgap{height:120px}
 
 /* ---------- 글쓰기 버튼 ---------- */
 /* 하단 탭 바로 위, 오른쪽에 뜬다 */

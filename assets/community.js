@@ -6,7 +6,7 @@
 window.Community = (function () {
   const {
     $, $$, esc, toast, sheet, closeSheet, confirmSheet,
-    won, num, credit, fmtDate, relTime, avatar, resizeImage, cheer
+    won, num, credit, fmtDate, relTime, avatar, resizeImage, cropSquare, cheer
   } = UI;
 
   const TABS = [
@@ -52,8 +52,129 @@ window.Community = (function () {
 
     $('#fab').innerHTML = ic('plus');
 
+    /* 다크 모드 버튼은 프로필 시트 안으로 옮기고, 그 자리에 프로필 동그라미 */
+    const tb = document.querySelector('.topbar .in');
+    const themeBtn = tb && tb.querySelector('[data-theme-btn]');
+    if (themeBtn) themeBtn.hidden = true;
+    if (tb && !tb.querySelector('#profBtn')) {
+      tb.insertAdjacentHTML('beforeend',
+        '<button id="profBtn" type="button" aria-label="내 프로필" ' +
+        'style="border:none;background:none;padding:0;cursor:pointer">' +
+        avatar(ME, 'tiny') + '</button>');
+      tb.querySelector('#profBtn').onclick = profileSheet;
+      loadAvatars(tb);
+    }
+
     go('home');
     paintTabDot();
+  }
+
+  /* ---------- 아바타 사진 채우기 ----------
+     비공개 보관함이라 볼 때마다 서명된 주소를 받아 와야 한다 */
+  async function loadAvatars(root) {
+    const els = Array.prototype.slice.call((root || document).querySelectorAll('[data-avatar]'));
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i], path = el.getAttribute('data-avatar');
+      el.removeAttribute('data-avatar');
+      try {
+        const url = await DB.community.avatarUrl(path);
+        if (url) { el.style.backgroundImage = 'url("' + url + '")'; el.classList.add('has-photo'); }
+      } catch (e) { /* 한 장 실패해도 이니셜로 보인다 */ }
+    }
+  }
+
+  /* ---------- 내 프로필 ---------- */
+  function profileSheet() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const ov = sheet({
+      title: '내 프로필',
+      body:
+        '<div class="center">' +
+        '<div class="prof-big" id="profBig"' +
+        (ME.photo ? ' data-avatar="' + esc(ME.photo) + '"' : '') + '>' +
+        esc(String(ME.name).slice(0, 1)) + '</div>' +
+        '<div class="row center" style="gap:8px;margin-top:12px">' +
+        '<button class="btn soft sm" type="button" id="pfPick">사진 바꾸기</button>' +
+        (ME.photo ? '<button class="btn ghost sm" type="button" id="pfClear">사진 지우기</button>' : '') +
+        '</div>' +
+        '<input type="file" id="pfFile" accept="image/*" hidden>' +
+        '<p class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.6">' +
+        '다른 사람 사진이나 부적절한 사진은 운영진이 지울 수 있어요.</p>' +
+        '</div>' +
+
+        '<div class="divider"></div>' +
+        '<div class="kv"><span class="k">이름</span><span class="v">' + esc(ME.name) +
+        (ME.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</span></div>' +
+        '<div class="kv"><span class="k">기수</span><span class="v">' + esc(genLabel()) + '</span></div>' +
+        (ME.joined_on
+          ? '<div class="kv"><span class="k">가입일</span><span class="v">' + fmtDate(ME.joined_on) + '</span></div>'
+          : '') +
+
+        '<button class="kv" type="button" id="pfMe" style="width:100%;border:none;background:none;' +
+        'font-family:inherit;cursor:pointer;text-align:left">' +
+        '<span class="k">내 활동</span><span class="v" id="pfSum">보러 가기 →</span></button>' +
+
+        '<div class="divider"></div>' +
+        '<div style="display:grid;gap:8px">' +
+        '<button class="btn ghost block" type="button" id="pfTheme">' +
+        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
+        '<a class="btn ghost block" href="guide.html">' + ic('clipboard') + '<span>사용법</span></a>' +
+        (AM_ADMIN ? '<a class="btn soft block" href="admin.html">운영진 화면으로</a>' : '') +
+        '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
+        '</div>'
+    });
+
+    loadAvatars(ov);
+
+    /* 봉사 횟수·적립을 한 줄로 */
+    DB.myActivity().then(a => {
+      const el = ov.querySelector('#pfSum');
+      if (!el || !a) return;
+      const bits = [];
+      if (a.times) bits.push(num(a.times) + '회');
+      if (a.credit_total) bits.push(won(a.credit_total));
+      if (a.credit_total_kg) bits.push(credit(a.credit_total_kg, 'kg'));
+      el.textContent = (bits.length ? bits.join(' · ') + ' →' : '보러 가기 →');
+    }).catch(() => { });
+
+    ov.querySelector('#pfMe').onclick = () => { closeSheet(); go('me'); };
+    ov.querySelector('#pfOut').onclick = () => { DB.memberLogout(); location.reload(); };
+    ov.querySelector('#pfTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
+
+    const file = ov.querySelector('#pfFile');
+    ov.querySelector('#pfPick').onclick = () => file.click();
+    file.addEventListener('change', async e => {
+      const f = (e.target.files || [])[0];
+      if (!f) return;
+      const big = ov.querySelector('#profBig');
+      try {
+        const src = await cropSquare(f, 400, .86);
+        big.style.backgroundImage = 'url("' + src + '")';
+        big.classList.add('has-photo');
+        const path = await DB.community.setMyPhoto(src);
+        ME.photo = path;
+        toast('사진을 바꿨어요', 'ok');
+        refreshProfileBtn();
+      } catch (err) { toast(err.message || '사진을 바꾸지 못했어요', 'err'); }
+    });
+
+    const clr = ov.querySelector('#pfClear');
+    if (clr) clr.onclick = async () => {
+      try {
+        await DB.community.setMyPhoto('');
+        ME.photo = null;
+        closeSheet();
+        toast('사진을 지웠어요');
+        refreshProfileBtn();
+      } catch (e) { toast(e.message || '지우지 못했어요', 'err'); }
+    };
+  }
+
+  function refreshProfileBtn() {
+    const btn = document.querySelector('#profBtn');
+    if (!btn) return;
+    btn.innerHTML = avatar(ME, 'tiny');
+    loadAvatars(btn);
   }
 
   function go(tab) {
@@ -131,7 +252,12 @@ window.Community = (function () {
   /* 설정에 적힌 봉사지 목록 — 없으면 피드에 나온 곳으로 */
   function placeList() {
     const s = (window.__settings || {});
-    const fromSettings = Array.isArray(s.places) ? s.places.filter(Boolean) : [];
+    /* 설정의 봉사지는 {name, credit, unit} 모양이다. 예전 자료는 문자열일 수 있다 */
+    let raw = s.places;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+    const fromSettings = (Array.isArray(raw) ? raw : [])
+      .map(x => (typeof x === 'string' ? x : String((x && x.name) || '')).trim())
+      .filter(Boolean);
     if (fromSettings.length) return fromSettings;
     const seen = [];
     F.rows.forEach(r => { if (r.place && seen.indexOf(r.place) < 0) seen.push(r.place); });
@@ -184,6 +310,7 @@ window.Community = (function () {
     }
     $('#list').innerHTML = F.rows.map(postCard).join('');
     bindOnce();
+    loadAvatars($('#list'));
     paintChips();
     paintMoreButton();
     loadPhotos($('#list'));
@@ -360,6 +487,11 @@ window.Community = (function () {
       if ((b = hit('data-close'))) return closePoll(b.dataset.close);
       if ((b = hit('data-signup'))) return doSignup(b.dataset.signup, false);
       if ((b = hit('data-cancel'))) return doSignup(b.dataset.cancel, true);
+      if ((b = hit('data-past'))) return openPast(b.dataset.past);
+      if ((b = hit('data-news'))) {
+        if (b.dataset.at > newsSeen()) { markNewsSeen(b.dataset.at); paintTabDot(); loadNews(); }
+        return openPost(b.dataset.news);
+      }
     });
 
     /* 반응을 길게 누르면 누가 눌렀는지 */
@@ -525,7 +657,7 @@ window.Community = (function () {
   /* ============================================================
      글쓰기 — 봉사 후기
      ============================================================ */
-  async function writeSheet() {
+  async function writeSheet(preEvent) {
     let acts = [];
     try {
       const a = await DB.myActivity();
@@ -584,6 +716,11 @@ window.Community = (function () {
     const sel = ov.querySelector('#wEv');
     const own = ov.querySelector('#wOwn');
     if (!acts.length) { sel.value = 'own'; own.hidden = false; }
+    /* 지난 봉사 줄에서 들어왔으면 그 봉사를 미리 골라 둔다 */
+    if (preEvent) {
+      const i = acts.findIndex(r => r.event_id === preEvent);
+      if (i >= 0) sel.value = String(i);
+    }
     sel.addEventListener('change', () => { own.hidden = sel.value !== 'own'; });
 
     /* 사진은 올리기 전에 줄인다. 줄이면서 위치정보도 떨어져 나간다 */
@@ -1029,11 +1166,17 @@ window.Community = (function () {
 
     $('#past').innerHTML = past.length
       ? '<div class="section-title" style="margin-top:16px">' + ic('clock') + '<span>지난 봉사</span></div>' +
-        '<div class="card" style="padding:4px 16px">' + past.map(e =>
-          '<div class="kv"><span class="k">' + fmtDate(e.date) +
-          (e.place ? ' · ' + esc(e.place) : '') +
-          (e.confirmed_at ? '' : ' <span class="badge">확정 전</span>') + '</span>' +
-          '<span class="v mut" style="font-size:12px">후기 ' + cnt(e.id) + '개</span></div>').join('') +
+        '<div class="card" style="padding:4px 16px">' + past.map(e => {
+          const n = cnt(e.id);
+          const went = mineIds.indexOf(e.id) >= 0;
+          return '<button class="pastrow" type="button" data-past="' + esc(e.id) + '">' +
+            '<span class="nm">' + fmtDate(e.date) +
+            (e.place ? ' · ' + esc(e.place) : '') +
+            (e.confirmed_at ? '' : ' <span class="badge">확정 전</span>') + '</span>' +
+            (went && !n
+              ? '<span class="go">후기 쓰기</span>'
+              : '<span class="rt">후기 ' + n + '개</span>') + '</button>';
+        }).join('') +
         '</div>'
       : '';
   }
@@ -1043,7 +1186,7 @@ window.Community = (function () {
     const cap = Number(e.capacity) || 0;
     const full = cap > 0 && taken >= cap && !mine;
 
-    return '<div class="card" data-ev="' + esc(e.id) + '">' +
+    return '<div class="card" data-ev="' + esc(e.id) + '" style="margin-bottom:12px">' +
       '<div class="row between" style="align-items:flex-start;gap:10px">' +
       '<div class="grow"><div style="font-weight:700;font-size:15px">' +
       fmtDate(e.date) + ' (' + UI.weekday(e.date) + ')' +
@@ -1071,6 +1214,27 @@ window.Community = (function () {
     nomatch: '로그인이 풀렸어요. 다시 들어와주세요',
     noevent: '없는 일정이에요'
   };
+
+  /* 지난 봉사를 누르면 그 봉사 후기로, 안 썼으면 쓰러 간다 */
+  async function openPast(eventId) {
+    let reviews = [];
+    try {
+      const r = await DB.community.feed({ type: 'review', limit: 50 });
+      reviews = (r && r.rows || []).filter(x => x.event_id === eventId);
+    } catch (e) { }
+    if (reviews.length) {
+      F.rows = reviews;
+      $('#headTitle').textContent = '봉사 후기';
+      $('#headLead').textContent = fmtDate(reviews[0].date) +
+        (reviews[0].place ? ' · ' + reviews[0].place : '');
+      paint('<button class="btn ghost sm" type="button" id="backVol">← 봉사로</button>' +
+        '<div class="sp"></div>' + reviews.map(postCard).join(''));
+      $('#backVol').onclick = () => go('vol');
+      loadPhotos($('#view'));
+      return;
+    }
+    writeSheet(eventId);
+  }
 
   async function doSignup(id, cancel) {
     const btn = $('#view').querySelector('[data-' + (cancel ? 'cancel' : 'signup') + '="' + id + '"]');
@@ -1153,11 +1317,11 @@ window.Community = (function () {
       (fresh ? '<button class="linkbtn" type="button" id="newsRead">모두 읽음</button>' : '') +
       '</div><div class="sp"></div>' +
       list.slice(0, 8).map(n =>
-        '<button class="kv" type="button" data-open="' + esc(n.post_id) + '" ' +
-        'style="width:100%;border:none;background:none;text-align:left;font-family:inherit;cursor:pointer' +
-        (String(n.at) > seen ? ';font-weight:600' : '') + '">' +
-        '<span class="k" style="flex:1;min-width:0">' + line(n) + '</span>' +
-        '<span class="v mut" style="font-size:11px">' + relTime(n.at) + '</span></button>').join('') +
+        '<button class="newsrow' + (String(n.at) > seen ? '' : ' read') + '" type="button" ' +
+        'data-news="' + esc(n.post_id) + '" data-at="' + esc(n.at) + '">' +
+        '<span class="pt"></span>' +
+        '<span class="tx">' + line(n) + '</span>' +
+        '<span class="at">' + relTime(n.at) + '</span></button>').join('') +
       '</div>';
 
     const rb = $('#newsRead');

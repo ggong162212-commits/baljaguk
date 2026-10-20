@@ -563,3 +563,61 @@ $$;
 
 revoke all on function my_news(int) from public, anon;
 grant execute on function my_news(int) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 14) 내가 누구인지 — 프로필에 쓸 사진·가입일까지 (연락처·학번은 여전히 안 준다)
+-- ------------------------------------------------------------
+create or replace function me()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case
+    when auth.uid() is null then json_build_object('login', false)
+    else coalesce(
+      (select json_build_object(
+                'login', true, 'linked', true,
+                'id', m.id, 'name', m.name, 'role', m.role, 'status', m.status,
+                'photo', m.photo_path, 'joined_on', m.joined_on)
+         from members m where m.auth_user_id = auth.uid()),
+      json_build_object('login', true, 'linked', false))
+  end;
+$$;
+
+revoke all on function me() from public;
+grant execute on function me() to anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- 15) 프로필 사진 바꾸기 — 본인만. 운영진은 지울 수만 있다.
+-- ------------------------------------------------------------
+create or replace function set_my_photo(p_path text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare me_ uuid := my_member_id();
+begin
+  if me_ is null then return false; end if;
+  update members set photo_path = nullif(p_path, '') where id = me_;
+  return true;
+end;
+$$;
+
+create or replace function clear_photo(p_member uuid)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then return false; end if;
+  update members set photo_path = null where id = p_member;
+  return true;
+end;
+$$;
+
+revoke all on function set_my_photo(text)  from public, anon;
+revoke all on function clear_photo(uuid)   from public, anon;
+grant execute on function set_my_photo(text) to authenticated;
+grant execute on function clear_photo(uuid)  to authenticated;

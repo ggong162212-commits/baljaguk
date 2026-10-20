@@ -183,7 +183,35 @@
     const tone = 'av' + (h % 4);
     /* 운영진 왕관 같은 그림 없이 모두 이름 첫 글자로. 구분은 이름 옆 배지로 한다 */
     const face = name.slice(0, 1);
-    return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '" aria-hidden="true">' + esc(face) + '</div>';
+    /* 사진은 비공개 보관함에 있어 주소를 따로 받아야 한다.
+       자리만 만들어 두고 community.js 가 채운다. 공개 페이지는 사진을 안 쓴다. */
+    const photo = (m && m.photo) ? ' data-avatar="' + esc(m.photo) + '"' : '';
+    return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '"' + photo +
+      ' aria-hidden="true">' + esc(face) + '</div>';
+  }
+
+  /* 정사각형으로 잘라서 줄인다 (프로필 사진용).
+     캔버스를 거치면 위치정보(EXIF)도 함께 떨어진다 */
+  function cropSquare(file, size, quality) {
+    return new Promise((res, rej) => {
+      if (!file || !/^image\//.test(file.type)) return rej(new Error('이미지 파일만 올릴 수 있어요'));
+      const fr = new FileReader();
+      fr.onerror = () => rej(new Error('파일을 읽지 못했어요'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => rej(new Error('이미지를 열지 못했어요'));
+        img.onload = () => {
+          const n = size || 400;
+          const side = Math.min(img.width, img.height);
+          const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+          const c = document.createElement('canvas'); c.width = n; c.height = n;
+          c.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, n, n);
+          res(c.toDataURL('image/jpeg', quality || .86));
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
   }
 
   /* ---------- 이미지 축소 ---------- */
@@ -245,6 +273,6 @@
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
     copy, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
-    resizeImage, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
+    resizeImage, cropSquare, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
   };
 })();

@@ -318,7 +318,10 @@
         const id = localStorage.getItem('baljaguk.demoMe');
         const m = id && (demoRead().members || []).find(x => x.id === id);
         return m
-          ? { login: true, linked: true, id: m.id, name: m.name, role: m.role, status: m.status }
+          ? {
+            login: true, linked: true, id: m.id, name: m.name, role: m.role,
+            status: m.status, photo: m.photo_path || null, joined_on: m.joined_on || null
+          }
           : { login: true, linked: false };
       }
       if (!session) return { login: false };
@@ -1172,6 +1175,55 @@
       return await rest('rpc/poll_who', {
         method: 'POST', body: { p_option: optionId }
       }) || [];
+    },
+
+    /* ---------- 프로필 사진 ---------- */
+    /* 정사각형으로 잘라 400px 로 줄인다. 줄이면서 위치정보도 떨어진다 */
+    async setMyPhoto(dataUrl) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const m = (d.members || []).find(x => x.id === me);
+        if (!m) throw new Error('로그인이 풀렸어요');
+        m.photo_path = dataUrl || null;
+        demoWrite(d); return dataUrl || null;
+      }
+      if (!dataUrl) {
+        await rest('rpc/set_my_photo', { method: 'POST', body: { p_path: '' } });
+        return null;
+      }
+      const meId = await DB.community.myId();
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = meId + '/' + Date.now() + '.jpg';
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/avatars/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': blob.type || 'image/jpeg'
+        },
+        body: blob
+      });
+      if (!r.ok) throw new Error('사진을 올리지 못했어요');
+      await rest('rpc/set_my_photo', { method: 'POST', body: { p_path: path } });
+      return path;
+    },
+
+    /* 비공개 보관함이라 볼 때마다 서명된 주소를 받는다 */
+    async avatarUrl(path) {
+      if (!path) return '';
+      if (!HAS_SB || /^data:/.test(path)) return path;
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/avatars/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expiresIn: 3600 })
+      });
+      if (!r.ok) return '';
+      const j = await r.json().catch(() => ({}));
+      return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
     },
 
     /* ---------- 새 소식 ---------- */
