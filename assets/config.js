@@ -36,7 +36,7 @@ window.CONFIG = {
   //
   //  ★ Private Key 는 이 파일에 절대 적지 않습니다.
   //    이 파일은 사이트에 들어온 누구나 열어볼 수 있습니다.
-  VAPID_PUBLIC_KEY: '',
+  VAPID_PUBLIC_KEY: 'BLeyjdc2tML3ZGZvYXdkZ22wuDCIQPIxJwmrj3WOcb3_NspX5iCBYmPKhMxlNTaCj_IuYOnFAIELgNEIi5NZxGA',
 
   // 설문(survey.html) 회차. 학기가 바뀌면 이 값만 바꾸면 응답이 새로 쌓입니다.
   SURVEY_TOPIC: '2026-2',
