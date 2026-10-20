@@ -268,6 +268,21 @@
     const tb = document.querySelector('#topbar .in');
     if (!tb || tb.querySelector('#profBtn')) return;
 
+    /* 로고를 누르면 운영진 첫 화면으로 — 막다른 곳이 없게 */
+    const logo = tb.querySelector('.brandmark');
+    if (logo && !logo.dataset.home) {
+      logo.dataset.home = '1';
+      logo.style.cursor = 'pointer';
+      logo.setAttribute('role', 'button');
+      logo.setAttribute('tabindex', '0');
+      logo.setAttribute('aria-label', '운영진 첫 화면으로');
+      const goHome = () => { closeSheet(); go(TABS[0].id); };
+      logo.addEventListener('click', goHome);
+      logo.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); }
+      });
+    }
+
     /* 커뮤니티와 같은 자리에 같은 전환 스위치 */
     const bm = tb.querySelector('.brandmark');
     if (bm && !tb.querySelector('.sidesw')) {
@@ -331,7 +346,7 @@
         '<div style="display:grid;gap:8px">' +
         '<button class="btn ghost block" type="button" id="apTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
-        '<a class="btn ghost block" href="guide.html">' + ic('clipboard') + '<span>사용법</span></a>' +
+        '<a class="btn ghost block" href="guide.html?from=admin">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="apOut">로그아웃</button>' +
         '</div>'
     });

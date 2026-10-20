@@ -84,7 +84,7 @@
       '<span>카카오로 로그인</span></button></div>' +
       '<p class="mut" style="font-size:11.5px;margin-top:12px">닉네임만 받아와요. 카카오톡 친구목록이나 메시지는 보지 않습니다.</p>' +
       '</div>' +
-      '<div class="linkline"><a href="guide.html">처음이신가요? 사용법 보기 →</a></div>');
+      '<div class="linkline"><a href="guide.html?from=login">처음이신가요? 사용법 보기 →</a></div>');
     $('#go').onclick = () => DB.kakaoLogin(backHere());
   }
 

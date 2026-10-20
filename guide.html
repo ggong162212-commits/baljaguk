@@ -7,7 +7,7 @@
 <title>발자국 · 사용법</title>
 <meta name="description" content="발자국 구성원 사용법 안내">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=202610201403">
+<link rel="stylesheet" href="assets/style.css?v=202610201410">
 <style>
   /* 목차 — 누르면 그 자리로 */
   .toc a{
@@ -52,9 +52,9 @@
 
 <header class="topbar">
   <div class="in">
-    <div class="brandmark grow">
-      <span class="dot" id="brandIcon"></span>
-      <span class="wordmark">발자국</span>
+    <button class="iconbtn" id="backBtn" type="button" aria-label="돌아가기"></button>
+    <div class="brandmark grow" style="margin-left:4px">
+      <span class="wordmark">사용법</span>
     </div>
     <button class="iconbtn" data-theme-btn type="button"></button>
   </div>
@@ -191,19 +191,45 @@
     </div>
   </div>
 
-  <div class="linkline"><a href="index.html">발자국 홈으로 →</a></div>
+  <div class="linkline"><a href="me.html" id="homeLink">발자국 홈으로 →</a></div>
+  <a class="btn primary lg block" id="backFoot" href="me.html"
+     style="margin-top:4px">커뮤니티로 돌아가기</a>
   <div style="height:40px"></div>
 </main>
 
-<script src="assets/config.js?v=202610201403"></script>
-<script src="assets/icons.js?v=202610201403"></script>
-<script src="assets/ui.js?v=202610201403"></script>
+<script src="assets/config.js?v=202610201410"></script>
+<script src="assets/icons.js?v=202610201410"></script>
+<script src="assets/ui.js?v=202610201410"></script>
 <script>
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', function () {
-    document.getElementById('brandIcon').innerHTML = ic('paw');
     document.querySelector('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
     UI.paintThemeButtons();
+
+    /* 어디서 왔는지에 따라 돌아갈 곳이 다르다.
+       앱 안에서 열었으면 보던 화면으로, 아니면 커뮤니티로. */
+    var from = '';
+    try { from = new URLSearchParams(location.search).get('from') || ''; } catch (e) { }
+    var home = from === 'admin' ? 'admin.html' : 'me.html';
+    var isLogin = from === 'login';
+    var foot = document.getElementById('backFoot');
+    if (foot) {
+      foot.href = home;
+      foot.textContent = from === 'admin' ? '운영진 화면으로 돌아가기'
+        : (isLogin ? '로그인 화면으로 돌아가기' : '커뮤니티로 돌아가기');
+    }
+
+    var hl = document.getElementById('homeLink');
+    if (hl) hl.href = home;
+
+    var back = document.getElementById('backBtn');
+    back.innerHTML = ic('chevron');
+    back.style.transform = 'rotate(180deg)';
+    back.addEventListener('click', function () {
+      /* 기록이 있으면 보던 화면으로, 없으면(주소를 바로 친 경우) 커뮤니티로 */
+      if (history.length > 1) history.back();
+      else location.href = home;
+    });
   });
 </script>
 </body>

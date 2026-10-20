@@ -52,6 +52,21 @@ window.Community = (function () {
 
     $('#fab').innerHTML = ic('plus');
 
+    /* 로고를 누르면 어디서든 홈 탭으로 — 막다른 곳이 없게 */
+    const logo = document.querySelector('.topbar .brandmark');
+    if (logo && !logo.dataset.home) {
+      logo.dataset.home = '1';
+      logo.style.cursor = 'pointer';
+      logo.setAttribute('role', 'button');
+      logo.setAttribute('tabindex', '0');
+      logo.setAttribute('aria-label', '홈으로');
+      const goHome = () => { closeSheet(); go('home'); };
+      logo.addEventListener('click', goHome);
+      logo.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); }
+      });
+    }
+
     /* 운영진에게만 「발자국 | 운영진」 전환. 구성원에게는 보이지 않는다 */
     if (AM_ADMIN) {
       const bm = document.querySelector('.topbar .brandmark');
@@ -143,7 +158,7 @@ window.Community = (function () {
         '<div style="display:grid;gap:8px">' +
         '<button class="btn ghost block" type="button" id="pfTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
-        '<a class="btn ghost block" href="guide.html">' + ic('clipboard') + '<span>사용법</span></a>' +
+        '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
         '</div>'
     });
