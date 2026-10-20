@@ -43,8 +43,9 @@ window.Community = (function () {
 
     const bar = $('#tabbar');
     bar.innerHTML = TABS.map(t =>
-      '<button type="button" data-tab="' + t.id + '">' +
-      '<span class="i">' + ic(t.icon) + '</span>' + t.label + '</button>').join('');
+      '<button type="button" data-tab="' + t.id + '" aria-label="' + t.label + '">' +
+      '<span class="i">' + ic(t.icon) + '</span>' + t.label +
+      '<span class="pawdot">' + ic('paw') + '</span></button>').join('');
     $$('#tabbar [data-tab]').forEach(b =>
       b.addEventListener('click', () => go(b.dataset.tab)));
     bar.hidden = false;
@@ -68,7 +69,19 @@ window.Community = (function () {
   }
 
   const paint = html => { $('#view').innerHTML = html; };
-  const loading = () => '<div class="card center" style="padding:30px"><div class="mut sm">불러오는 중…</div></div>';
+  /* 글자 대신 카드 모양으로 — 무엇이 올지 미리 보이게 */
+  const skel = n => {
+    let out = '';
+    for (let i = 0; i < (n || 2); i++) {
+      out += '<div class="skel" style="margin-bottom:10px">' +
+        '<div class="ln w40"></div><div class="ln w70"></div>' +
+        '<div class="ln tall"></div></div>';
+    }
+    return out;
+  };
+  const paws = () => '<div class="paws" role="status" aria-label="불러오는 중">' +
+    '<i>' + ic('paw') + '</i><i>' + ic('paw') + '</i><i>' + ic('paw') + '</i></div>';
+  const loading = n => skel(n) + paws();
 
   /* ============================================================
      홈 — 피드
@@ -128,9 +141,17 @@ window.Community = (function () {
       });
     } catch (e) {
       F.busy = false;
-      if (first) $('#list').innerHTML =
-        '<div class="card center" style="padding:28px"><div class="mut sm">' +
-        '피드를 불러오지 못했어요. 새로고침해주세요.</div></div>';
+      if (first) {
+        $('#list').innerHTML =
+          '<div class="card center" style="padding:28px 22px">' +
+          illus('error') +
+          '<h3 style="margin-top:12px;font-size:16px">잠깐 연결이 엉켰어요</h3>' +
+          '<p class="mut sm" style="margin-top:7px">잠시 뒤 다시 해볼까요?</p>' +
+          '<div style="margin-top:15px">' +
+          '<button class="btn primary" type="button" data-retry>다시 시도</button></div></div>';
+        const rb = $('#list').querySelector('[data-retry]');
+        if (rb) rb.onclick = () => renderHome(true);
+      }
       return;
     }
     F.busy = false;
@@ -169,12 +190,13 @@ window.Community = (function () {
   }
 
   function emptyFeed() {
-    return '<div class="card center" style="padding:32px 22px">' +
-      '<div style="font-size:30px">🐾</div>' +
-      '<h3 style="margin-top:10px;font-size:17px">아직 글이 없어요</h3>' +
-      '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
-      '첫 봉사 후기를 남겨보세요.<br>다녀온 날과 보호소를 고르면 돼요.</p>' +
-      '<div style="margin-top:14px"><button class="btn soft" type="button" data-write>글쓰기</button></div></div>';
+    return '<div class="card center" style="padding:28px 22px">' +
+      illus('emptyFeed') +
+      '<h3 style="margin-top:12px;font-size:17px">아직 후기가 없어요</h3>' +
+      '<p class="mut sm" style="margin-top:7px;line-height:1.6">' +
+      '다녀온 날과 보호소를 고르면 금방 써져요.</p>' +
+      '<div style="margin-top:15px">' +
+      '<button class="btn primary" type="button" data-write>첫 후기 쓰기</button></div></div>';
   }
 
   /* 맨 위 고정 공지 — 있을 때만 */
@@ -322,7 +344,7 @@ window.Community = (function () {
       const hit = sel => e.target.closest('[' + sel + ']');
       let b;
 
-      if ((b = hit('data-react'))) return hitReaction(b.dataset.react, b.dataset.k);
+      if ((b = hit('data-react'))) { pop(b); return hitReaction(b.dataset.react, b.dataset.k); }
       if ((b = hit('data-pick'))) return pickReaction(b.dataset.pick);
       if ((b = hit('data-who'))) return whoSheet(b.dataset.who);
       if ((b = hit('data-menu'))) return postMenu(b.dataset.menu);
@@ -358,6 +380,14 @@ window.Community = (function () {
       const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
       Array.prototype.forEach.call(dots.children, (d, n) => d.classList.toggle('on', n === i));
     }, true);
+  }
+
+  /* 누른 느낌이 바로 오게 — 이모지가 톡 튀었다 돌아온다 */
+  function pop(el) {
+    if (!el) return;
+    el.classList.remove('pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
   }
 
   function findRow(id) { return F.rows.filter(r => r.id === id)[0]; }
@@ -534,7 +564,7 @@ window.Community = (function () {
 
         /* 인스타 사용 동의 — 안 고르면 기본은 '안 됨'이다 */
         '<button type="button" class="check" id="wInsta" style="margin-top:8px;width:100%;text-align:left">' +
-        '<span class="box" aria-hidden="true">' + ic('check') + '</span>' +
+        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
         '<span class="grow"><span class="sm" style="font-weight:700">' +
         '발자국 인스타그램에 올려도 괜찮아요</span>' +
         '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
@@ -769,9 +799,9 @@ window.Community = (function () {
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
     const rows = res.rows || [];
     if (!rows.length) return paint(
-      '<div class="card center" style="padding:32px 22px">' +
-      '<div style="font-size:28px">🐾</div>' +
-      '<h3 style="margin-top:10px;font-size:17px">아직 투표가 없어요</h3></div>');
+      '<div class="card center" style="padding:28px 22px">' +
+      illus('emptyPoll') +
+      '<h3 style="margin-top:12px;font-size:17px">아직 투표가 없어요</h3></div>');
     paint(rows.map(postCard).join(''));
     bindOnce();
     loadPhotos($('#view'));
@@ -837,12 +867,12 @@ window.Community = (function () {
     if (!times) {
       box.innerHTML =
         '<div class="card center" style="padding:28px 22px">' +
-        '<div style="font-size:30px">🐾</div>' +
-        '<h3 style="margin-top:10px;font-size:17px">아직 첫 봉사 전이에요</h3>' +
-        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
-        '다녀오시면 여기에 횟수와 쌓인 적립금이 모여요.</p>' +
-        '<div style="margin-top:14px">' +
-        '<a class="btn soft" href="volunteer.html">봉사 일정 보기</a></div></div>';
+        illus('emptyFeed') +
+        '<h3 style="margin-top:12px;font-size:17px">아직 첫 봉사 전이에요</h3>' +
+        '<p class="mut sm" style="margin-top:7px;line-height:1.6">' +
+        '다녀오시면 여기에 횟수와 쌓인 것이 모여요.</p>' +
+        '<div style="margin-top:15px">' +
+        '<a class="btn primary" href="volunteer.html">봉사 일정 보기</a></div></div>';
       return;
     }
 
@@ -896,13 +926,11 @@ window.Community = (function () {
     ];
     return '<div class="card"><h3>기록 배지</h3>' +
       '<div class="sub">확정된 봉사로만 모여요.</div><div class="sp"></div>' +
-      '<div class="row" style="gap:10px;flex-wrap:wrap">' +
+      '<div class="row" style="gap:8px;align-items:flex-start">' +
       list.map(b =>
-        '<div style="flex:1;min-width:66px;text-align:center;opacity:' + (b.on ? '1' : '.35') + '">' +
-        '<div style="width:44px;height:44px;margin:0 auto;border-radius:16px;display:grid;' +
-        'place-items:center;background:' + (b.on ? 'var(--brand-soft)' : 'var(--surface-2)') +
-        ';color:' + (b.on ? 'var(--brand-deep)' : 'var(--ink-3)') + '">' + ic(b.icon) + '</div>' +
-        '<div class="sm" style="margin-top:5px;font-size:11.5px;font-weight:700">' + b.label + '</div></div>').join('') +
+        '<div style="flex:1;min-width:62px;text-align:center">' +
+        illus('badge', 'xs' + (b.on ? ' badge-on' : ' off')) +
+        '<div class="badge-nm' + (b.on ? ' on' : '') + '">' + b.label + '</div></div>').join('') +
       '</div></div>';
   }
 

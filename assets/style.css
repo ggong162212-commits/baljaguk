@@ -29,7 +29,7 @@
   --purple:#A78BD0;
   --purple-soft:#EFE8F8;
 
-  --r-xl:28px; --r-lg:22px; --r-md:16px; --r-sm:11px;
+  --r-xl:26px; --r-lg:20px; --r-md:16px; --r-sm:11px;
   --shadow:0 8px 26px rgba(58,72,44,.08);
   --shadow-sm:0 3px 12px rgba(58,72,44,.06);
   --shadow-pop:0 14px 40px rgba(58,72,44,.16);
@@ -161,7 +161,7 @@ a{color:inherit;text-decoration:none}
 /* ---------- 버튼 ---------- */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  padding:12px 18px;border-radius:15px;border:1px solid transparent;
+  padding:12px 18px;border-radius:14px;border:1px solid transparent;
   background:var(--surface-2);color:var(--ink);font-weight:600;font-size:14px;
   cursor:pointer;transition:.16s;white-space:nowrap
 }
@@ -311,6 +311,9 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .check.on{background:var(--brand-soft);border-color:var(--brand)}
 .check .box{width:22px;height:22px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;flex:none;color:#fff;font-size:12px;transition:.14s}
 .check.on .box{background:var(--brand);border-color:var(--brand)}
+/* 체크 표시는 켜졌을 때만. 다크에서 흰 체크가 미리 보이던 것 */
+.check .box.tick .svg{opacity:0;transition:.14s}
+.check.on .box.tick .svg{opacity:1}
 .check .hr{width:56px;flex:none}
 .check .hr input{width:100%;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);text-align:center;font-size:13px}
 
@@ -333,6 +336,14 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   .tabbar button{padding:8px 12px;font-size:11px;min-width:58px}
 }
 .tabbar button.on{background:var(--brand-soft);color:var(--brand-deep)}
+/* 선택된 탭 아래 작은 발바닥 — 한 화면에 한 곳만 */
+.tabbar button .pawdot{
+  height:0;overflow:hidden;opacity:0;transition:.18s;
+  display:block;color:var(--brand)
+}
+.tabbar button .pawdot svg{width:9px;height:9px;display:block;margin:0 auto}
+.tabbar button.on .pawdot{height:9px;opacity:1}
+@media (prefers-reduced-motion:reduce){ .tabbar button .pawdot{transition:none} }
 
 /* 하단 탭에 가리지 않도록 본문 끝에 두는 여백 */
 .tabgap{height:96px}
@@ -389,6 +400,63 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .react .n{font-size:11.5px}
 .react.add{color:var(--ink-3)}
 .react.add .svg{width:15px;height:15px}
+
+/* ---------- 선 일러스트 ---------- */
+/* 빈 화면·오류·배지에만. 선은 아이콘과 같은 색, 포인트는 그린 하나 */
+.illus{width:132px;height:99px;display:block;margin:0 auto;color:var(--ink-3)}
+.illus .soft{fill:var(--brand-soft);stroke:currentColor}
+.illus .dot{fill:currentColor;stroke:none}
+.illus .thin{stroke-width:1.7;opacity:.55}
+.illus.sm{width:92px;height:69px}
+.illus.xs{width:52px;height:39px}
+.illus.badge-on{color:var(--brand-deep)}
+.illus.badge-on .soft{fill:var(--brand-soft)}
+.illus.off{opacity:.3}
+.illus.off .soft{fill:var(--surface-2)}
+.badge-nm{font-size:11.5px;font-weight:700;color:var(--ink-3);margin-top:3px;opacity:.45}
+.badge-nm.on{color:var(--brand-deep);opacity:1;font-family:var(--font-title)}
+
+/* 반응을 누르면 톡 튀었다 돌아온다 */
+.react.pop{animation:pop .22s ease}
+@keyframes pop{
+  0%{transform:scale(1)}
+  45%{transform:scale(1.22)}
+  100%{transform:scale(1)}
+}
+@media (prefers-reduced-motion:reduce){ .react.pop{animation:none} }
+
+/* 발자국이 콩콩 — 불러오는 중 표시 */
+.paws{display:flex;gap:7px;justify-content:center;align-items:center;height:22px}
+.paws i{
+  width:13px;height:13px;color:var(--brand);opacity:.25;
+  animation:pawhop 1.05s infinite
+}
+.paws i:nth-child(2){animation-delay:.18s}
+.paws i:nth-child(3){animation-delay:.36s}
+.paws i svg{width:13px;height:13px;display:block}
+@keyframes pawhop{
+  0%,70%,100%{opacity:.25;transform:translateY(0)}
+  35%{opacity:1;transform:translateY(-4px)}
+}
+
+/* 카드 모양 스켈레톤 */
+.skel{border-radius:var(--r-lg);background:var(--surface);padding:16px;box-shadow:var(--shadow-sm)}
+.skel .ln{
+  height:12px;border-radius:7px;margin-bottom:9px;
+  background:linear-gradient(90deg,var(--surface-2) 25%,var(--line-2) 37%,var(--surface-2) 63%);
+  background-size:400% 100%;animation:shimmer 1.3s ease infinite
+}
+.skel .ln.w40{width:40%}
+.skel .ln.w70{width:70%}
+.skel .ln.tall{height:120px;border-radius:15px}
+.skel .ln:last-child{margin-bottom:0}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+
+/* 동작 줄이기가 켜져 있으면 전부 멈춘다 */
+@media (prefers-reduced-motion:reduce){
+  .paws i,.skel .ln{animation:none}
+  .paws i{opacity:.6}
+}
 
 /* 숫자 세 칸 — 봉사 횟수 · 적립 · 사료 */
 .stat3{display:flex;align-items:stretch;text-align:center}
