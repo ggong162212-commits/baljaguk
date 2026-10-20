@@ -878,3 +878,9 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 /* 사진을 누를 수 있다는 걸 알리려고 살짝 눌리는 느낌만 준다 */
 .shots img{cursor:zoom-in}
 .shots img:active{opacity:.92}
+
+/* 구성원 줄 — 카카오 연결 여부 */
+.linkdot{display:inline-flex;align-items:center;gap:4px;color:var(--ink-3)}
+.linkdot::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--line)}
+.linkdot.on{color:var(--brand-deep);font-weight:700}
+.linkdot.on::before{background:var(--brand)}

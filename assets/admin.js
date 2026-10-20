@@ -788,16 +788,36 @@
     const all = S.members;
     const admins = all.filter(m => m.role === 'admin').length;
 
+    /* 누가 커뮤니티에 들어왔는지 — 명부와 카카오가 이어졌는지로 본다 */
+    const linked = m => !!m.auth_user_id;
+    const nLinked = all.filter(linked).length;
+
     $('#memberStats').innerHTML =
       '<div class="statcard">' +
       stat('green', 'users', '전체', all.length + '명') +
-      stat('gold', 'star', '운영진', admins + '명') + '</div>';
+      stat('gold', 'star', '운영진', admins + '명') +
+      stat('sky', 'phone', '카카오', nLinked + ' / ' + all.length) + '</div>';
 
-    const counts = { all: all.length, admin: admins };
-    const chips = [['all', '전체'], ['admin', '운영진']];
+    const counts = { all: all.length, admin: admins, nolink: all.length - nLinked };
+    const chips = [['all', '전체'], ['admin', '운영진'], ['nolink', '연결 안 함']];
     $('#memberChips').innerHTML = chips.map(([k, l]) =>
       '<button class="chip' + (F.member === k ? ' on' : '') + '" data-m="' + k + '">' + l + '<span class="n">' + counts[k] + '</span></button>').join('');
     $$('#memberChips [data-m]').forEach(b => b.addEventListener('click', () => { F.member = b.dataset.m; renderMembers(); }));
+
+    /* 아직 안 들어온 사람에게 보낼 안내 — 이름 목록은 넣지 않는다 */
+    const inviteBox = $('#memberInvite');
+    if (inviteBox) {
+      inviteBox.innerHTML = (all.length - nLinked)
+        ? '<button class="btn ghost sm block" type="button" id="copyInvite">' +
+          ic('clipboard') + '<span>연결 안 한 ' + (all.length - nLinked) +
+          '명에게 보낼 안내 문구 복사</span></button>'
+        : '';
+      const ci = $('#copyInvite');
+      if (ci) ci.onclick = () => copy(
+        [new URL('me.html', location.href).href,
+         '카카오로 들어와서 이름과 휴대폰 뒤 4자리로 확인해 주세요'].join(String.fromCharCode(10)),
+        '안내 문구를 복사했어요');
+    }
 
     const sorts = [['name', '이름순'], ['vol', '봉사 많은 순']];
     $('#memberSort').innerHTML = sorts.map(([k, l]) =>
@@ -806,6 +826,7 @@
 
     let list = all.slice();
     if (F.member === 'admin') list = list.filter(m => m.role === 'admin');
+    if (F.member === 'nolink') list = list.filter(m => !linked(m));
     const q = F.q2.trim();
     if (q) list = list.filter(m => (m.name + (m.department || '') + (m.student_id || '')).includes(q));
     if (F.sort === 'name') list.sort((a, b) =>
@@ -826,7 +847,11 @@
       '<div class="grow"><div class="nm">' + esc(m.name) +
       (m.role === 'admin' ? '<span class="badge admin">운영진</span>' : '') + '</div>' +
       '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
-      '<div class="sub"><span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
+      '<div class="sub">' +
+      (linked(m)
+        ? '<span class="linkdot on">연결됨</span>'
+        : '<span class="linkdot">아직</span>') +
+      '<span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
       '<span>누적 봉사 ' + volCount(m.id) + '회</span>' +
       (volSoon(m.id) ? '<span style="color:var(--brand-deep)">확정 전 ' + volSoon(m.id) + '</span>' : '') +
       '</div></div>' +
@@ -911,6 +936,13 @@
       '<label class="field"><span class="lb">연락처</span><input class="input" id="mPhone" inputmode="numeric" value="' + esc(m.phone || '') + '" placeholder="010-0000-0000"></label>' +
       '<div class="grid2">' +
       '<label class="field"><span class="lb">가입일</span><input class="input" type="date" id="mJoin" value="' + esc((m.joined_on || '').slice(0, 10)) + '"></label></div>' +
+
+      /* 커뮤니티에 들어왔는지 — 운영진이 안내할 사람을 가려낼 때 쓴다 */
+      (isNew ? '' :
+        '<div class="kv"><span class="k">카카오 연결</span><span class="v">' +
+        (m.auth_user_id
+          ? '연결됨' + (m.linked_at ? ' · ' + fmtDate(m.linked_at) : '')
+          : '아직') + '</span></div>') +
 
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
