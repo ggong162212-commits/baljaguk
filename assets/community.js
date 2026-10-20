@@ -1023,7 +1023,25 @@ window.Community = (function () {
       '<div class="card center" style="padding:28px 22px">' +
       illus('emptyPoll') +
       '<h3 style="margin-top:12px;font-size:17px">아직 투표가 없어요</h3></div>');
-    paint(rows.map(postCard).join(''));
+    /* 구성원에게 중요한 건 지금 참여할 수 있는 투표다.
+       마감된 것은 아래로 내린다 */
+    const closedOf = p => {
+      const q = p.poll || {};
+      return !!(q.closed_at || (q.closes_at && Date.parse(q.closes_at) < Date.now()));
+    };
+    const live = rows.filter(p => !closedOf(p));
+    const done = rows.filter(closedOf);
+
+    paint(
+      (live.length
+        ? '<div class="section-title">' + ic('clipboard') + '<span>진행 중</span></div>' +
+          live.map(postCard).join('')
+        : '<div class="card center" style="padding:26px 22px">' + illus('emptyPoll', 'sm') +
+          '<h3 style="margin-top:10px;font-size:16px">지금 진행 중인 투표가 없어요</h3></div>') +
+      (done.length
+        ? '<div class="section-title" style="margin-top:16px">' + ic('check') +
+          '<span>마감된 투표</span></div>' + done.map(postCard).join('')
+        : ''));
     bindOnce();
     loadPhotos($('#view'));
   }
@@ -1103,6 +1121,7 @@ window.Community = (function () {
           body: '<label class="field"><input class="input" id="wq" ' +
             'placeholder="예: 다음 봉사는 언제가 좋을까요?"></label>',
           read: r => r.querySelector('#wq').value.trim(),
+          fill: (r, v) => { r.querySelector('#wq').value = v; },
           valid: v => v ? '' : '질문을 적어주세요',
           sum: v => v
         },
@@ -1127,6 +1146,11 @@ window.Community = (function () {
           },
           read: r => Array.prototype.slice.call(r.querySelectorAll('[data-o]'))
             .map(el => el.value.trim()).filter(Boolean),
+          fill: (r, v) => {
+            const add = r.querySelector('#wAdd');
+            while (r.querySelectorAll('[data-o]').length < v.length && add) add.click();
+            r.querySelectorAll('[data-o]').forEach((el, n) => { el.value = v[n] || ''; });
+          },
           valid: v => v.length >= 2 ? '' : '두 개 이상 적어주세요',
           sum: v => v.join(' · ')
         },
@@ -1137,6 +1161,7 @@ window.Community = (function () {
           body: '<label class="field"><input class="input" type="datetime-local" ' +
             'id="we" value="' + dflt + '"></label>',
           read: r => r.querySelector('#we').value,
+          fill: (r, v) => { r.querySelector('#we').value = v || ''; },
           sum: v => v ? fmtDate(v) : '없음'
         },
         {
@@ -1157,6 +1182,10 @@ window.Community = (function () {
             multi: r.querySelector('[data-c="multi"]').classList.contains('on'),
             anon: r.querySelector('[data-c="anon"]').classList.contains('on')
           }),
+          fill: (r, v) => {
+            r.querySelector('[data-c="multi"]').classList.toggle('on', !!v.multi);
+            r.querySelector('[data-c="anon"]').classList.toggle('on', !!v.anon);
+          },
           sum: v => (v.multi ? '여러 개' : '하나만') + (v.anon ? ' · 익명' : '')
         }
       ],

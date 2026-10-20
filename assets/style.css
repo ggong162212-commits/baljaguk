@@ -610,16 +610,27 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .sheet .sheet-foot .row .btn.grow{flex:1}
 .sheet .sheet-foot .row .btn.ghost{flex:none;min-width:84px}
 /* 단계형 입력 */
-.wiz-dots{display:flex;gap:6px;justify-content:center;margin:-6px 0 14px}
+/* 진행 표시 — 지금 단계는 길고 진한 막대, 나머지는 점. 오른쪽에 1/4 */
+.wiz-prog{display:flex;align-items:center;gap:8px;margin:-4px 0 16px}
+.wiz-dots{display:flex;gap:6px;align-items:center;flex:1}
 .wiz-dots i{width:7px;height:7px;border-radius:50%;background:var(--line);transition:.2s}
-.wiz-dots i.on{background:var(--brand);width:20px;border-radius:4px}
-.wiz-q{font-size:20px;font-weight:800;line-height:1.35;margin:0 0 6px}
+.wiz-dots i.done{background:var(--brand-soft)}
+.wiz-dots i.on{background:var(--brand-deep);width:28px;height:6px;border-radius:3px}
+.wiz-step{flex:none;font-size:12px;font-weight:700;color:var(--ink-3)}
+/* 질문은 본문 서체로 — 로고 서체는 로고에만 */
+.wiz-q{
+  font-family:var(--font-body, inherit);
+  font-size:22px;font-weight:800;line-height:1.35;margin:0 0 6px;letter-spacing:-.01em
+}
 .wiz-hint{font-size:13px;color:var(--ink-3);margin:0 0 16px;line-height:1.6}
 .wiz-sum{display:grid;gap:6px;margin-bottom:16px}
 .wiz-sum .it{
-  display:flex;justify-content:space-between;gap:10px;align-items:center;
-  background:var(--surface-2);border-radius:13px;padding:9px 13px;font-size:13px
+  display:flex;justify-content:space-between;gap:10px;align-items:center;width:100%;
+  background:var(--surface-2);border-radius:13px;padding:10px 13px;font-size:13px;
+  border:none;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);
+  min-height:44px
 }
+.wiz-sum .it:active{opacity:.7}
 .wiz-sum .it .k{color:var(--ink-3)}
 .wiz-sum .it .v{font-weight:700;text-align:right;min-width:0;word-break:break-all}
 

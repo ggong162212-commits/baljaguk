@@ -131,7 +131,8 @@
     const live = () => steps.filter(st => !(st.skip && st.skip(vals)));
     const ov = sheet({
       title: opts.title || '',
-      body: '<div class="wiz-dots" id="wzDots"></div>' +
+      body: '<div class="wiz-prog"><div class="wiz-dots" id="wzDots"></div>' +
+        '<span class="wiz-step" id="wzStep"></span></div>' +
         '<div class="wiz-sum" id="wzSum"></div>' +
         '<h3 class="wiz-q" id="wzQ"></h3>' +
         '<p class="wiz-hint" id="wzHint"></p>' +
@@ -148,28 +149,49 @@
       const st = list[i];
       if (!st) return;
       $$$('#wzDots').innerHTML = list.map((x, n) =>
-        '<i' + (n <= i ? ' class="on"' : '') + '></i>').join('');
-      $$$('#wzSum').innerHTML = list.slice(0, i).map(x =>
+        '<i class="' + (n === i ? 'on' : (n < i ? 'done' : '')) + '"></i>').join('');
+      $$$('#wzStep').textContent = (i + 1) + '/' + list.length;
+      /* 요약 줄을 누르면 그 단계로 돌아가 고칠 수 있다 */
+      $$$('#wzSum').innerHTML = list.slice(0, i).map((x, n) =>
         (x.sum && vals[x.key] !== undefined && String(vals[x.key]).trim())
-          ? '<div class="it"><span class="k">' + esc(x.short || '') + '</span>' +
-            '<span class="v">' + esc(x.sum(vals[x.key])) + '</span></div>'
+          ? '<button class="it" type="button" data-go="' + n + '">' +
+            '<span class="k">' + esc(x.short || '') + '</span>' +
+            '<span class="v">' + esc(x.sum(vals[x.key])) + '</span></button>'
           : '').join('');
+      $$$('#wzSum').querySelectorAll('[data-go]').forEach(b =>
+        b.onclick = () => { i = Number(b.dataset.go); paint(); });
       $$$('#wzQ').textContent = st.q || '';
       $$$('#wzHint').textContent = st.hint || '';
       $$$('#wzHint').hidden = !st.hint;
       $$$('#wzBody').innerHTML = typeof st.body === 'function' ? st.body(vals) : (st.body || '');
       if (st.after) st.after($$$('#wzBody'), vals);
+      /* 되돌아왔을 때 쓰던 값을 다시 채운다 */
+      if (st.fill && vals[st.key] !== undefined) st.fill($$$('#wzBody'), vals[st.key]);
       /* 단계를 넘기면 질문이 맨 위에 보이게 */
       const bodyEl = ov.querySelector('.sheet-body');
       if (bodyEl) bodyEl.scrollTop = 0;
       $$$('#wzBack').hidden = i === 0;
       $$$('#wzNext').textContent = i === list.length - 1 ? (opts.doneLabel || '올리기') : '다음';
+      /* 입력칸에서 엔터는 「다음」. 마지막 단계는 실수로 올라가지 않게 제외한다 */
+      const last = i === list.length - 1;
+      $$$('#wzBody').querySelectorAll('input').forEach(el => {
+        el.addEventListener('keydown', e => {
+          if (e.key !== 'Enter' || last) return;
+          e.preventDefault();
+          $$$('#wzNext').click();
+        });
+      });
       const first = $$$('#wzBody').querySelector('input,textarea,select');
       if (first && !first.type.match(/file|date/)) setTimeout(() => first.focus(), 60);
     }
 
-    $$$('#wzBack').onclick = () => { if (i > 0) { i -= 1; paint(); } };
-    $$$('#wzNext').onclick = async () => {
+    function wire() {
+      $$$('#wzBack').onclick = () => { if (i > 0) { i -= 1; paint(); } };
+      $$$('#wzNext').onclick = onNext;
+      paint();
+    }
+
+    const onNext = async () => {
       const list = live();
       const st = list[i];
       const v = st.read ? st.read($$$('#wzBody')) : null;
@@ -188,7 +210,35 @@
       }
     };
 
-    paint();
+    /* 쓰던 게 있으면 닫기 전에 한 번 묻는다 */
+    const dirty = () => {
+      if (Object.keys(vals).length) return true;
+      const body = ov.querySelector('#wzBody');
+      if (!body) return false;
+      return Array.prototype.slice.call(body.querySelectorAll('input,textarea'))
+        .some(el => el.type !== 'checkbox' && String(el.value || '').trim());
+    };
+    const closeBtn = ov.querySelector('[data-close]');
+    if (closeBtn) {
+      const fresh = closeBtn.cloneNode(true);
+      closeBtn.replaceWith(fresh);
+      fresh.addEventListener('click', () => {
+        if (!dirty()) return closeSheet();
+        /* 확인을 새 시트로 띄우면 쓰던 시트가 닫혀버린다. 같은 시트 안에서 묻는다 */
+        const foot = ov.querySelector('.sheet-foot');
+        const keep = foot.innerHTML;
+        foot.innerHTML =
+          '<p class="sm" style="margin:0 0 10px;color:var(--ink-3)">' +
+          '그만두면 쓰던 내용이 사라져요.</p>' +
+          '<div class="row" style="gap:8px">' +
+          '<button class="btn ghost grow" type="button" data-keep>계속 쓰기</button>' +
+          '<button class="btn grow" type="button" data-quit>그만두기</button></div>';
+        foot.querySelector('[data-keep]').onclick = () => { foot.innerHTML = keep; wire(); };
+        foot.querySelector('[data-quit]').onclick = closeSheet;
+      });
+    }
+
+    wire();
     return ov;
   }
 
