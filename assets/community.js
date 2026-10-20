@@ -128,29 +128,44 @@ window.Community = (function () {
      운영진 할 일에 쌓인다. 신고와 섞지 않는다 — 성격이 다르다. */
   function ideaSheet() {
     const ov = sheet({
-      title: '불편한 점 알려 주기',
+      title: '운영진에게 의견 보내기',
       body:
         '<p class="mut sm" style="margin-bottom:12px;line-height:1.65">' +
-        '쓰면서 불편했던 것, 있었으면 하는 것을 적어주세요.<br>' +
+        '불편했던 것, 있었으면 하는 것을 적어주세요.<br>' +
         '운영진이 보고 하나씩 고쳐갈게요.</p>' +
         '<label class="field"><textarea class="input" id="ideaBody" rows="5" ' +
         'placeholder="예: 봉사 신청할 때 준비물이 안 보여요"></textarea></label>' +
-        '<p class="mut" style="font-size:11.5px;line-height:1.6">' +
-        '누가 보냈는지 운영진에게 보여요. 익명으로 보내고 싶으면 ' +
-        '「건의함」을 써주세요.</p>' +
+
+        '<button type="button" class="check" id="ideaAnon" style="width:100%;text-align:left">' +
+        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+        '<span class="grow"><span class="sm" style="font-weight:700">이름 없이 보내기</span>' +
+        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
+        '누가 보냈는지 저장하지 않아요. 대신 답장을 받을 수 없어요</span></span></button>' +
+
         '<div class="sheet-foot">' +
         '<button class="btn primary lg block" type="button" id="ideaGo">보내기</button></div>'
     });
+
+    const anonBtn = ov.querySelector('#ideaAnon');
+    anonBtn.onclick = () => anonBtn.classList.toggle('on');
 
     ov.querySelector('#ideaGo').onclick = async () => {
       const btn = ov.querySelector('#ideaGo');
       const t = ov.querySelector('#ideaBody').value.trim();
       if (!t) return toast('내용을 적어주세요', 'err');
+      const anon = anonBtn.classList.contains('on');
       btn.disabled = true; btn.textContent = '보내는 중…';
       try {
-        await DB.feedback.send(t);
+        const r = await DB.feedback.send(t, anon);
+        if (r && r.ok === false) {
+          toast(r.why === 'toomany'
+            ? '이름 없이 보내는 건 하루 세 번까지예요'
+            : '보내지 못했어요', 'err');
+          btn.disabled = false; btn.textContent = '보내기';
+          return;
+        }
         closeSheet();
-        toast('고마워요. 운영진이 볼게요', 'ok');
+        toast(anon ? '이름 없이 보냈어요' : '고마워요. 운영진이 볼게요', 'ok');
       } catch (e) {
         toast(e.message || '보내지 못했어요', 'err');
         btn.disabled = false; btn.textContent = '보내기';
@@ -386,7 +401,7 @@ window.Community = (function () {
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="pfIdea">' +
-        ic('mail') + '<span>불편한 점 알려 주기</span></button>' +
+        ic('mail') + '<span>운영진에게 의견 보내기</span></button>' +
         '<a class="btn ghost block" href="privacy.html?from=app">' + ic('lock') + '<span>개인정보 처리방침</span></a>' +
         '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
         '</div>'
@@ -775,6 +790,9 @@ window.Community = (function () {
   /* ---------- 글 한 장 ---------- */
   function postCard(p) {
     const who = p.author || { name: '?' };
+    /* 질문은 모양이 다르다 — 사진·반응·설문 줄 없이 한눈에 */
+    if (p.question) return questionCard(p);
+
     return '<article class="card post" data-post="' + esc(p.id) + '">' +
       '<div class="who">' + avatar(who) +
       '<div class="grow"><div class="nm">' + esc(who.name) +
@@ -1013,6 +1031,7 @@ window.Community = (function () {
       if ((b = hit('data-animal'))) return animalSheet(b.dataset.animal, b.dataset.aname);
       if ((b = hit('data-checkin'))) return checkinSheet(b.dataset.checkin);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
+      if ((b = hit('data-best'))) return markBest(b.dataset.best, b.dataset.bc);
       if (hit('data-myans')) return myAnswersSheet();
       if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
       if ((b = hit('data-askno'))) {
@@ -1370,6 +1389,103 @@ window.Community = (function () {
   }
 
   /* 후기 쓰기 단계 — 오늘 만난 친구 고르기 */
+  /* ---------- 처음이에요 Q&A ----------
+     새 탭도 새 화면도 만들지 않는다. 자유게시판 안 「질문」 말머리다.
+     카드는 눈에 바로 들어오게 — 질문 한 줄과 상태 한 줄, 그게 다다. */
+  function questionCard(p) {
+    const n = Number(p.answers) || 0;
+    const solved = !!p.solved;
+    return '<article class="card qcard" data-post="' + esc(p.id) + '">' +
+      '<div class="tapzone" data-open="' + esc(p.id) + '">' +
+
+      '<div class="qtop">' +
+      '<span class="qmark">Q</span>' +
+      '<h3 class="qt">' + esc(p.body || '') + '</h3>' +
+      '</div>' +
+
+      '<div class="qmeta">' +
+      '<span>답 ' + num(n) + '개</span>' +
+      (solved ? '<span class="qsolved">' + ic('check') + '해결됨</span>' : '') +
+      '</div>' +
+
+      /* 해결됐으면 고른 답 한 줄을 미리 보여 준다 */
+      (solved && p.best
+        ? '<div class="qbest"><span class="amark">A</span>' +
+          '<span class="at">' + esc(cut(p.best, 44)) + '</span></div>'
+        : '') +
+
+      '</div></article>';
+  }
+
+  /* 질문 쓰기 — 단계를 두지 않는다. 칸 하나와 버튼 하나. */
+  function questionSheet() {
+    const ov = sheet({
+      title: '질문하기',
+      body:
+        '<label class="field"><textarea class="input" id="qBody" rows="4" ' +
+        'placeholder="궁금한 걸 짧게 물어봐요"></textarea></label>' +
+        '<div class="sheet-foot">' +
+        '<button class="btn primary lg block" type="button" id="qGo">질문 올리기</button></div>'
+    });
+
+    ov.querySelector('#qGo').onclick = async () => {
+      const btn = ov.querySelector('#qGo');
+      const t = ov.querySelector('#qBody').value.trim();
+      if (!t) return toast('궁금한 걸 적어주세요', 'err');
+      btn.disabled = true; btn.textContent = '올리는 중…';
+      try {
+        await DB.community.createPost({ type: 'free', body: t, is_question: true });
+        closeSheet();
+        toast('질문을 올렸어요', 'ok');
+        F.kind = 'free'; F.place = '';
+        saveFilter({ kind: 'free', place: '' });
+        renderHome(true);
+      } catch (e) {
+        toast(e.message || '올리지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '질문 올리기';
+      }
+    };
+  }
+
+  /* 질문 상세 — 고른 답이 맨 위, 나머지가 아래 */
+  function answerBlock(p, list) {
+    const best = p.best_id;
+    const mine = !!p.mine;
+    const one = (c, isBest) =>
+      '<div class="ans' + (isBest ? ' best' : '') + '">' +
+      (isBest ? '<span class="amark">A</span>' : '') +
+      '<div class="grow">' +
+      '<div class="who2">' + esc((c.author && c.author.name) || '?') +
+      '<span class="at2">' + relTime(c.created_at) + '</span></div>' +
+      '<div class="ab">' + esc(c.body) + '</div>' +
+      (mine
+        ? '<button class="linkbtn sm" type="button" data-best="' + esc(p.id) +
+          '" data-bc="' + esc(c.id) + '">' +
+          (isBest ? '고정 풀기' : '도움 됐어요') + '</button>'
+        : '') +
+      '</div></div>';
+
+    const bestOne = list.filter(c => String(c.id) === String(best))[0];
+    const rest = list.filter(c => String(c.id) !== String(best));
+
+    return (bestOne ? one(bestOne, true) : '') +
+      (rest.length
+        ? (bestOne ? '<div class="divider"></div>' : '') + rest.map(c => one(c, false)).join('')
+        : (bestOne ? '' : '<div class="mut sm">아직 답이 없어요. 처음 답해보세요.</div>'));
+  }
+
+  async function markBest(postId, commentId) {
+    try {
+      const r = await DB.community.markBest(postId, commentId);
+      if (r && r.ok === false) {
+        return toast(r.why === 'notmine' ? '질문한 사람만 고를 수 있어요' : '바꾸지 못했어요', 'err');
+      }
+      toast(r && r.solved ? '고마워요! 해결됨으로 표시했어요' : '고정을 풀었어요', 'ok');
+      closeSheet();
+      renderHome(true);
+    } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
+  }
+
   /* ---------- 글쓰기 ----------
      먼저 어떤 글인지 고르고, 고른 것에 맞는 단계만 묻는다.
      후기는 봉사·사진·글·설문, 자유글은 사진·글·설문. */
@@ -1387,7 +1503,8 @@ window.Community = (function () {
     const ov = sheet({
       title: '어떤 글인가요?',
       body: row('review', 'calendar', '봉사 후기', '다녀온 날의 기록이에요') +
-        row('free', 'edit', '자유글', '일상도, 궁금한 것도 편하게') +
+        row('free', 'edit', '자유글', '일상 이야기를 나눠요') +
+        row('question', 'info', '질문', '궁금한 걸 물어봐요') +
         (admin ? row('notice', 'alert', '공지', '모두에게 알리는 글이에요') : '')
     });
 
@@ -1397,6 +1514,7 @@ window.Community = (function () {
       setTimeout(() => {
         if (k === 'review') reviewWizard(null);
         else if (k === 'free') freeWizard();
+        else if (k === 'question') questionSheet();
         else noticeWizard();
       }, 180);
     });
@@ -2057,12 +2175,20 @@ window.Community = (function () {
         return;
       }
       const shown = list.filter(c => !c.hidden || c.mine || AM_ADMIN);
-      ov.querySelector('#dList').innerHTML = shown.length
-        ? shown.map(commentLine).join('')
-        : '<div class="mut sm">아직 댓글이 없어요. 처음 남겨보세요.</div>';
-      ov.querySelectorAll('[data-cmenu]').forEach(b =>
-        b.onclick = () => openCommentMenu(
-          shown.filter(c => c.id === b.dataset.cmenu)[0], draw));
+
+      /* 질문이면 답을 다르게 보여 준다 — 고른 답이 맨 위 */
+      if (p.question) {
+        ov.querySelector('#dList').innerHTML = answerBlock(p, shown);
+        ov.querySelectorAll('[data-best]').forEach(b =>
+          b.onclick = () => markBest(b.dataset.best, b.dataset.bc));
+      } else {
+        ov.querySelector('#dList').innerHTML = shown.length
+          ? shown.map(commentLine).join('')
+          : '<div class="mut sm">아직 댓글이 없어요. 처음 남겨보세요.</div>';
+        ov.querySelectorAll('[data-cmenu]').forEach(b =>
+          b.onclick = () => openCommentMenu(
+            shown.filter(c => c.id === b.dataset.cmenu)[0], draw));
+      }
       /* 피드 카드도 같이 맞춰둔다 */
       const row = findRow(id);
       if (row) {

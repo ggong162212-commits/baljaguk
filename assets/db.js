@@ -884,6 +884,14 @@
       insta_ok: !!p.insta_ok,
       mine: p.author_id === meId,
       author: demoMember(p.author_id),
+      question: !!p.is_question,
+      solved: !!p.solved_at,
+      answers: p.is_question
+        ? d.comments.filter(c => c.post_id === p.id && !c.hidden).length : null,
+      best: p.best_comment_id
+        ? String((d.comments.find(c => c.id === p.best_comment_id) || {}).body || '').slice(0, 60)
+        : null,
+      best_id: p.best_comment_id || null,
       animals: (d.post_animals || []).filter(x => x.post_id === p.id)
         .map(x => (d.animals || []).find(a => a.id === x.animal_id))
         .filter(Boolean)
@@ -986,19 +994,57 @@
 
   /* ---------- 의견 보내기 ---------- */
   DB.feedback = {
-    async send(body) {
+    async send(body, anon) {
       const t = String(body || '').trim();
       if (!t) throw new Error('내용을 적어주세요');
       if (!HAS_SB) {
         const d = cdemo();
         d.feedback = d.feedback || [];
+        /* 익명이면 누가 보냈는지 담지 않는다 — 실서버와 같게 */
+        if (anon) {
+          const today = DB.today();
+          const key = 'baljaguk.anonCount.' + today;
+          const n = Number(localStorage.getItem(key) || 0) + 1;
+          if (n > 3) return { ok: false, why: 'toomany' };
+          localStorage.setItem(key, String(n));
+          d.feedback.push({
+            id: uid(), created_at: new Date().toISOString(),
+            member_id: null, anon: true, body: t, done_at: null
+          });
+          demoWrite(d);
+          return { ok: true, anon: true, left: 3 - n };
+        }
         d.feedback.push({
           id: uid(), created_at: new Date().toISOString(),
-          member_id: myDemoId(), body: t, done_at: null
+          member_id: myDemoId(), anon: false, body: t, done_at: null
         });
-        demoWrite(d); return true;
+        demoWrite(d);
+        return { ok: true, anon: false };
       }
-      return await rest('rpc/feedback_send', { method: 'POST', body: { p_body: t } });
+      return await rest('rpc/feedback_send', {
+        method: 'POST', body: { p_body: t, p_anon: !!anon }
+      });
+    },
+
+    async reply(id, text) {
+      if (!HAS_SB) {
+        const d = cdemo(), f = (d.feedback || []).find(x => x.id === id);
+        if (!f) return { ok: false, why: 'notfound' };
+        if (f.anon || !f.member_id) return { ok: false, why: 'anon' };
+        f.reply = String(text || '').trim();
+        f.replied_at = new Date().toISOString();
+        d.member_notices = d.member_notices || [];
+        d.member_notices.push({
+          id: uid(), member_id: f.member_id, kind: 'reply',
+          body: '보내 주신 의견에 운영진이 답했어요: ' + f.reply.slice(0, 40),
+          created_at: new Date().toISOString(), read_at: null
+        });
+        demoWrite(d);
+        return { ok: true };
+      }
+      return await rest('rpc/feedback_reply', {
+        method: 'POST', body: { p_id: id, p_text: String(text || '') }
+      });
     },
 
     async open() {
@@ -1006,7 +1052,10 @@
         const d = cdemo();
         return (d.feedback || []).filter(f => !f.done_at).map(f => ({
           id: f.id, created_at: f.created_at, body: f.body,
-          who: (demoMember(f.member_id) || {}).name
+          anon: !!f.anon,
+          who: f.anon ? null : (demoMember(f.member_id) || {}).name,
+          can_reply: !f.anon && !!f.member_id,
+          replied: !!f.replied_at
         })).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       }
       return await rest('rpc/feedback_open', { method: 'POST', body: {} });
@@ -1135,7 +1184,8 @@
           type: v.type || 'review', event_id: v.event_id || null,
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null,
-          insta_ok: !!v.insta_ok
+          insta_ok: !!v.insta_ok, is_question: !!v.is_question,
+          best_comment_id: null, solved_at: null
         };
         d.posts.push(p);
         photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
@@ -1164,7 +1214,7 @@
           type: v.type || 'review', event_id: v.event_id || null,
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned,
-          insta_ok: !!v.insta_ok,
+          insta_ok: !!v.insta_ok, is_question: !!v.is_question,
           author_id: await DB.community.myId()
         }
       });
@@ -1483,6 +1533,26 @@
         body: { adopted_at: yes ? DB.today() : null }
       });
       return true;
+    },
+
+    /* ---------- 「도움 됐어요」 ---------- */
+    async markBest(postId, commentId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const p = (d.posts || []).find(x => x.id === postId);
+        if (!p) return { ok: false, why: 'notfound' };
+        if (p.author_id !== me) return { ok: false, why: 'notmine' };
+        if (p.best_comment_id === commentId) {
+          p.best_comment_id = null; p.solved_at = null;
+          demoWrite(d); return { ok: true, solved: false };
+        }
+        p.best_comment_id = commentId;
+        p.solved_at = new Date().toISOString();
+        demoWrite(d); return { ok: true, solved: true };
+      }
+      return await rest('rpc/mark_best', {
+        method: 'POST', body: { p_post: postId, p_comment: commentId }
+      });
     },
 
     /* ---------- 신고 ---------- */

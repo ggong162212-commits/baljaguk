@@ -490,16 +490,44 @@
 
     box.innerHTML = list.map(f =>
       '<div class="card" style="margin-bottom:10px">' +
-      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) +
-      ' · ' + esc(f.who || '(알 수 없음)') + '</div>' +
+      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) + ' · ' +
+      (f.anon ? '<span class="badge">익명</span>' : esc(f.who || '(알 수 없음)')) + '</div>' +
       '<div style="margin-top:7px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
       esc(f.body) + '</div>' +
-      '<button class="btn soft sm block" type="button" style="margin-top:11px" ' +
+      (f.anon
+        ? '<p class="mut" style="font-size:11.5px;margin-top:9px;line-height:1.55">' +
+          '이름 없이 온 의견이라 답장할 수 없어요. 답할 내용이면 공지로 알려주세요.</p>'
+        : (f.replied
+          ? '<p class="mut" style="font-size:11.5px;margin-top:9px">답장했어요</p>'
+          : '<button class="btn ghost sm block" type="button" style="margin-top:10px" ' +
+            'data-freply="' + esc(f.id) + '">답장하기</button>')) +
+      '<button class="btn soft sm block" type="button" style="margin-top:8px" ' +
       'data-fdone="' + esc(f.id) + '">확인했어요</button></div>').join('');
 
     box.querySelectorAll('[data-fdone]').forEach(b => b.onclick = async () => {
       try { await DB.feedback.done(b.dataset.fdone); toast('확인했어요', 'ok'); closeSheet(); render(); }
       catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
+    });
+
+    /* 이름 있는 의견에만 답장 — 익명에는 답장할 길이 없다 */
+    box.querySelectorAll('[data-freply]').forEach(b => b.onclick = () => {
+      const id = b.dataset.freply;
+      const ov2 = sheet({
+        title: '답장하기',
+        body: '<p class="mut sm" style="margin-bottom:10px">보낸 분에게 새 소식으로 가요.</p>' +
+          '<label class="field"><textarea class="input" id="frText" rows="4"></textarea></label>' +
+          '<div class="sheet-foot">' +
+          '<button class="btn primary lg block" type="button" id="frGo">보내기</button></div>'
+      });
+      ov2.querySelector('#frGo').onclick = async () => {
+        const t = ov2.querySelector('#frText').value.trim();
+        if (!t) return toast('내용을 적어주세요', 'err');
+        try {
+          const r = await DB.feedback.reply(id, t);
+          if (r && r.ok === false) return toast('답장할 수 없어요', 'err');
+          closeSheet(); toast('답장했어요', 'ok'); render();
+        } catch (e) { toast(e.message || '보내지 못했어요', 'err'); }
+      };
     });
   }
 

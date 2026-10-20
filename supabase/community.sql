@@ -89,6 +89,14 @@ create table if not exists comments (
 create index if not exists comments_post_idx on comments (post_id, created_at);
 
 -- 반응 (한 사람이 여러 종류 가능 · 같은 걸 다시 누르면 취소)
+-- 처음이에요 Q&A (J2) — feed() 가 쓰므로 여기서 먼저 만든다
+alter table posts add column if not exists is_question boolean not null default false;
+alter table posts add column if not exists best_comment_id uuid references comments(id) on delete set null;
+alter table posts add column if not exists solved_at timestamptz;
+
+create index if not exists posts_question_idx on posts (is_question, created_at desc)
+  where is_question;
+
 create table if not exists reactions (
   post_id   uuid not null references posts(id) on delete cascade,
   member_id uuid not null references members(id) on delete cascade,
@@ -375,6 +383,15 @@ rows_ as (
                       where r.post_id = p.id and r.member_id = (select id from me_)),
     /* 퀴즈는 발표 전까지 정답도 분포도 내보내지 않는다.
        내가 뭘 골랐는지만 돌려준다 — 분포가 곧 정답 힌트가 되기 때문이다. */
+    /* 질문이면 답 수와 고정된 답 한 줄을 같이 */
+    'question', p.is_question,
+    'solved', p.solved_at is not null,
+    'answers', case when p.is_question then
+                 (select count(*)::int from comments c
+                   where c.post_id = p.id and not c.hidden) end,
+    'best', case when p.best_comment_id is not null then
+              (select left(c.body, 60) from comments c where c.id = p.best_comment_id) end,
+    'best_id', p.best_comment_id,
     /* 오늘 만난 친구 — 후기에 붙은 아이들 */
     'animals', (select coalesce(json_agg(json_build_object(
                   'id', a.id, 'name', a.name,
@@ -1374,11 +1391,11 @@ select case when not is_admin() then null else
                      where e.date < current_date and e.confirmed_at is null),
     'applications', (select count(*)::int from applications a
                       where coalesce(a.status, 'pending') = 'pending'),
-    'reports',     (select count(*)::int from reports r where r.done_at is null),
-    'feedback',    (select count(*)::int from feedback f where f.done_at is null)
+    'reports',     (select count(*)::int from reports r where r.done_at is null)
   )
 end;
 $$;
+/* 받은 의견과 건의는 그 표를 만든 뒤에 더한다 — 이 파일 맨 아래에서 다시 쓴다 */
 
 revoke all on function admin_todo() from public, anon;
 grant execute on function admin_todo() to authenticated;
@@ -2069,3 +2086,177 @@ $$;
 
 revoke all on function usage_stats() from public, anon;
 grant execute on function usage_stats() to authenticated;
+
+
+-- ============================================================
+--  J1. 「운영진에게 의견 보내기」 — 이름 있는 것과 익명을 한곳에
+-- ============================================================
+--  표는 하나(feedback)만 쓴다. 익명이면 member_id 를 비운다.
+--
+--  익명으로 보낼 때는 **누가 썼는지 아무것도 담지 않는다.**
+--  구성원인지만 확인하고 그 값을 버린다.
+--
+--  도배를 막으려면 「이 사람이 오늘 몇 번 썼는지」를 세야 하는데,
+--  그 숫자를 의견 옆에 두면 익명이 아니게 된다.
+--  그래서 **의견과 이어지지 않는 다른 표**에 날짜 + 흐린 값으로만 센다.
+--
+--  ※ 솔직하게 — 데이터베이스 대시보드에 들어갈 수 있는 사람은
+--    함수 안의 고정값을 보고 같은 흐린 값을 다시 만들 수 있다.
+--    「운영진 화면에서는 알 수 없다」는 확실하지만,
+--    「서버를 들여다볼 수 있는 사람에게도 숨겨진다」고는 말할 수 없다.
+-- ------------------------------------------------------------
+alter table feedback add column if not exists anon boolean not null default false;
+alter table feedback add column if not exists reply text;
+alter table feedback add column if not exists replied_at timestamptz;
+
+-- 익명으로 보낸 횟수만 센다. 의견과 이어지지 않는다.
+create table if not exists feedback_quota (
+  day date not null,
+  tag text not null,
+  n   int  not null default 0,
+  primary key (day, tag)
+);
+alter table feedback_quota enable row level security;
+-- 아무에게도 열어 주지 않는다. 아래 함수만 건드린다.
+
+create or replace function feedback_send(p_body text, p_anon boolean default false)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  me uuid := my_member_id();
+  t  text;
+  c  int;
+begin
+  if me is null then return json_build_object('ok', false, 'why', 'nologin'); end if;
+  if coalesce(btrim(p_body), '') = '' then
+    return json_build_object('ok', false, 'why', 'empty');
+  end if;
+
+  if coalesce(p_anon, false) then
+    /* 날짜가 바뀌면 값도 바뀐다 — 어제 것과 이어 붙일 수 없다 */
+    t := encode(digest(me::text || ':' || current_date::text || ':baljaguk-anon', 'sha256'), 'hex');
+    insert into feedback_quota (day, tag, n) values (current_date, t, 1)
+    on conflict (day, tag) do update set n = feedback_quota.n + 1
+    returning n into c;
+    if c > 3 then
+      return json_build_object('ok', false, 'why', 'toomany');
+    end if;
+
+    /* 여기서 me 를 버린다 — 아래 insert 에 들어가지 않는다 */
+    insert into feedback (member_id, anon, body) values (null, true, btrim(p_body));
+    return json_build_object('ok', true, 'anon', true, 'left', 3 - c);
+  end if;
+
+  insert into feedback (member_id, anon, body) values (me, false, btrim(p_body));
+  return json_build_object('ok', true, 'anon', false);
+end;
+$$;
+
+create or replace function feedback_open()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_admin() then null else
+  (select coalesce(json_agg(json_build_object(
+            'id', f.id, 'created_at', f.created_at, 'body', f.body,
+            'anon', f.anon,
+            /* 익명이면 이름을 아예 꺼내지 않는다 */
+            'who', case when f.anon then null
+                        else (select m.name from members m where m.id = f.member_id) end,
+            'can_reply', (not f.anon) and f.member_id is not null,
+            'replied', f.replied_at is not null)
+            order by f.created_at desc), '[]'::json)
+     from feedback f where f.done_at is null)
+end;
+$$;
+
+-- 이름 있는 의견에만 답장할 수 있다. 익명에는 답장할 길이 없다.
+create or replace function feedback_reply(p_id uuid, p_text text)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare f feedback%rowtype;
+begin
+  if not is_admin() then return json_build_object('ok', false, 'why', 'notadmin'); end if;
+  select * into f from feedback where id = p_id;
+  if f.id is null then return json_build_object('ok', false, 'why', 'notfound'); end if;
+  if f.anon or f.member_id is null then
+    return json_build_object('ok', false, 'why', 'anon');
+  end if;
+  if coalesce(btrim(p_text), '') = '' then
+    return json_build_object('ok', false, 'why', 'empty');
+  end if;
+
+  update feedback set reply = btrim(p_text), replied_at = now() where id = p_id;
+
+  insert into member_notices (member_id, kind, body)
+  values (f.member_id, 'reply', '보내 주신 의견에 운영진이 답했어요: ' || left(btrim(p_text), 40));
+
+  insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+  values (f.member_id, 'notice', '운영진이 답했어요',
+          left(btrim(p_text), 60), 'me.html#tab=me', 'freply:' || p_id)
+  on conflict (dedupe_key) do nothing;
+
+  return json_build_object('ok', true);
+end;
+$$;
+
+/* 익명 칸이 없던 옛 모양은 지운다 — 둘이 남으면 어느 쪽이 불릴지 헷갈린다 */
+drop function if exists feedback_send(text);
+
+revoke all on function feedback_send(text, boolean) from public, anon;
+revoke all on function feedback_reply(uuid, text) from public, anon;
+grant execute on function feedback_send(text, boolean) to authenticated;
+grant execute on function feedback_reply(uuid, text) to authenticated;
+
+
+-- ============================================================
+--  J2. 처음이에요 Q&A — 자유게시판 안 「질문」 말머리
+-- ============================================================
+--  새 표도 새 탭도 만들지 않는다. 자유글에 표시만 더한다.
+--  답은 그냥 댓글이고, 글쓴이가 하나를 「도움 됐어요」로 고정한다.
+-- ------------------------------------------------------------
+-- 칸은 위(posts 표 옆)에서 먼저 만든다 — feed() 가 아래에서 쓴다
+
+-- 글쓴이만, 하나만 고른다. 다시 누르면 푼다.
+create or replace function mark_best(p_post uuid, p_comment uuid)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare owner uuid; cur uuid;
+begin
+  if not is_member() then return json_build_object('ok', false, 'why', 'nologin'); end if;
+  select author_id, best_comment_id into owner, cur from posts where id = p_post;
+  if owner is null then return json_build_object('ok', false, 'why', 'notfound'); end if;
+  if owner <> my_member_id() then
+    return json_build_object('ok', false, 'why', 'notmine');
+  end if;
+
+  if cur is not null and cur = p_comment then
+    /* 같은 걸 다시 누르면 푼다 */
+    update posts set best_comment_id = null, solved_at = null where id = p_post;
+    return json_build_object('ok', true, 'solved', false);
+  end if;
+
+  if not exists (select 1 from comments c where c.id = p_comment and c.post_id = p_post) then
+    return json_build_object('ok', false, 'why', 'notfound');
+  end if;
+
+  update posts set best_comment_id = p_comment, solved_at = now() where id = p_post;
+
+  /* 답을 쓴 사람에게 알린다 */
+  insert into member_notices (member_id, kind, body, post_id)
+  select c.author_id, 'best', '내 답이 도움이 됐대요 🐾', p_post
+    from comments c where c.id = p_comment and c.author_id <> my_member_id();
+
+  return json_build_object('ok', true, 'solved', true);
+end;
+$$;
+
+revoke all on function mark_best(uuid, uuid) from public, anon;
+grant execute on function mark_best(uuid, uuid) to authenticated;
