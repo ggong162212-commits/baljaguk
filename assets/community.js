@@ -78,7 +78,12 @@ window.Community = (function () {
       el.removeAttribute('data-avatar');
       try {
         const url = await DB.community.avatarUrl(path);
-        if (url) { el.style.backgroundImage = 'url("' + url + '")'; el.classList.add('has-photo'); }
+        if (url) {
+          el.style.backgroundImage = 'url("' + url + '")';
+          el.classList.add('has-photo');
+          /* 이니셜을 비운다 — CSS 로만 가리면 색조 규칙에 덮일 수 있다 */
+          el.textContent = '';
+        }
       } catch (e) { /* 한 장 실패해도 이니셜로 보인다 */ }
     }
   }
@@ -250,6 +255,24 @@ window.Community = (function () {
   }
 
   /* 설정에 적힌 봉사지 목록 — 없으면 피드에 나온 곳으로 */
+  /* 설정에 적힌 봉사지 전체 정보 */
+  function placeInfo() {
+    const s = (window.__settings || {});
+    let raw = s.places;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+    return (Array.isArray(raw) ? raw : []).map(x => (typeof x === 'string'
+      ? { name: x, area: '', address: '', credit: 0, unit: 'won', bring: '', note: '' }
+      : {
+        name: String((x && x.name) || '').trim(),
+        area: String((x && x.area) || ''),
+        address: String((x && x.address) || ''),
+        credit: Number((x && x.credit) || 0) || 0,
+        unit: (x && x.unit) === 'kg' ? 'kg' : 'won',
+        bring: String((x && x.bring) || ''),
+        note: String((x && x.note) || '')
+      })).filter(x => x.name);
+  }
+
   function placeList() {
     const s = (window.__settings || {});
     /* 설정의 봉사지는 {name, credit, unit} 모양이다. 예전 자료는 문자열일 수 있다 */
@@ -432,9 +455,10 @@ window.Community = (function () {
       '<button class="react add" type="button" data-pick="' + esc(p.id) + '" aria-label="반응 달기">' +
       ic('plus') + (shown.length ? '' : '<span class="lbl">반응</span>') + '</button>' +
       '</div>' +
-      (total
+      (total && !hintSeen()
         ? '<div class="mut" style="font-size:11.5px;margin-top:6px">' +
-          '반응을 길게 누르면 누가 눌렀는지 볼 수 있어요</div>'
+          '반응을 길게 누르면 누가 눌렀는지 볼 수 있어요 ' +
+          '<button class="linkbtn" type="button" data-hint="1">알겠어요</button></div>'
         : '');
   }
 
@@ -479,6 +503,10 @@ window.Community = (function () {
       let b;
 
       if ((b = hit('data-react'))) { pop(b); return hitReaction(b.dataset.react, b.dataset.k); }
+      if ((b = hit('data-hint'))) {
+        try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }
+        return renderHome(true);
+      }
       if ((b = hit('data-pick'))) return pickReaction(b.dataset.pick);
       if ((b = hit('data-menu'))) return postMenu(b.dataset.menu);
       if ((b = hit('data-open'))) return openPost(b.dataset.open);
@@ -487,6 +515,8 @@ window.Community = (function () {
       if ((b = hit('data-close'))) return closePoll(b.dataset.close);
       if ((b = hit('data-signup'))) return doSignup(b.dataset.signup, false);
       if ((b = hit('data-cancel'))) return doSignup(b.dataset.cancel, true);
+      if ((b = hit('data-wjoin'))) return doWait(b.dataset.wjoin, false);
+      if ((b = hit('data-wleave'))) return doWait(b.dataset.wleave, true);
       if ((b = hit('data-past'))) return openPast(b.dataset.past);
       if ((b = hit('data-news'))) {
         if (b.dataset.at > newsSeen()) { markNewsSeen(b.dataset.at); paintTabDot(); loadNews(); }
@@ -522,6 +552,10 @@ window.Community = (function () {
     void el.offsetWidth;
     el.classList.add('pop');
   }
+
+  /* 길게 누르기 안내는 한 번 보면 다시 띄우지 않는다 */
+  const HINT_KEY = 'baljaguk.reactHint';
+  const hintSeen = () => { try { return localStorage.getItem(HINT_KEY) === '1'; } catch (e) { return false; } };
 
   function findRow(id) { return F.rows.filter(r => r.id === id)[0]; }
 
@@ -1126,7 +1160,8 @@ window.Community = (function () {
   async function renderVol() {
     $('#headTitle').textContent = '봉사';
     $('#headLead').textContent = '다가오는 봉사와 지난 기록이에요.';
-    paint('<div id="soon">' + loading(1) + '</div><div id="past"></div>');
+    paint('<div id="soon">' + loading(1) + '</div><div id="past"></div>' +
+      '<div id="shelters"></div>');
 
     let evs = [];
     try { evs = await DB.events.list(); } catch (e) {
@@ -1146,12 +1181,14 @@ window.Community = (function () {
     for (let i = 0; i < soon.length; i++) {
       try { info[soon[i].id] = await DB.eventPublic(soon[i].id); } catch (e) { }
     }
-    let mineIds = [];
+    let mineIds = [], waits = [];
     try { mineIds = await DB.community.mySignups(); } catch (e) { }
+    try { waits = await DB.community.myWaitlist(); } catch (e) { }
+    const waitOf = id => (waits.filter(w => w.event_id === id)[0] || null);
 
     $('#soon').innerHTML = soon.length
       ? '<div class="section-title">' + ic('calendar') + '<span>다가오는 봉사</span></div>' +
-        soon.map(e => volCard(e, info[e.id], mineIds.indexOf(e.id) >= 0)).join('')
+        soon.map(e => volCard(e, info[e.id], mineIds.indexOf(e.id) >= 0, waitOf(e.id))).join('')
       : '<div class="card center" style="padding:26px 22px">' + illus('emptyFeed', 'sm') +
         '<h3 style="margin-top:10px;font-size:16px">다가오는 봉사가 없어요</h3>' +
         '<p class="mut sm" style="margin-top:6px">일정이 올라오면 여기에 보여요.</p></div>';
@@ -1163,6 +1200,8 @@ window.Community = (function () {
       reviews = (r && r.rows) || [];
     } catch (e) { }
     const cnt = id => reviews.filter(x => x.event_id === id).length;
+
+    paintShelters(reviews);
 
     $('#past').innerHTML = past.length
       ? '<div class="section-title" style="margin-top:16px">' + ic('clock') + '<span>지난 봉사</span></div>' +
@@ -1181,7 +1220,55 @@ window.Community = (function () {
       : '';
   }
 
-  function volCard(e, pub, mine) {
+  /* ---------- 보호소 안내 ---------- */
+  function paintShelters(reviews) {
+    const box = $('#shelters');
+    if (!box) return;
+    const list = placeInfo();
+    if (!list.length) { box.innerHTML = ''; return; }
+
+    const recent = p => (reviews || [])
+      .filter(r => r.place === p.name).slice(0, 3);
+
+    box.innerHTML =
+      '<div class="section-title" style="margin-top:16px">' + ic('home') + '<span>보호소 안내</span></div>' +
+      list.map(p => {
+        const rs = recent(p);
+        return '<div class="card" style="margin-bottom:12px">' +
+          '<div class="row between" style="align-items:flex-start;gap:10px">' +
+          '<div class="grow"><div style="font-weight:700;font-size:15px">' + esc(p.name) + '</div>' +
+          (p.area ? '<div class="mut sm" style="margin-top:2px">' + esc(p.area) + '</div>' : '') +
+          '</div>' +
+          (p.credit
+            ? '<span class="badge approved">1인당 ' + credit(p.credit, p.unit) + '</span>'
+            : '') + '</div>' +
+
+          (p.address
+            ? '<a class="btn ghost sm block" style="margin-top:10px" target="_blank" rel="noopener"' +
+              ' href="https://map.kakao.com/link/search/' + encodeURIComponent(p.address) + '">' +
+              ic('pin') + '<span>' + esc(p.address) + '</span></a>'
+            : '') +
+
+          (p.bring
+            ? '<div class="kv"><span class="k">준비물</span><span class="v">' + esc(p.bring) + '</span></div>'
+            : '') +
+          (p.note
+            ? '<p class="pill-note" style="margin-top:10px">' + esc(p.note) + '</p>'
+            : '') +
+
+          (rs.length
+            ? '<div class="divider"></div>' +
+              '<div class="mut" style="font-size:11.5px;margin-bottom:6px">최근 후기</div>' +
+              rs.map(r =>
+                '<button class="pastrow" type="button" data-open="' + esc(r.id) + '">' +
+                '<span class="nm">' + esc(cut(r.body || '사진 후기', 24)) + '</span>' +
+                '<span class="rt">' + fmtDate(r.date || r.created_at) + '</span></button>').join('')
+            : '') +
+          '</div>';
+      }).join('');
+  }
+
+  function volCard(e, pub, mine, wait) {
     const taken = (pub && Number(pub.taken)) || 0;
     const cap = Number(e.capacity) || 0;
     const full = cap > 0 && taken >= cap && !mine;
@@ -1193,7 +1280,8 @@ window.Community = (function () {
       (e.start_time ? ' ' + esc(e.start_time) : '') + '</div>' +
       '<div class="mut sm" style="margin-top:3px">' + esc(e.place || '') +
       (e.title ? ' · ' + esc(e.title) : '') + '</div></div>' +
-      (mine ? '<span class="badge approved">신청함</span>' : '') + '</div>' +
+      (mine ? '<span class="badge approved">신청함</span>'
+        : (wait ? '<span class="badge pending">대기 ' + num(wait.pos) + '번째</span>' : '')) + '</div>' +
 
       '<div class="mut" style="font-size:12px;margin-top:8px">' +
       (cap ? '선착순 ' + num(taken) + ' / ' + num(cap) + '명' : num(taken) + '명 신청') + '</div>' +
@@ -1201,9 +1289,16 @@ window.Community = (function () {
       '<div style="margin-top:11px">' +
       (mine
         ? '<button class="btn ghost block" type="button" data-cancel="' + esc(e.id) + '">신청 취소</button>'
-        : (full
-          ? '<button class="btn block" type="button" disabled>자리가 다 찼어요</button>'
-          : '<button class="btn primary block" type="button" data-signup="' + esc(e.id) + '">신청하기</button>')) +
+        : (wait
+          ? '<button class="btn ghost block" type="button" data-wleave="' + esc(e.id) + '">대기 취소</button>'
+          : (full
+            ? '<button class="btn soft block" type="button" data-wjoin="' + esc(e.id) + '">' +
+              '대기 신청하기</button>'
+            : '<button class="btn primary block" type="button" data-signup="' + esc(e.id) + '">신청하기</button>'))) +
+      (full && !mine && !wait
+        ? '<div class="mut" style="font-size:11.5px;margin-top:7px;text-align:center">' +
+          '자리가 나면 먼저 신청한 분부터 올라가요</div>'
+        : '') +
       '</div></div>';
   }
 
@@ -1214,6 +1309,16 @@ window.Community = (function () {
     nomatch: '로그인이 풀렸어요. 다시 들어와주세요',
     noevent: '없는 일정이에요'
   };
+
+  async function doWait(id, leave) {
+    try {
+      const r = leave ? await DB.community.waitLeave(id) : await DB.community.waitJoin(id);
+      if (r === 'notfull') { return doSignup(id, false); }
+      if (r !== 'ok') throw new Error(SIGNUP_MSG[r] || '처리하지 못했어요');
+      toast(leave ? '대기를 취소했어요' : '대기 신청했어요', 'ok');
+      renderVol();
+    } catch (e) { toast(e.message || '처리하지 못했어요', 'err'); renderVol(); }
+  }
 
   /* 지난 봉사를 누르면 그 봉사 후기로, 안 썼으면 쓰러 간다 */
   async function openPast(eventId) {

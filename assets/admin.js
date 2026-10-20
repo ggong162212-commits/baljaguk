@@ -256,6 +256,71 @@
     await load();
     go(cur);
     startLive();
+    paintProfile();
+  }
+
+  /* ---------- 상단바 프로필 동그라미 ----------
+     커뮤니티와 같은 모양. 톱니는 그대로 두고 그 오른쪽에 둔다 */
+  let MEINFO = null;
+  async function paintProfile() {
+    try { MEINFO = await DB.me(); } catch (e) { MEINFO = null; }
+    if (!MEINFO || !MEINFO.linked) return;
+    const tb = document.querySelector('#topbar .in');
+    if (!tb || tb.querySelector('#profBtn')) return;
+    /* 다크 버튼은 프로필 시트 안으로 */
+    const th = tb.querySelector('[data-theme-btn]');
+    if (th) th.hidden = true;
+    tb.insertAdjacentHTML('beforeend',
+      '<button id="profBtn" type="button" aria-label="내 프로필" ' +
+      'style="border:none;background:none;padding:0;cursor:pointer;margin-left:2px">' +
+      UI.avatar(MEINFO, 'tiny') + '</button>');
+    tb.querySelector('#profBtn').onclick = profileSheet;
+    fillAvatars(tb);
+  }
+
+  async function fillAvatars(root) {
+    const els = Array.prototype.slice.call((root || document).querySelectorAll('[data-avatar]'));
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i], path = el.getAttribute('data-avatar');
+      el.removeAttribute('data-avatar');
+      try {
+        const url = await DB.community.avatarUrl(path);
+        if (url) {
+          el.style.backgroundImage = 'url("' + url + '")';
+          el.classList.add('has-photo');
+          el.textContent = '';
+        }
+      } catch (e) { }
+    }
+  }
+
+  function profileSheet() {
+    const m = MEINFO || {};
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const ov = sheet({
+      title: '내 프로필',
+      body:
+        '<div class="center">' +
+        '<div class="prof-big"' + (m.photo ? ' data-avatar="' + esc(m.photo) + '"' : '') + '>' +
+        esc(String(m.name || '?').slice(0, 1)) + '</div></div>' +
+        '<div class="divider"></div>' +
+        '<div class="kv"><span class="k">이름</span><span class="v">' + esc(m.name || '') +
+        ' <span class="badge admin">운영진</span></span></div>' +
+        (m.joined_on
+          ? '<div class="kv"><span class="k">가입일</span><span class="v">' + fmtDate(m.joined_on) + '</span></div>'
+          : '') +
+        '<div class="divider"></div>' +
+        '<div style="display:grid;gap:8px">' +
+        '<a class="btn soft block" href="me.html">커뮤니티로</a>' +
+        '<button class="btn ghost block" type="button" id="apTheme">' +
+        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
+        '<a class="btn ghost block" href="guide.html">' + ic('clipboard') + '<span>사용법</span></a>' +
+        '<button class="btn ghost block" type="button" id="apOut">로그아웃</button>' +
+        '</div>'
+    });
+    fillAvatars(ov);
+    ov.querySelector('#apTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
+    ov.querySelector('#apOut').onclick = () => { DB.memberLogout(); DB.logout(); location.reload(); };
   }
 
   /* ---------- 다른 운영진의 변경을 자동으로 받아오기 ---------- */
@@ -1029,7 +1094,9 @@
         address: String((x && x.address) || ''),
         credit: Math.max(0, Number((x && x.credit) || 0) || 0),
         /* 천보금처럼 돈 대신 사료로 쌓는 곳은 kg */
-        unit: ((x && x.unit) === 'kg') ? 'kg' : 'won'
+        unit: ((x && x.unit) === 'kg') ? 'kg' : 'won',
+        bring: String((x && x.bring) || ''),
+        note: String((x && x.note) || '')
       })).filter(x => x.name);
   }
   const unitOf = name => ((volPlaces().find(x => x.name === name) || {}).unit || 'won');
@@ -2755,6 +2822,12 @@
             '<option value="kg"' + (cur.unit === 'kg' ? ' selected' : '') + '>사료 (kg)</option>' +
             '</select></label></div>' +
             '<span class="hint" style="display:block;margin:-6px 0 12px">봉사를 확정하면 참여 인원 × 이 값이 쌓여요. 비워두면 적립하지 않아요.</span>' +
+            '<label class="field"><span class="lb">준비물</span>' +
+            '<input class="input" id="plBring" value="' + esc(cur.bring) + '" placeholder="편한 옷, 목장갑, 물">' +
+            '<span class="hint">커뮤니티 보호소 안내에 그대로 보여요.</span></label>' +
+            '<label class="field"><span class="lb">주의사항</span>' +
+            '<textarea class="input" id="plNote" rows="2" placeholder="강아지가 놀랄 수 있어 큰 소리는 삼가주세요">' +
+            esc(cur.note) + '</textarea></label>' +
             '<button class="btn primary block" data-save>저장하기</button>'
         });
         ov.querySelector('[data-save]').onclick = async () => {
@@ -2766,7 +2839,9 @@
             name, area,
             address: ov.querySelector('#plAddr').value.trim(),
             credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0),
-            unit: ov.querySelector('#plUnit').value === 'kg' ? 'kg' : 'won'
+            unit: ov.querySelector('#plUnit').value === 'kg' ? 'kg' : 'won',
+            bring: ov.querySelector('#plBring').value.trim(),
+            note: ov.querySelector('#plNote').value.trim()
           };
           closeSheet();
           await save({ places: next, place: next[0].name });

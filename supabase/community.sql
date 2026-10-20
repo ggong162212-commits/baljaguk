@@ -621,3 +621,112 @@ revoke all on function set_my_photo(text)  from public, anon;
 revoke all on function clear_photo(uuid)   from public, anon;
 grant execute on function set_my_photo(text) to authenticated;
 grant execute on function clear_photo(uuid)  to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 16) 대기 신청
+--     정원이 차면 대기로 받고, 자리가 나면 먼저 신청한 사람이 자동으로 올라간다.
+-- ------------------------------------------------------------
+create table if not exists event_waitlist (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  event_id   uuid not null references events(id)  on delete cascade,
+  member_id  uuid not null references members(id) on delete cascade,
+  unique (event_id, member_id)
+);
+create index if not exists waitlist_ev_idx on event_waitlist (event_id, created_at);
+
+alter table event_waitlist enable row level security;
+drop policy if exists "wait read" on event_waitlist;
+drop policy if exists "wait mine" on event_waitlist;
+create policy "wait read" on event_waitlist for select to authenticated using (is_member());
+create policy "wait mine" on event_waitlist for all to authenticated
+  using (member_id = my_member_id()) with check (member_id = my_member_id());
+
+create or replace function waitlist_join(p_event uuid)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  me_ uuid := my_member_id();
+  ev  events%rowtype;
+  cnt int;
+begin
+  if me_ is null then return 'nomatch'; end if;
+  select * into ev from events where id = p_event;
+  if not found then return 'noevent'; end if;
+  if exists (select 1 from attendance where event_id = p_event and member_id = me_) then return 'dup'; end if;
+  select count(*) into cnt from attendance where event_id = p_event;
+  /* 아직 자리가 있으면 대기가 아니라 바로 신청이다 */
+  if coalesce(ev.capacity, 0) = 0 or cnt < ev.capacity then return 'notfull'; end if;
+  insert into event_waitlist (event_id, member_id) values (p_event, me_)
+    on conflict (event_id, member_id) do nothing;
+  return 'ok';
+end;
+$$;
+
+create or replace function waitlist_leave(p_event uuid)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare me_ uuid := my_member_id();
+begin
+  if me_ is null then return 'nomatch'; end if;
+  delete from event_waitlist where event_id = p_event and member_id = me_;
+  return 'ok';
+end;
+$$;
+
+/* 내가 대기 중인 일정과 몇 번째인지 */
+create or replace function my_waitlist()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case when not is_member() then null else coalesce(
+    (select json_agg(json_build_object('event_id', w.event_id, 'pos', w.pos))
+       from (select event_id, member_id,
+                    row_number() over (partition by event_id order by created_at) as pos
+               from event_waitlist) w
+      where w.member_id = my_member_id()), '[]'::json) end;
+$$;
+
+/* 자리가 나면 먼저 신청한 대기자를 자동으로 올린다 */
+create or replace function promote_waitlist()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  ev   events%rowtype;
+  cnt  int;
+  nxt  uuid;
+begin
+  select * into ev from events where id = old.event_id;
+  if not found or coalesce(ev.capacity, 0) = 0 then return old; end if;
+  select count(*) into cnt from attendance where event_id = old.event_id;
+  if cnt >= ev.capacity then return old; end if;
+
+  select member_id into nxt from event_waitlist
+   where event_id = old.event_id order by created_at limit 1;
+  if nxt is null then return old; end if;
+
+  insert into attendance (event_id, member_id, hours) values (old.event_id, nxt, 0)
+    on conflict (event_id, member_id) do nothing;
+  delete from event_waitlist where event_id = old.event_id and member_id = nxt;
+  return old;
+end;
+$$;
+
+drop trigger if exists promote_waitlist_trg on attendance;
+create trigger promote_waitlist_trg after delete on attendance
+  for each row execute function promote_waitlist();
+
+revoke all on function waitlist_join(uuid)  from public, anon;
+revoke all on function waitlist_leave(uuid) from public, anon;
+revoke all on function my_waitlist()        from public, anon;
+grant execute on function waitlist_join(uuid)  to authenticated;
+grant execute on function waitlist_leave(uuid) to authenticated;
+grant execute on function my_waitlist()        to authenticated;

@@ -821,7 +821,7 @@
   function cdemo() {
     const d = demoRead();
     ['posts', 'post_photos', 'comments', 'reactions',
-      'polls', 'poll_options', 'poll_votes'].forEach(k => { if (!d[k]) d[k] = []; });
+      'polls', 'poll_options', 'poll_votes', 'event_waitlist'].forEach(k => { if (!d[k]) d[k] = []; });
     return d;
   }
   const myDemoId = () => localStorage.getItem('baljaguk.demoMe') || '';
@@ -1177,6 +1177,49 @@
       }) || [];
     },
 
+    /* ---------- 대기 신청 ---------- */
+    async myWaitlist() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return [];
+        const w = d.event_waitlist || [];
+        return w.filter(x => x.member_id === me).map(x => ({
+          event_id: x.event_id,
+          pos: w.filter(y => y.event_id === x.event_id &&
+            String(y.created_at) <= String(x.created_at)).length
+        }));
+      }
+      return await rest('rpc/my_waitlist', { method: 'POST', body: {} }) || [];
+    },
+
+    async waitJoin(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return 'nomatch';
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return 'noevent';
+        if ((d.attendance || []).some(a => a.event_id === eventId && a.member_id === me)) return 'dup';
+        const cap = Number(e.capacity) || 0;
+        const taken = (d.attendance || []).filter(a => a.event_id === eventId).length;
+        if (!cap || taken < cap) return 'notfull';
+        d.event_waitlist = d.event_waitlist || [];
+        if (!d.event_waitlist.some(w => w.event_id === eventId && w.member_id === me))
+          d.event_waitlist.push({ id: uid(), event_id: eventId, member_id: me, created_at: new Date().toISOString() });
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/waitlist_join', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    async waitLeave(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        d.event_waitlist = (d.event_waitlist || [])
+          .filter(w => !(w.event_id === eventId && w.member_id === me));
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/waitlist_leave', { method: 'POST', body: { p_event: eventId } });
+    },
+
     /* ---------- 프로필 사진 ---------- */
     /* 정사각형으로 잘라 400px 로 줄인다. 줄이면서 위치정보도 떨어진다 */
     async setMyPhoto(dataUrl) {
@@ -1282,6 +1325,16 @@
       if (!HAS_SB) {
         const d = cdemo(), me = myDemoId();
         d.attendance = (d.attendance || []).filter(a => !(a.event_id === eventId && a.member_id === me));
+        /* 자리가 나면 먼저 신청한 대기자를 올린다 — 서버 트리거와 같은 동작 */
+        const e = (d.events || []).find(x => x.id === eventId);
+        const cap = Number(e && e.capacity) || 0;
+        const taken = (d.attendance || []).filter(a => a.event_id === eventId).length;
+        const wl = (d.event_waitlist || []).filter(w => w.event_id === eventId)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+        if (cap && taken < cap && wl.length) {
+          d.attendance.push({ id: uid(), event_id: eventId, member_id: wl[0].member_id, hours: 0 });
+          d.event_waitlist = d.event_waitlist.filter(w => w.id !== wl[0].id);
+        }
         demoWrite(d); return 'ok';
       }
       return await rest('rpc/event_cancel_me', { method: 'POST', body: { p_event: eventId } });
