@@ -730,3 +730,103 @@ revoke all on function my_waitlist()        from public, anon;
 grant execute on function waitlist_join(uuid)  to authenticated;
 grant execute on function waitlist_leave(uuid) to authenticated;
 grant execute on function my_waitlist()        to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 17) 알림거리 — 시스템이 남기는 소식 (대기 승급 등). 본인만 본다.
+-- ------------------------------------------------------------
+create table if not exists member_notices (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  member_id  uuid not null references members(id) on delete cascade,
+  kind       text not null,
+  detail     text,
+  event_id   uuid references events(id) on delete cascade
+);
+create index if not exists notices_mem_idx on member_notices (member_id, created_at desc);
+
+alter table member_notices enable row level security;
+drop policy if exists "notices mine" on member_notices;
+create policy "notices mine" on member_notices for select to authenticated
+  using (member_id = my_member_id());
+
+
+-- ------------------------------------------------------------
+-- 18) 대기 자동 승급을 안전하게
+--     확정됐거나 지난 봉사에서는 올리지 않는다.
+--     확정 뒤 명단을 고치려고 사람을 빼면 안 간 사람이 실적에 잡힌다.
+-- ------------------------------------------------------------
+create or replace function promote_waitlist()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  ev   events%rowtype;
+  cnt  int;
+  nxt  uuid;
+begin
+  select * into ev from events where id = old.event_id;
+  if not found or coalesce(ev.capacity, 0) = 0 then return old; end if;
+
+  /* 확정된 봉사·지난 봉사는 명단을 건드려도 대기자를 올리지 않는다 */
+  if ev.confirmed_at is not null then return old; end if;
+  if ev.date < current_date then return old; end if;
+
+  select count(*) into cnt from attendance where event_id = old.event_id;
+  if cnt >= ev.capacity then return old; end if;
+
+  select member_id into nxt from event_waitlist
+   where event_id = old.event_id order by created_at limit 1;
+  if nxt is null then return old; end if;
+
+  insert into attendance (event_id, member_id, hours) values (old.event_id, nxt, 0)
+    on conflict (event_id, member_id) do nothing;
+  delete from event_waitlist where event_id = old.event_id and member_id = nxt;
+
+  insert into member_notices (member_id, kind, detail, event_id)
+       values (nxt, 'promoted',
+               to_char(ev.date, 'MM월 DD일') || ' ' || coalesce(ev.place, '봉사'),
+               old.event_id);
+  return old;
+end;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 19) 새 소식에 시스템 소식도 함께
+-- ------------------------------------------------------------
+create or replace function my_news(p_limit int default 30)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+with me_ as (select my_member_id() as id),
+mine as (select id from posts where author_id = (select id from me_)),
+rows_ as (
+  select 'comment' as kind, c.created_at, c.post_id,
+         (select m.name from members m where m.id = c.author_id) as who,
+         c.body as detail, null::text as kindly
+    from comments c join mine on mine.id = c.post_id
+   where c.author_id <> (select id from me_) and not c.hidden
+  union all
+  select 'reaction', r.created_at, r.post_id,
+         (select m.name from members m where m.id = r.member_id),
+         null, r.kind
+    from reactions r join mine on mine.id = r.post_id
+   where r.member_id <> (select id from me_)
+  union all
+  select n.kind, n.created_at, null::uuid, null::text, n.detail, null::text
+    from member_notices n where n.member_id = (select id from me_)
+)
+select case when not is_member() then null else coalesce(
+  (select json_agg(json_build_object(
+     'kind', kind, 'at', created_at, 'post_id', post_id,
+     'who', who, 'detail', detail, 'react', kindly) order by created_at desc)
+     from (select * from rows_ order by created_at desc
+            limit greatest(1, least(coalesce(p_limit, 30), 100))) z),
+  '[]'::json) end;
+$$;
+
+revoke all on function my_news(int) from public, anon;
+grant execute on function my_news(int) to authenticated;

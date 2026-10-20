@@ -821,10 +821,37 @@
   function cdemo() {
     const d = demoRead();
     ['posts', 'post_photos', 'comments', 'reactions',
-      'polls', 'poll_options', 'poll_votes', 'event_waitlist'].forEach(k => { if (!d[k]) d[k] = []; });
+      'polls', 'poll_options', 'poll_votes', 'event_waitlist', 'member_notices'].forEach(k => { if (!d[k]) d[k] = []; });
     return d;
   }
   const myDemoId = () => localStorage.getItem('baljaguk.demoMe') || '';
+  /* 자리가 나면 먼저 신청한 대기자를 올린다 — 서버 트리거와 같은 규칙.
+     확정됐거나 지난 봉사에서는 올리지 않는다. 안 간 사람이 실적에 잡히면 안 된다. */
+  function promoteWait(d, eventId) {
+    const e = (d.events || []).find(x => x.id === eventId);
+    if (!e) return false;
+    const cap = Number(e.capacity) || 0;
+    if (!cap) return false;
+    if (e.confirmed_at) return false;
+    if (String(e.date) < today()) return false;
+
+    const taken = (d.attendance || []).filter(a => a.event_id === eventId).length;
+    if (taken >= cap) return false;
+    const wl = (d.event_waitlist || []).filter(w => w.event_id === eventId)
+      .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    if (!wl.length) return false;
+
+    d.attendance.push({ id: uid(), event_id: eventId, member_id: wl[0].member_id, hours: 0 });
+    d.event_waitlist = d.event_waitlist.filter(w => w.id !== wl[0].id);
+    d.member_notices = d.member_notices || [];
+    d.member_notices.push({
+      id: uid(), created_at: new Date().toISOString(), member_id: wl[0].member_id,
+      kind: 'promoted', detail: String(e.date).slice(5).replace('-', '월 ') + '일 ' + (e.place || '봉사'),
+      event_id: eventId
+    });
+    return true;
+  }
+
   const pollClosed = q => !!(q && (q.closed_at ||
     (q.closes_at && Date.parse(q.closes_at) < Date.now())));
   function demoMember(id) {
@@ -1287,6 +1314,11 @@
             kind: 'reaction', at: r.created_at || new Date().toISOString(), post_id: r.post_id,
             who: (demoMember(r.member_id) || {}).name, detail: null, react: r.kind
           }));
+        (d.member_notices || []).filter(n => n.member_id === me)
+          .forEach(n => out.push({
+            kind: n.kind, at: n.created_at, post_id: null,
+            who: null, detail: n.detail, react: null
+          }));
         return out.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
       }
       return await rest('rpc/my_news', { method: 'POST', body: { p_limit: 30 } }) || [];
@@ -1325,16 +1357,7 @@
       if (!HAS_SB) {
         const d = cdemo(), me = myDemoId();
         d.attendance = (d.attendance || []).filter(a => !(a.event_id === eventId && a.member_id === me));
-        /* 자리가 나면 먼저 신청한 대기자를 올린다 — 서버 트리거와 같은 동작 */
-        const e = (d.events || []).find(x => x.id === eventId);
-        const cap = Number(e && e.capacity) || 0;
-        const taken = (d.attendance || []).filter(a => a.event_id === eventId).length;
-        const wl = (d.event_waitlist || []).filter(w => w.event_id === eventId)
-          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-        if (cap && taken < cap && wl.length) {
-          d.attendance.push({ id: uid(), event_id: eventId, member_id: wl[0].member_id, hours: 0 });
-          d.event_waitlist = d.event_waitlist.filter(w => w.id !== wl[0].id);
-        }
+        promoteWait(d, eventId);
         demoWrite(d); return 'ok';
       }
       return await rest('rpc/event_cancel_me', { method: 'POST', body: { p_event: eventId } });

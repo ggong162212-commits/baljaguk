@@ -48,8 +48,11 @@
       '<div class="sheet" role="dialog" aria-modal="true">' +
       '<div class="hd"><h3>' + (opts.title || '') + '</h3>' +
       '<button class="iconbtn" data-close aria-label="닫기">' + window.ic('x') + '</button></div>' +
-      '<div class="sheet-body"></div></div>';
+      '<div class="sheet-body"></div>' +
+      /* 주 버튼은 아래에 고정한다. 키보드가 올라와도 바로 위에 남는다 */
+      (opts.foot ? '<div class="sheet-foot"></div>' : '') + '</div>';
     $('.sheet-body', ov).innerHTML = opts.body || '';
+    if (opts.foot) $('.sheet-foot', ov).innerHTML = opts.foot;
     document.body.appendChild(ov);
     document.body.style.overflow = 'hidden';
     ov.addEventListener('click', e => { if (e.target === ov) closeSheet(); });

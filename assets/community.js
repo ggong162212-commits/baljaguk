@@ -518,6 +518,10 @@ window.Community = (function () {
       if ((b = hit('data-wjoin'))) return doWait(b.dataset.wjoin, false);
       if ((b = hit('data-wleave'))) return doWait(b.dataset.wleave, true);
       if ((b = hit('data-past'))) return openPast(b.dataset.past);
+      if ((b = hit('data-seen'))) {
+        if (b.dataset.at > newsSeen()) { markNewsSeen(b.dataset.at); paintTabDot(); loadNews(); }
+        return;
+      }
       if ((b = hit('data-news'))) {
         if (b.dataset.at > newsSeen()) { markNewsSeen(b.dataset.at); paintTabDot(); loadNews(); }
         return openPost(b.dataset.news);
@@ -1411,9 +1415,15 @@ window.Community = (function () {
 
     const seen = newsSeen();
     const fresh = list.filter(n => String(n.at) > seen).length;
-    const line = n => n.kind === 'comment'
-      ? '<b>' + esc(n.who || '?') + '</b>님이 댓글을 남겼어요 — ' + esc(cut(n.detail, 28))
-      : '<b>' + esc(n.who || '?') + '</b>님이 ' + (EMOJI[n.react] || '') + ' 반응을 달았어요';
+    const line = n => {
+      if (n.kind === 'comment')
+        return '<b>' + esc(n.who || '?') + '</b>님이 댓글을 남겼어요 — ' + esc(cut(n.detail, 28));
+      if (n.kind === 'reaction')
+        return '<b>' + esc(n.who || '?') + '</b>님이 ' + (EMOJI[n.react] || '') + ' 반응을 달았어요';
+      if (n.kind === 'promoted')
+        return '대기에서 신청으로 올라갔어요 — <b>' + esc(n.detail || '') + '</b>';
+      return esc(n.detail || '새 소식이 있어요');
+    };
 
     box.innerHTML =
       '<div class="card"><div class="row between" style="align-items:center">' +
@@ -1423,7 +1433,8 @@ window.Community = (function () {
       '</div><div class="sp"></div>' +
       list.slice(0, 8).map(n =>
         '<button class="newsrow' + (String(n.at) > seen ? '' : ' read') + '" type="button" ' +
-        'data-news="' + esc(n.post_id) + '" data-at="' + esc(n.at) + '">' +
+        (n.post_id ? 'data-news="' + esc(n.post_id) + '" ' : 'data-seen="1" ') +
+        'data-at="' + esc(n.at) + '">' +
         '<span class="pt"></span>' +
         '<span class="tx">' + line(n) + '</span>' +
         '<span class="at">' + relTime(n.at) + '</span></button>').join('') +
