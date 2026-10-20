@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5EC">
+<title>발자국 · 사용법</title>
+<meta name="description" content="발자국 구성원 사용법 안내">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
+<link rel="stylesheet" href="assets/style.css?v=202610200949">
+<style>
+  /* 목차 — 누르면 그 자리로 */
+  .toc a{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;
+    background:var(--surface-2);border-radius:14px;margin-bottom:7px;
+    color:var(--ink);text-decoration:none;font-size:14px;font-weight:600
+  }
+  .toc a .no{
+    width:24px;height:24px;border-radius:9px;flex:none;display:grid;place-items:center;
+    background:var(--brand-soft);color:var(--brand-deep);font-size:12px;font-weight:700
+  }
+  /* 단계 — 번호와 설명 */
+  .step{display:flex;gap:12px;padding:14px 0;border-bottom:1px dashed var(--line-2)}
+  .step:last-child{border-bottom:none}
+  .step .no{
+    width:28px;height:28px;border-radius:10px;flex:none;display:grid;place-items:center;
+    background:var(--brand);color:#fff;font-size:13px;font-weight:700
+  }
+  .step .tx{flex:1;min-width:0}
+  .step .tx b{display:block;font-size:14.5px;margin-bottom:4px}
+  .step .tx p{margin:0;font-size:13px;color:var(--ink-3);line-height:1.65}
+  /* 화면 흉내 — 캡처 대신 쓰는 작은 그림 */
+  .shot{
+    margin-top:10px;border:1px solid var(--line);border-radius:14px;
+    padding:12px;background:var(--surface);font-size:12.5px
+  }
+  .shot .fake-btn{
+    display:block;text-align:center;padding:10px;border-radius:11px;
+    background:#FEE500;color:#191600;font-weight:700;margin-top:8px
+  }
+  .shot .fake-in{
+    border:1px solid var(--line);border-radius:10px;padding:9px 11px;
+    margin-top:7px;color:var(--ink-3);background:var(--surface-2)
+  }
+  .qa{padding:13px 0;border-bottom:1px dashed var(--line-2)}
+  .qa:last-child{border-bottom:none}
+  .qa b{display:block;font-size:14px;margin-bottom:5px}
+  .qa p{margin:0;font-size:13px;color:var(--ink-3);line-height:1.7}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="in">
+    <div class="brandmark grow">
+      <span class="dot" id="brandIcon"></span>
+      <span class="wordmark">발자국</span>
+    </div>
+    <button class="iconbtn" data-theme-btn type="button"></button>
+  </div>
+</header>
+
+<main class="app">
+  <div class="pagehead">
+    <h1>사용법</h1>
+    <p>처음 오셨다면 1번부터 보시면 돼요.</p>
+  </div>
+
+  <div class="card">
+    <div class="toc">
+      <a href="#s1"><span class="no">1</span>처음 들어가기 — 본인 확인</a>
+      <a href="#s2"><span class="no">2</span>홈 화면에 추가하기</a>
+      <a href="#s3"><span class="no">3</span>내 활동 보기</a>
+      <a href="#s4"><span class="no">4</span>자주 묻는 질문</a>
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <div class="card" id="s1">
+    <h3>1. 처음 들어가기</h3>
+    <div class="sub">카카오로 로그인한 뒤, 명부의 누구인지 한 번만 확인해요. 1분이면 끝나요.</div>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">1</span>
+      <div class="tx">
+        <b>「내 활동」 열기</b>
+        <p>아래 버튼을 누르거나, 단톡방에 올라온 링크를 눌러주세요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">2</span>
+      <div class="tx">
+        <b>카카오로 로그인</b>
+        <p>노란 버튼을 누르면 카카오 화면으로 넘어가요. 닉네임만 받아오고, 친구목록이나 메시지는 보지 않아요.</p>
+        <div class="shot">
+          <span class="mut">발자국 · 내 활동</span>
+          <span class="fake-btn">카카오로 로그인</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">3</span>
+      <div class="tx">
+        <b>이름과 휴대폰 뒤 4자리 넣기</b>
+        <p>카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인해요.
+           <b>동아리 명부에 적어낸 번호</b> 기준이에요.</p>
+        <div class="shot">
+          <span class="mut">본인 확인</span>
+          <div class="fake-in">이름</div>
+          <div class="fake-in">휴대폰 뒤 4자리</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">4</span>
+      <div class="tx">
+        <b>끝났어요</b>
+        <p>다음부터는 카카오 로그인만 하면 바로 들어와요. 한 번 이어지면 다른 카카오 계정은 그 이름을 쓸 수 없어요.</p>
+      </div>
+    </div>
+
+    <div class="sp"></div>
+    <a class="btn primary lg block" href="me.html">내 활동 열기</a>
+  </div>
+
+  <!-- 2 -->
+  <div class="card" id="s2">
+    <h3>2. 홈 화면에 추가하기</h3>
+    <div class="sub">앱처럼 쓸 수 있어요. 나중에 알림을 받으려면 아이폰은 이걸 먼저 해야 해요.</div>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">i</span>
+      <div class="tx">
+        <b>아이폰 (사파리)</b>
+        <p>아래 <b>공유 버튼</b>(↑ 네모) → 쭉 내려서 <b>홈 화면에 추가</b> → 추가</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">A</span>
+      <div class="tx">
+        <b>안드로이드 (크롬)</b>
+        <p>오른쪽 위 <b>⋮ 메뉴</b> → <b>홈 화면에 추가</b> → 추가</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="card" id="s3">
+    <h3>3. 내 활동 보기</h3>
+    <div class="sub">봉사 횟수와 쌓인 적립금을 볼 수 있어요.</div>
+    <div class="sp"></div>
+    <div class="kv"><span class="k">봉사 횟수</span><span class="v">다녀온 횟수</span></div>
+    <div class="kv"><span class="k">내가 쌓은 적립금</span><span class="v">보호소에 전달될 금액</span></div>
+    <div class="kv"><span class="k">보호소별 적립</span><span class="v">어디서 얼마나</span></div>
+    <div class="sp"></div>
+    <p class="pill-note">숫자는 <b>운영진이 확정한 봉사</b>만 세요.
+      다녀온 날 바로 안 올라가도 걱정하지 마세요. 확정되면 반영돼요.</p>
+  </div>
+
+  <!-- 4 -->
+  <div class="card" id="s4">
+    <h3>4. 자주 묻는 질문</h3>
+    <div class="sp"></div>
+
+    <div class="qa">
+      <b>본인 확인이 안 돼요</b>
+      <p>이름이 명부와 똑같은지, 뒤 4자리가 <b>동아리에 적어낸 번호</b>인지 봐주세요.
+         번호를 바꾸셨다면 운영진에게 말씀해주세요.
+         <b>5번 틀리면 1시간 잠겨요.</b> 천천히 해주세요.</p>
+    </div>
+
+    <div class="qa">
+      <b>「이미 다른 카카오 계정과 이어져 있어요」가 떠요</b>
+      <p>예전에 다른 카카오 계정으로 연결하셨을 수 있어요. 운영진에게 말씀해주시면 풀어드려요.</p>
+    </div>
+
+    <div class="qa">
+      <b>봉사 횟수가 안 올라가요</b>
+      <p>운영진이 그 봉사를 <b>확정</b>해야 올라가요. 보통 봉사 다음에 정리해요.</p>
+    </div>
+
+    <div class="qa">
+      <b>운영진인데 운영진 화면에 못 들어가요</b>
+      <p>위 1번 <b>본인 확인</b>을 먼저 마쳐야 해요. 카카오 로그인만으로는 안 열려요.</p>
+    </div>
+  </div>
+
+  <div class="linkline"><a href="index.html">발자국 홈으로 →</a></div>
+  <div style="height:40px"></div>
+</main>
+
+<script src="assets/config.js?v=202610200949"></script>
+<script src="assets/icons.js?v=202610200949"></script>
+<script src="assets/ui.js?v=202610200949"></script>
+<script>
+  UI.initTheme();
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('brandIcon').innerHTML = ic('paw');
+    document.querySelector('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
+    UI.paintThemeButtons();
+  });
+</script>
+</body>
+</html>
