@@ -40,7 +40,8 @@
   /* ---------- 바텀시트 / 모달 ---------- */
   let lastFocus = null;
   function sheet(opts) {
-    closeSheet();
+    /* 시트를 바꿔 여는 것이라 기록은 건드리지 않는다 */
+    closeSheet(true);
     lastFocus = document.activeElement;
     const ov = document.createElement('div');
     ov.className = 'overlay';
@@ -55,6 +56,13 @@
     if (opts.foot) $('.sheet-foot', ov).innerHTML = opts.foot;
     document.body.appendChild(ov);
     document.body.style.overflow = 'hidden';
+    /* 안드로이드 뒤로 버튼으로도 닫힌다.
+       시트를 연달아 열어도 기록은 한 칸만 쓴다 */
+    try {
+      if (!(history.state && history.state.sheet)) history.pushState({ sheet: 1 }, '');
+      window.removeEventListener('popstate', onPop);
+      window.addEventListener('popstate', onPop);
+    } catch (e) { }
     ov.addEventListener('click', e => { if (e.target === ov) closeSheet(); });
     $('[data-close]', ov).addEventListener('click', closeSheet);
     document.addEventListener('keydown', escClose);
@@ -65,11 +73,24 @@
     return ov;
   }
   function escClose(e) { if (e.key === 'Escape') closeSheet(); }
-  function closeSheet() {
+  /* 우리가 부른 history.back() 이 돌아오는 것은 무시한다.
+     안 그러면 바로 뒤에 연 시트가 그 신호에 닫혀 버린다. */
+  let popGuard = 0;
+  function onPop() {
+    if (popGuard > 0) { popGuard--; return; }
+    closeSheet(true);
+  }
+  function closeSheet(fromBack) {
     const ov = $('.overlay');
     if (ov) ov.remove();
     document.body.style.overflow = '';
     document.removeEventListener('keydown', escClose);
+    window.removeEventListener('popstate', onPop);
+    /* 버튼으로 닫았으면 눌러 둔 기록을 되돌린다 */
+    if (!fromBack && history.state && history.state.sheet) {
+      popGuard++;
+      try { history.back(); } catch (e) { popGuard--; }
+    }
     if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) { } lastFocus = null; }
   }
   function confirmSheet(title, desc, okLabel, danger) {
@@ -224,16 +245,29 @@
       closeBtn.replaceWith(fresh);
       fresh.addEventListener('click', () => {
         if (!dirty()) return closeSheet();
+
+        /* 키보드가 올라와 있으면 아래 확인이 가려진다 — 먼저 내린다 */
+        try { if (document.activeElement) document.activeElement.blur(); } catch (e) { }
+
         /* 확인을 새 시트로 띄우면 쓰던 시트가 닫혀버린다. 같은 시트 안에서 묻는다 */
         const foot = ov.querySelector('.sheet-foot');
+        if (!foot) return closeSheet();
+        if (foot.dataset.asking) return;    /* 두 번 눌러도 한 번만 */
         const keep = foot.innerHTML;
+        foot.dataset.asking = '1';
         foot.innerHTML =
-          '<p class="sm" style="margin:0 0 10px;color:var(--ink-3)">' +
-          '그만두면 쓰던 내용이 사라져요.</p>' +
+          '<p class="sm" style="margin:0 0 10px;font-weight:700">' +
+          '그만두면 쓰던 내용이 사라져요. 그만둘까요?</p>' +
           '<div class="row" style="gap:8px">' +
           '<button class="btn ghost grow" type="button" data-keep>계속 쓰기</button>' +
-          '<button class="btn grow" type="button" data-quit>그만두기</button></div>';
-        foot.querySelector('[data-keep]').onclick = () => { foot.innerHTML = keep; wire(); };
+          '<button class="btn danger grow" type="button" data-quit>그만두기</button></div>';
+        /* 긴 시트에서는 아래가 화면 밖일 수 있다 */
+        try { foot.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (e) { }
+        foot.querySelector('[data-keep]').onclick = () => {
+          delete foot.dataset.asking;
+          foot.innerHTML = keep;
+          wire();
+        };
         foot.querySelector('[data-quit]').onclick = closeSheet;
       });
     }

@@ -747,9 +747,7 @@ window.Community = (function () {
 
       '<div class="tapzone" data-open="' + esc(p.id) + '">' +
 
-      (p.hidden
-        ? '<div class="pill-note">운영진이 숨긴 글이에요. 나와 운영진에게만 보여요.</div>'
-        : '') +
+
 
       (p.type === 'notice'
         ? '<div class="meta">' + ic('pin') + '공지</div>'
@@ -1244,8 +1242,10 @@ window.Community = (function () {
       btns.push('<button class="btn ghost block" type="button" data-act="del">글 지우기</button>');
     }
     if (AM_ADMIN) {
-      btns.push('<button class="btn ghost block" type="button" data-act="hide">' +
-        (p.hidden ? '다시 보이기' : '숨기기') + '</button>');
+      /* 남의 글도 지울 수 있다. 숨기기는 쓰지 않는다 — 지우거나 두거나 둘 중 하나다 */
+      if (!p.mine) {
+        btns.push('<button class="btn ghost block" type="button" data-act="del">글 삭제</button>');
+      }
       if (p.type === 'notice')
         btns.push('<button class="btn ghost block" type="button" data-act="pin">' +
           (p.pinned ? '고정 풀기' : '맨 위에 고정') + '</button>');
@@ -1263,12 +1263,12 @@ window.Community = (function () {
       try {
         if (act === 'edit') return editSheet(p);
         if (act === 'del') {
-          if (!await confirmSheet('글을 지울까요?', '댓글과 반응도 함께 사라져요.', '지우기', true)) return;
-          await DB.community.removePost(id);
-          toast('지웠어요'); return renderHome(true);
+          if (!await confirmSheet('이 글을 지울까요?',
+            '이 글과 댓글 · 사진 · 반응이 모두 지워져요. 되돌릴 수 없어요.',
+            '삭제하기', true)) return;
+          return softDelete(p);
         }
         if (act === 'report') return reportSheet({ post: id });
-        if (act === 'hide') { await DB.community.setHidden(id, !p.hidden); toast(p.hidden ? '다시 보여요' : '숨겼어요'); return renderHome(true); }
         if (act === 'pin') { await DB.community.setPinned(id, !p.pinned); toast(p.pinned ? '고정을 풀었어요' : '맨 위에 고정했어요'); return renderHome(true); }
       } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     });
@@ -1646,10 +1646,7 @@ window.Community = (function () {
           ? '<button type="button" class="check" id="wInsta" style="margin-top:12px;width:100%;text-align:left">' +
             '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
             '<span class="grow"><span class="sm" style="font-weight:700">' +
-            '발자국 인스타그램에 올려도 괜찮아요</span>' +
-            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
-            '다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.<br>' +
-            '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>'
+            '발자국 인스타그램에 올려도 괜찮아요</span></span></button>'
           : ''),
       after: (r, vals) => {
         const file = r.querySelector('#wPhotos');
@@ -2072,8 +2069,9 @@ window.Community = (function () {
       btns.push('<button class="btn ghost block" type="button" data-a="edit">고치기</button>');
       btns.push('<button class="btn ghost block" type="button" data-a="del">지우기</button>');
     }
-    if (AM_ADMIN) btns.push('<button class="btn ghost block" type="button" data-a="hide">' +
-      (found.hidden ? '다시 보이기' : '숨기기') + '</button>');
+    if (AM_ADMIN && !found.mine) {
+      btns.push('<button class="btn ghost block" type="button" data-a="del">댓글 삭제</button>');
+    }
     if (!found.mine) btns.push('<button class="btn ghost block" type="button" data-a="report">신고하기</button>');
     if (!btns.length) return;
 
@@ -2100,13 +2098,63 @@ window.Community = (function () {
           return;
         }
         if (a === 'del') {
-          if (!await confirmSheet('댓글을 지울까요?', '', '지우기', true)) return;
+          if (!await confirmSheet('이 댓글을 지울까요?',
+            '되돌릴 수 없어요.', '삭제하기', true)) return;
           await DB.community.removeComment(commentId);
         }
-        if (a === 'hide') await DB.community.hideComment(commentId, !found.hidden);
         after && after();
       } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     });
+  }
+
+  /* ---------- 글 삭제 ----------
+     바로 지우지 않고 5초 동안 되돌릴 틈을 준다.
+     잘못 눌렀을 때 글과 댓글·사진이 통째로 사라지면 되돌릴 방법이 없다. */
+  let undoTimer = null;
+
+  function softDelete(p) {
+    /* 먼저 화면에서만 치운다 */
+    const card = $('#list [data-post="' + p.id + '"]') ||
+      $('#list article[data-id="' + p.id + '"]');
+    const el = card || document.querySelector('[data-open="' + p.id + '"]');
+    const hidden = [];
+    if (el) {
+      const box = el.closest ? (el.closest('article') || el.closest('.card')) : el;
+      if (box) { box.style.display = 'none'; hidden.push(box); }
+    }
+    F.rows = (F.rows || []).filter(r => String(r.id) !== String(p.id));
+
+    let undone = false;
+    const bar = document.createElement('div');
+    bar.className = 'undobar';
+    bar.innerHTML = '<span>글을 지웠어요</span>' +
+      '<button type="button" data-undo>되돌리기</button>';
+    document.body.appendChild(bar);
+    requestAnimationFrame(() => bar.classList.add('in'));
+
+    const finish = async () => {
+      bar.classList.remove('in');
+      setTimeout(() => bar.remove(), 240);
+      if (undone) return;
+      try {
+        await DB.community.removePost(p.id, p.photos || []);
+      } catch (e) {
+        toast(e.message || '지우지 못했어요', 'err');
+      }
+      renderHome(true);
+    };
+
+    bar.querySelector('[data-undo]').onclick = () => {
+      undone = true;
+      clearTimeout(undoTimer);
+      hidden.forEach(x => { x.style.display = ''; });
+      bar.classList.remove('in');
+      setTimeout(() => bar.remove(), 240);
+      renderHome(true);
+    };
+
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(finish, 5000);
   }
 
   /* 「지금 발표하기」 — 만든 사람만 */

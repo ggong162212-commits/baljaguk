@@ -1914,3 +1914,46 @@ begin
   return new;
 end;
 $$;
+
+
+-- ------------------------------------------------------------
+-- 「숨기기」를 쓰지 않기로 했다 (2026-10-20)
+--  지우거나 두거나 둘 중 하나다. 숨긴 글이 쌓이면
+--  운영진도 구성원도 지금 무엇이 보이는지 알기 어려워진다.
+--  hidden 칸은 지우지 않는다 — 이미 숨겨 둔 글이 있으면 그대로 남고,
+--  읽는 함수들이 계속 걸러 준다. 새로 숨기는 길만 닫는다.
+-- ------------------------------------------------------------
+
+-- 글을 지우면 그 글에 대한 신고도 처리된 것으로
+create or replace function reports_close_on_post_delete()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  update reports set done_at = now()
+   where post_id = old.id and done_at is null;
+  return old;
+end;
+$$;
+
+drop trigger if exists reports_close_trg on posts;
+create trigger reports_close_trg before delete on posts
+  for each row execute function reports_close_on_post_delete();
+
+-- 댓글도 마찬가지
+create or replace function reports_close_on_comment_delete()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  update reports set done_at = now()
+   where comment_id = old.id and done_at is null;
+  return old;
+end;
+$$;
+
+drop trigger if exists reports_close_c_trg on comments;
+create trigger reports_close_c_trg before delete on comments
+  for each row execute function reports_close_on_comment_delete();

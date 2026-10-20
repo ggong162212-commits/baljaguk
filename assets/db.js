@@ -1162,21 +1162,50 @@
       return true;
     },
 
-    async removePost(id) {
+    /* 글을 지운다. 사진 파일까지 같이 치운다 —
+       표의 줄은 외래키가 알아서 따라 지워지지만, Storage 파일은 안 그렇다. */
+    async removePost(id, paths) {
       if (!HAS_SB) {
         const d = cdemo();
         d.posts = d.posts.filter(p => p.id !== id);
         d.post_photos = d.post_photos.filter(f => f.post_id !== id);
         d.comments = d.comments.filter(c => c.post_id !== id);
         d.reactions = d.reactions.filter(r => r.post_id !== id);
+        d.post_animals = (d.post_animals || []).filter(a => a.post_id !== id);
+        d.polls = (d.polls || []).filter(q => q.post_id !== id);
+        d.poll_options = (d.poll_options || []).filter(o => o.post_id !== id);
+        d.poll_votes = (d.poll_votes || []).filter(v => v.post_id !== id);
+        (d.reports || []).forEach(r => { if (r.post_id === id) r.done_at = new Date().toISOString(); });
         demoWrite(d); return true;
       }
+
+      /* 사진 먼저 — 줄이 사라지면 어떤 파일이었는지 알 수 없다 */
+      const files = (paths || []).filter(Boolean);
+      if (files.length) {
+        try {
+          await fetch(C.SUPABASE_URL + '/storage/v1/object/community', {
+            method: 'DELETE',
+            headers: {
+              apikey: C.SUPABASE_ANON_KEY,
+              Authorization: 'Bearer ' + session.access_token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ prefixes: files })
+          });
+        } catch (e) { /* 파일이 남아도 글은 지운다 */ }
+      }
+
       await rest('posts?id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+      /* 이 글에 대한 신고는 처리된 것으로 */
+      try {
+        await rest('reports?post_id=eq.' + enc(id) + '&done_at=is.null', {
+          method: 'PATCH', prefer: 'return=minimal',
+          body: { done_at: new Date().toISOString() }
+        });
+      } catch (e) { }
       return true;
     },
 
-    /* 운영진: 지우지 않고 숨긴다 */
-    setHidden: (id, on) => DB.community.updatePost(id, { hidden: !!on }),
     setPinned: (id, on) => DB.community.updatePost(id, { pinned: !!on }),
 
     /* ---------- 댓글 ---------- */
@@ -1239,17 +1268,6 @@
       return true;
     },
 
-    async hideComment(id, on) {
-      if (!HAS_SB) {
-        const d = cdemo(), c = d.comments.find(x => x.id === id);
-        if (c) { c.hidden = !!on; demoWrite(d); }
-        return true;
-      }
-      await rest('comments?id=eq.' + enc(id), {
-        method: 'PATCH', prefer: 'return=minimal', body: { hidden: !!on }
-      });
-      return true;
-    },
 
     /* ---------- 반응 ---------- */
     /* 같은 걸 다시 누르면 취소된다 */
