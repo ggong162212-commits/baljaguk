@@ -505,9 +505,13 @@ window.Community = (function () {
       ph.map((path, i) =>
         '<img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(path) + '">').join('') +
       '</div>' +
+      /* 점이 열 개면 줄이 길어져 알아보기 어렵다. 여섯 장 넘으면 숫자로 센다 */
       (ph.length > 1
-        ? '<div class="dots" data-dots="' + esc(p.id) + '">' +
-        ph.map((x, i) => '<i' + (i === 0 ? ' class="on"' : '') + '></i>').join('') + '</div>'
+        ? (ph.length > 6
+          ? '<div class="shotn" data-dots="' + esc(p.id) + '" data-total="' + ph.length + '">' +
+            '1/' + ph.length + '</div>'
+          : '<div class="dots" data-dots="' + esc(p.id) + '">' +
+            ph.map((x, i) => '<i' + (i === 0 ? ' class="on"' : '') + '></i>').join('') + '</div>')
         : '');
   }
 
@@ -631,7 +635,11 @@ window.Community = (function () {
       const dots = view.querySelector('[data-dots="' + box.dataset.shots + '"]');
       if (!dots) return;
       const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
-      Array.prototype.forEach.call(dots.children, (d, n) => d.classList.toggle('on', n === i));
+      if (dots.classList.contains('shotn')) {
+        dots.textContent = (i + 1) + '/' + dots.dataset.total;
+      } else {
+        Array.prototype.forEach.call(dots.children, (d, n) => d.classList.toggle('on', n === i));
+      }
     }, true);
   }
 
@@ -956,11 +964,11 @@ window.Community = (function () {
   }
 
   /* 사진 고르기 단계 — 후기·자유글 공용 */
-  function photoStep(withInsta) {
+  function photoStep(withInsta, hint) {
     return {
       key: 'photos', short: '사진',
       q: '사진이 있나요?',
-      hint: '없어도 괜찮아요. 다섯 장까지 넣을 수 있어요.',
+      hint: hint || '없어도 괜찮아요. 열 장까지 넣을 수 있어요.',
       body: '<div class="dropzone" id="wDrop" tabindex="0" role="button" aria-label="사진 고르기">' +
         '<div id="wIdle"><div class="big">' + ic('image') + '</div>' +
         '<div class="sm mut" style="margin-top:4px">눌러서 고르세요. 알아서 줄여서 올려요</div></div>' +
@@ -984,32 +992,97 @@ window.Community = (function () {
         const insta = r.querySelector('#wInsta');
         r.__shots = (vals.photos && vals.photos.list) || [];
 
+        /* 사진은 순서가 뜻이 있다 — 길게 눌러 끌어서 바꾼다 */
+        let holdTimer = null, dragFrom = -1;
+
         const paintThumbs = () => {
-          if (!r.__shots.length) { idle.hidden = false; thumbs.innerHTML = ''; return; }
+          if (!r.__shots.length) {
+            idle.hidden = false;
+            thumbs.innerHTML = '';
+            return;
+          }
           idle.hidden = true;
-          thumbs.innerHTML = r.__shots.map(src =>
-            '<img src="' + src + '" alt="" style="width:54px;height:54px;object-fit:cover;' +
-            'border-radius:11px">').join('') +
-            '<div class="sm mut" style="width:100%;margin-top:6px">' +
-            r.__shots.length + '장 · 다시 눌러 바꿀 수 있어요</div>';
+          thumbs.innerHTML = r.__shots.map((src, i) =>
+            '<span class="shotchip" data-i="' + i + '">' +
+            '<img src="' + src + '" alt="">' +
+            '<button type="button" class="rm" data-rm="' + i + '" ' +
+            'aria-label="' + (i + 1) + '번째 사진 빼기">✕</button>' +
+            (i === 0 ? '<span class="first">대표</span>' : '') +
+            '</span>').join('') +
+            '<div class="sm mut" style="width:100%;margin-top:7px;text-align:center">' +
+            r.__shots.length + '장 / 10장 · 길게 눌러 끌면 순서가 바뀌어요</div>';
+
+          thumbs.querySelectorAll('[data-rm]').forEach(b => b.onclick = ev => {
+            ev.stopPropagation();
+            r.__shots.splice(Number(b.dataset.rm), 1);
+            paintThumbs();
+          });
+
+          thumbs.querySelectorAll('.shotchip').forEach(chip => {
+            chip.addEventListener('pointerdown', ev => {
+              if (ev.target.closest('[data-rm]')) return;
+              holdTimer = setTimeout(() => {
+                dragFrom = Number(chip.dataset.i);
+                chip.classList.add('dragging');
+                try { chip.setPointerCapture(ev.pointerId); } catch (e) { }
+              }, 350);
+            });
+            chip.addEventListener('pointermove', ev => {
+              if (dragFrom < 0) return;
+              const el = thumbs.ownerDocument.elementFromPoint(ev.clientX, ev.clientY);
+              const over = el && el.closest ? el.closest('.shotchip') : null;
+              if (!over || over === chip) return;
+              const to = Number(over.dataset.i);
+              const moved = r.__shots.splice(dragFrom, 1)[0];
+              r.__shots.splice(to, 0, moved);
+              dragFrom = to;
+              paintThumbs();
+              const again = thumbs.querySelector('.shotchip[data-i="' + to + '"]');
+              if (again) {
+                again.classList.add('dragging');
+                try { again.setPointerCapture(ev.pointerId); } catch (e) { }
+              }
+            });
+            const stop = () => {
+              clearTimeout(holdTimer);
+              if (dragFrom >= 0) { dragFrom = -1; paintThumbs(); }
+            };
+            chip.addEventListener('pointerup', stop);
+            chip.addEventListener('pointercancel', stop);
+            chip.addEventListener('pointerleave', () => clearTimeout(holdTimer));
+          });
         };
+
         paintThumbs();
         if (insta) insta.addEventListener('click', () => insta.classList.toggle('on'));
-        drop.addEventListener('click', () => file.click());
+        drop.addEventListener('click', ev => {
+          if (ev.target.closest('.shotchip')) return;
+          file.click();
+        });
         drop.addEventListener('keydown', e => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
         });
+
         file.addEventListener('change', async e => {
-          const fs = Array.prototype.slice.call(e.target.files || []).slice(0, 5);
+          const room = 10 - r.__shots.length;
+          const all = Array.prototype.slice.call(e.target.files || []);
+          const fs = all.slice(0, Math.max(0, room));
+          if (all.length > fs.length) {
+            toast('열 장까지만 넣을 수 있어요', 'err');
+          }
           if (!fs.length) return;
           idle.hidden = true;
-          thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
+
+          /* 여러 장이면 줄이는 데 시간이 걸린다 — 몇 장째인지 보여준다 */
           const out = [];
           for (let i = 0; i < fs.length; i++) {
-            try { out.push(await resizeImage(fs[i], 1600, .82)); }
+            thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중… ' +
+              (i + 1) + '/' + fs.length + '</span>';
+            try { out.push(await resizeImage(fs[i], 1280, .8)); }
             catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
           }
-          r.__shots = out;
+          r.__shots = r.__shots.concat(out);
+          file.value = '';
           paintThumbs();
         });
       },
@@ -1046,7 +1119,8 @@ window.Community = (function () {
       title: '자유글 쓰기',
       doneLabel: '올리기',
       steps: [
-        photoStep(false),
+        photoStep(false,
+          '없어도 괜찮아요. 퀴즈를 낼 거면 이 친구 사진을 올리면 더 재밌어요.'),
         {
           key: 'body', short: '글',
           q: '무슨 이야기인가요?',

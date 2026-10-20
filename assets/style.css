@@ -460,6 +460,8 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   aspect-ratio:1/1;object-fit:cover;border-radius:15px;background:var(--surface-2)
 }
 .dots{display:flex;justify-content:center;gap:5px;margin-top:8px}
+/* 사진이 많으면 점 대신 숫자로 센다 */
+.shotn{margin-top:8px;text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
 .dots i{width:5px;height:5px;border-radius:50%;background:var(--line);transition:.2s}
 .dots i.on{background:var(--brand);width:14px;border-radius:3px}
 
@@ -846,3 +848,15 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .opt.answer{border-color:var(--brand);background:var(--brand-soft)}
 .opt.answer .lb{font-weight:800;color:var(--brand-deep)}
 .quizscore{margin-top:9px;font-size:12px;font-weight:700;color:var(--brand-deep)}
+
+/* 고른 사진 — 빼기·순서 바꾸기 */
+.shotchip{position:relative;display:inline-block;touch-action:none;transition:.16s}
+.shotchip img{width:72px;height:72px;object-fit:cover;border-radius:13px;display:block;
+  pointer-events:none}
+/* button 의 44px 탭 영역 규칙을 여기서는 쓰지 않는다 — 사진 위에 얹는 작은 표시다 */
+.shotchip .rm{position:absolute;top:-6px;right:-6px;width:24px;height:24px;min-height:0;
+  border-radius:50%;border:2px solid var(--surface);background:var(--ink);color:#fff;
+  font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.shotchip .first{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;
+  font-size:9px;font-weight:700;border-radius:5px;padding:1px 4px;pointer-events:none}
+.shotchip.dragging{transform:scale(1.12);box-shadow:var(--shadow-md);z-index:2;opacity:.85}

@@ -963,7 +963,7 @@
     /* ---------- 글 ---------- */
     /* 사진은 이미 줄여둔 dataURL 배열로 받는다 */
     async createPost(v) {
-      const photos = (v.photos || []).slice(0, 5);
+      const photos = (v.photos || []).slice(0, 10);
       if (!HAS_SB) {
         const d = cdemo(), meId = myDemoId();
         if (!meId) throw new Error('로그인이 풀렸어요');
