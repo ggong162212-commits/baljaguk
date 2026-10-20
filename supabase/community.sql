@@ -254,7 +254,7 @@ begin
     raise exception '공지는 운영진만 쓸 수 있어요';
   end if;
   if new.type = 'poll' and not is_admin() then
-    raise exception '투표는 운영진만 만들 수 있어요';
+    raise exception '설문은 운영진만 만들 수 있어요';
   end if;
   if new.pinned and not is_admin() then
     raise exception '고정은 운영진만 할 수 있어요';
@@ -946,7 +946,7 @@ begin
     raise exception '공지는 운영진만 쓸 수 있어요';
   end if;
   if new.type = 'poll' and not is_admin() then
-    raise exception '투표는 운영진만 만들 수 있어요';
+    raise exception '설문은 운영진만 만들 수 있어요';
   end if;
   if new.pinned and not is_admin() then
     raise exception '고정은 운영진만 할 수 있어요';
@@ -981,7 +981,7 @@ begin
     raise exception '정답이 발표된 퀴즈예요';
   end if;
   if q.closed_at is not null then
-    raise exception '마감된 투표예요';
+    raise exception '마감된 설문이에요';
   end if;
   return new;
 end;

@@ -1,6 +1,6 @@
 /* ============================================================
    발자국 커뮤니티
-   홈(피드) · 봉사 · 투표 · 나  — 하단 탭 4개
+   홈(피드) · 봉사 · 설문 · 나  — 하단 탭 4개
    me.js 가 본인 확인을 마치면 여기로 넘겨준다.
    ============================================================ */
 window.Community = (function () {
@@ -12,7 +12,7 @@ window.Community = (function () {
   const TABS = [
     { id: 'home', label: '홈', icon: 'home' },
     { id: 'vol', label: '봉사', icon: 'calendar' },
-    { id: 'poll', label: '투표', icon: 'clipboard' },
+    { id: 'poll', label: '설문', icon: 'clipboard' },
     { id: 'me', label: '나', icon: 'paw' }
   ];
 
@@ -219,11 +219,11 @@ window.Community = (function () {
   function go(tab) {
     cur = tab;
     $$('#tabbar [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-    /* 홈에서는 후기 쓰기, 투표 탭에서는 투표 만들기 (운영진만) */
+    /* 홈에서는 후기 쓰기, 설문 탭에서는 설문 만들기 (운영진만) */
     const fab = $('#fab');
     const showFab = tab === 'home' || (tab === 'poll' && AM_ADMIN);
     fab.hidden = !showFab;
-    fab.setAttribute('aria-label', tab === 'poll' ? '투표 만들기' : '글쓰기');
+    fab.setAttribute('aria-label', tab === 'poll' ? '설문 만들기' : '글쓰기');
     fab.onclick = () => (tab === 'poll' ? pollSheet() : writeSheet());
     window.scrollTo(0, 0);
     if (tab === 'home') return renderHome(true);
@@ -275,7 +275,7 @@ window.Community = (function () {
 
   /* ---------- 홈 필터 ----------
      전체 · 봉사지별 · 자유게시판 셋뿐이다.
-     「후기」는 봉사지별이 하고, 「투표」는 하단 투표 탭이 한다. */
+     「후기」는 봉사지별이 하고, 「설문」은 하단 설문 탭이 한다. */
   const FKEY = 'baljaguk.homeFilter';
   function savedFilter() {
     try { return JSON.parse(localStorage.getItem(FKEY) || 'null') || { kind: 'all', place: '' }; }
@@ -406,6 +406,7 @@ window.Community = (function () {
 
     if (first) {
       const pins = res.pinned || [];
+      F.pins = pins;
       const total = Number(res.pinned_total) || pins.length;
       $('#pin').innerHTML = pins.map(pinnedCard).join('') +
         (total > pins.length
@@ -456,14 +457,32 @@ window.Community = (function () {
   }
 
   /* 맨 위 고정 공지 — 있을 때만 */
+  /* 공지는 한 줄로 접어 둔다. 셋이 펼쳐져 있으면 첫 화면이 공지로 꽉 차서
+     정작 피드가 안 보인다. 누르면 그 자리에서 펼쳐진다. */
   function pinnedCard(p) {
-    return '<button class="card" type="button" data-open="' + esc(p.id) + '" ' +
-      'style="width:100%;text-align:left;border:none;cursor:pointer;' +
-      'background:var(--gold-soft);display:block;margin-bottom:10px">' +
-      '<div class="row" style="gap:7px;color:#8a6414;font-weight:700;font-size:12.5px">' +
-      ic('pin') + '<span>공지</span></div>' +
-      '<div style="margin-top:7px;font-size:14px;line-height:1.6;color:var(--ink)">' +
-      esc(cut(p.body, 90)) + '</div></button>';
+    return '<button class="pinrow" type="button" data-pin="' + esc(p.id) + '">' +
+      '<span class="ic">' + ic('megaphone') + '</span>' +
+      '<span class="tx">' + esc(cut(p.body, 34)) + '</span>' +
+      '<span class="ar">' + ic('chevron') + '</span></button>';
+  }
+
+  /* 공지 한 줄을 누르면 그 자리에서 펼친다. 다시 누르면 접는다. */
+  function togglePin(id) {
+    const row = $('#pin [data-pin="' + id + '"]');
+    if (!row) return;
+    const open = row.nextElementSibling &&
+      row.nextElementSibling.classList.contains('pinfull');
+    $$('#pin .pinfull').forEach(x => x.remove());
+    $$('#pin .pinrow').forEach(x => x.classList.remove('on'));
+    if (open) return;
+    const p = (F.pins || []).find(x => String(x.id) === String(id));
+    if (!p) return;
+    row.classList.add('on');
+    row.insertAdjacentHTML('afterend',
+      '<div class="pinfull">' + esc(p.body) +
+      '<div class="who">' + esc(p.author || '운영진') + ' · ' + relTime(p.created_at) + '</div>' +
+      '<button class="linkbtn" type="button" data-open="' + esc(p.id) + '">' +
+      '글로 열기</button></div>');
   }
 
   const cut = (s, n) => {
@@ -710,6 +729,7 @@ window.Community = (function () {
 
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
+      if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
       if ((b = hit('data-react'))) { pop(b); return hitReaction(b.dataset.react, b.dataset.k); }
       if ((b = hit('data-hint'))) {
         try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }
@@ -911,7 +931,7 @@ window.Community = (function () {
      ============================================================ */
   /* ---------- 글쓰기 ----------
      먼저 어떤 글인지 고르고, 고른 것에 맞는 단계만 묻는다.
-     후기는 봉사·사진·글·투표, 자유글은 사진·글·투표. */
+     후기는 봉사·사진·글·설문, 자유글은 사진·글·설문. */
   async function writeSheet(preEvent) {
     if (typeof preEvent === 'string' && preEvent) return reviewWizard(preEvent);
 
@@ -951,16 +971,16 @@ window.Community = (function () {
       'T' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
-  /* 투표·퀴즈 넣기 — 후기·자유글·공지가 같이 쓴다. 넣지 않아도 넘어간다.
+  /* 설문·퀴즈 넣기 — 후기·자유글·공지가 같이 쓴다. 넣지 않아도 넘어간다.
      퀴즈는 같은 구조에 정답과 발표 시각만 더한 것이다. */
   function pollStep() {
     return {
-      key: 'poll', short: '투표',
-      q: '투표나 퀴즈를 넣을까요?',
+      key: 'poll', short: '설문',
+      q: '설문이나 퀴즈를 넣을까요?',
       hint: '안 넣어도 괜찮아요. 넣으면 글 안에서 바로 누를 수 있어요.',
       body: '<div class="seg" id="pKind" style="margin-bottom:12px">' +
         '<button type="button" data-k="none" class="on">안 넣기</button>' +
-        '<button type="button" data-k="poll">투표</button>' +
+        '<button type="button" data-k="poll">설문</button>' +
         '<button type="button" data-k="quiz">퀴즈</button></div>' +
 
         '<div id="pBox" hidden>' +
@@ -1078,7 +1098,7 @@ window.Community = (function () {
       },
 
       sum: v => !v ? '없음'
-        : (v.kind === 'quiz' ? '퀴즈 · ' : '투표 · ') +
+        : (v.kind === 'quiz' ? '퀴즈 · ' : '설문 · ') +
           cut(v.question, 14) + ' · ' + v.options.filter(Boolean).length + '개'
     };
   }
@@ -1218,7 +1238,7 @@ window.Community = (function () {
     };
   }
 
-  /* 글에 붙일 투표/퀴즈를 서버가 받는 모양으로 */
+  /* 글에 붙일 설문/퀴즈를 서버가 받는 모양으로 */
   function pollPayload(v) {
     if (!v) return null;
     const options = v.options.filter(Boolean);
@@ -1599,7 +1619,7 @@ window.Community = (function () {
   }
 
   /* ============================================================
-     투표 (읽고 참여하기)
+     설문 (읽고 참여하기)
      ============================================================ */
   function pollBlock(p) {
     const q = p.poll;
@@ -1662,20 +1682,20 @@ window.Community = (function () {
   }
 
   async function renderPolls() {
-    $('#headTitle').textContent = '투표';
+    $('#headTitle').textContent = '설문';
     $('#headLead').textContent = '모두의 생각을 모아요.';
     paint(loading());
     let res;
     try { res = await DB.community.feed({ type: 'poll', limit: 30 }); }
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
     const rows = res.rows || [];
-    /* 카드의 동작(투표·반응·댓글)이 F.rows 를 보고 돌아간다 */
+    /* 카드의 동작(설문·반응·댓글)이 F.rows 를 보고 돌아간다 */
     F.rows = rows;
     if (!rows.length) return paint(
       '<div class="card center" style="padding:28px 22px">' +
       illus('emptyPoll') +
-      '<h3 style="margin-top:12px;font-size:17px">아직 투표가 없어요</h3></div>');
-    /* 구성원에게 중요한 건 지금 참여할 수 있는 투표다.
+      '<h3 style="margin-top:12px;font-size:17px">아직 설문이 없어요</h3></div>');
+    /* 구성원에게 중요한 건 지금 참여할 수 있는 설문이다.
        마감된 것은 아래로 내린다 */
     const closedOf = p => {
       const q = p.poll || {};
@@ -1689,16 +1709,16 @@ window.Community = (function () {
         ? '<div class="section-title">' + ic('clipboard') + '<span>진행 중</span></div>' +
           live.map(postCard).join('')
         : '<div class="card center" style="padding:26px 22px">' + illus('emptyPoll', 'sm') +
-          '<h3 style="margin-top:10px;font-size:16px">지금 진행 중인 투표가 없어요</h3></div>') +
+          '<h3 style="margin-top:10px;font-size:16px">지금 진행 중인 설문이 없어요</h3></div>') +
       (done.length
         ? '<div class="section-title" style="margin-top:16px">' + ic('check') +
-          '<span>마감된 투표</span></div>' + done.map(postCard).join('')
+          '<span>마감된 설문</span></div>' + done.map(postCard).join('')
         : ''));
     bindOnce();
     loadPhotos($('#view'));
   }
 
-  /* ---------- 투표하기 ---------- */
+  /* ---------- 설문 응답하기 ---------- */
   /* 누르면 화면부터 바로 바꾸고, 실패하면 되돌린다 */
   async function castVote(btn) {
     const postId = btn.dataset.vote, optId = btn.dataset.opt;
@@ -1724,7 +1744,7 @@ window.Community = (function () {
     catch (e) {
       row.poll.options = before;
       redrawPoll(postId);
-      toast(e.message || '투표하지 못했어요', 'err');
+      toast(e.message || '응답하지 못했어요', 'err');
     }
   }
 
@@ -1739,7 +1759,7 @@ window.Community = (function () {
   }
 
   async function closePoll(postId) {
-    if (!await confirmSheet('투표를 지금 마감할까요?', '마감하면 더 이상 바꿀 수 없어요.', '마감', false)) return;
+    if (!await confirmSheet('설문을 지금 마감할까요?', '마감하면 더 이상 바꿀 수 없어요.', '마감', false)) return;
     try {
       await DB.community.closePoll(postId);
       const row = findRow(postId);
@@ -1749,7 +1769,7 @@ window.Community = (function () {
     } catch (e) { toast(e.message || '마감하지 못했어요', 'err'); }
   }
 
-  /* ---------- 투표 만들기 (운영진만) ----------
+  /* ---------- 설문 만들기 (운영진만) ----------
      질문이 다섯 개라 한 번에 하나씩 묻는다 */
   function pollSheet() {
     const dflt = (function () {
@@ -1763,7 +1783,7 @@ window.Community = (function () {
       '예: 평일 저녁', '예: 이번엔 어려워요', '예: 아직 모르겠어요'];
 
     UI.wizard({
-      title: '투표 만들기',
+      title: '설문 만들기',
       doneLabel: '올리기',
       steps: [
         {

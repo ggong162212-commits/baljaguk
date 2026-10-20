@@ -796,7 +796,7 @@
       '<div class="statcard">' +
       stat('green', 'users', '전체', all.length + '명') +
       stat('gold', 'star', '운영진', admins + '명') +
-      stat('sky', 'phone', '카카오', nLinked + ' / ' + all.length) + '</div>';
+      stat('sky', 'link', '연결', nLinked + ' / ' + all.length) + '</div>';
 
     const counts = { all: all.length, admin: admins, nolink: all.length - nLinked };
     const chips = [['all', '전체'], ['admin', '운영진'], ['nolink', '연결 안 함']];
@@ -844,16 +844,15 @@
 
     $('#memberList').innerHTML = kingHTML + (list.length ? '<div class="list">' + list.map(m =>
       '<div class="item" data-m2="' + m.id + '" tabindex="0" role="button">' + avatar(m) +
+      /* 두 줄로 — 1줄 이름, 2줄 학번·봉사·연결. 가입일은 상세에 있다 */
       '<div class="grow"><div class="nm">' + esc(m.name) +
       (m.role === 'admin' ? '<span class="badge admin">운영진</span>' : '') + '</div>' +
-      '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
       '<div class="sub">' +
+      (m.student_id ? '<span>' + esc(m.student_id) + '학번</span>' : '') +
+      '<span>봉사 ' + volCount(m.id) + '회</span>' +
       (linked(m)
         ? '<span class="linkdot on">연결됨</span>'
         : '<span class="linkdot">아직</span>') +
-      '<span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
-      '<span>누적 봉사 ' + volCount(m.id) + '회</span>' +
-      (volSoon(m.id) ? '<span style="color:var(--brand-deep)">확정 전 ' + volSoon(m.id) + '</span>' : '') +
       '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('users', '해당하는 구성원이 없어요'));

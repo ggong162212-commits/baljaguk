@@ -152,6 +152,14 @@ a{color:inherit;text-decoration:none}
 .stat{flex:1;display:flex;align-items:center;gap:9px;justify-content:center;position:relative;min-width:0}
 .stat+.stat::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:1px;background:var(--line)}
 .stat .ic{width:42px;height:42px;border-radius:15px;display:grid;place-items:center;font-size:19px;flex:none}
+/* 한 칸에 셋이 들어갈 때는 좁은 화면에서 아이콘을 줄이고 글자를 붙인다 */
+.statcard .stat:nth-child(3):last-child ~ *,
+.statcard:has(.stat:nth-child(3)) .stat{min-width:0}
+.statcard:has(.stat:nth-child(3)) .stat .ic{width:34px;height:34px;border-radius:12px}
+.statcard:has(.stat:nth-child(3)) .stat .ic svg{width:17px;height:17px}
+.statcard:has(.stat:nth-child(3)) .stat .lb{font-size:11px;white-space:nowrap}
+.statcard:has(.stat:nth-child(3)) .stat .vl{font-size:15px;white-space:nowrap}
+.statcard:has(.stat:nth-child(3)){gap:4px}
 .stat .lb{font-size:12px;color:var(--ink-3);line-height:1.2}
 .stat .vl{font-family:var(--font-title);font-size:21px;line-height:1.15}
 .ic.green{background:var(--brand-soft);color:var(--brand-deep)}
@@ -884,3 +892,30 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .linkdot::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--line)}
 .linkdot.on{color:var(--brand-deep);font-weight:700}
 .linkdot.on::before{background:var(--brand)}
+
+/* 공지 — 한 줄로 접어 두고 누르면 펼친다 */
+.pinrow{width:100%;display:flex;align-items:center;gap:9px;background:var(--gold-soft);
+  border:none;border-radius:16px;padding:12px 14px;margin-bottom:7px;cursor:pointer;
+  text-align:left;min-height:0;transition:.16s}
+.pinrow .ic{flex:none;display:grid;place-items:center;color:#8a6414}
+.pinrow .ic svg{width:17px;height:17px}
+.pinrow .tx{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pinrow .ar{flex:none;color:#8a6414;opacity:.55;transition:.18s}
+.pinrow .ar svg{width:15px;height:15px}
+.pinrow.on{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
+.pinrow.on .ar{transform:rotate(90deg)}
+.pinfull{background:var(--gold-soft);border-radius:0 0 16px 16px;padding:2px 14px 13px;
+  margin-bottom:7px;font-size:13.5px;line-height:1.65;color:var(--ink);white-space:pre-wrap}
+.pinfull .who{margin-top:8px;font-size:11.5px;color:#8a6414;opacity:.85}
+.pinfull .linkbtn{margin-top:4px;font-size:12.5px}
+:root[data-theme="dark"] .pinrow .ic,
+:root[data-theme="dark"] .pinrow .ar,
+:root[data-theme="dark"] .pinfull .who{color:var(--gold)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pinrow .ic,
+  :root:not([data-theme="light"]) .pinrow .ar,
+  :root:not([data-theme="light"]) .pinfull .who{color:var(--gold)}}
+
+/* 구성원 줄은 두 줄로 — 넘치면 줄이지 말고 숨긴다 */
+.item .sub{flex-wrap:nowrap;overflow:hidden}
+.item .sub > *{flex:none}

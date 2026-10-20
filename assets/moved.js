@@ -7,7 +7,7 @@
 (function () {
   const WHAT = {
     volunteer: { title: '봉사 신청', where: '커뮤니티 「봉사」 탭' },
-    survey: { title: '활동 의견', where: '커뮤니티 「투표」 탭' },
+    survey: { title: '활동 의견', where: '커뮤니티 「설문」 탭' },
     id1365: { title: '1365 정보', where: '커뮤니티 「나」 탭' }
   };
 
@@ -27,7 +27,7 @@
       '<div style="font-weight:700;font-size:15px">이제 발자국 커뮤니티에서 해요</div>' +
       '<div class="mut sm" style="margin-top:4px;line-height:1.6">' +
       '「' + w.title + '」은 ' + w.where + '으로 옮겼어요.<br>' +
-      '카카오로 한 번만 들어오면 봉사·후기·투표를 한곳에서 볼 수 있어요.</div>' +
+      '카카오로 한 번만 들어오면 봉사·후기·설문을 한곳에서 볼 수 있어요.</div>' +
       '</div></div>' +
       '<div class="sp"></div>' +
       '<a class="btn primary lg block" href="me.html">카카오로 들어가기</a>' +

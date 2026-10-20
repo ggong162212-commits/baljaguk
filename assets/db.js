@@ -933,7 +933,7 @@
         let list = d.posts.slice()
           .filter(p => !p.hidden || p.author_id === meId)
           .filter(p => !o.type || p.type === o.type)
-          /* 공식 투표는 투표 탭에만 */
+          /* 공식 설문은 설문 탭에만 */
           .filter(p => o.type || p.type !== 'poll')
           /* 맨 위에 고정된 공지는 목록에 또 넣지 않는다 */
           .filter(p => !(p.type === 'notice' && p.pinned))
@@ -1186,15 +1186,15 @@
       }) || [];
     },
 
-    /* ---------- 투표 ---------- */
-    /* 마감 전까지만 바꿀 수 있다. 하나만 고르는 투표면 기존 표를 치우고 넣는다 */
+    /* ---------- 설문 ---------- */
+    /* 마감 전까지만 바꿀 수 있다. 하나만 고르는 설문이면 기존 답을 치우고 넣는다 */
 
     async vote(postId, optionId, multi) {
       if (!HAS_SB) {
         const d = cdemo(), meId = myDemoId();
         if (!meId) throw new Error('로그인이 풀렸어요');
         const q = d.polls.find(x => x.post_id === postId);
-        if (pollClosed(q)) throw new Error('마감된 투표예요');
+        if (pollClosed(q)) throw new Error('마감된 설문이에요');
         const mine = d.poll_votes.filter(v => v.post_id === postId && v.member_id === meId);
         const had = mine.some(v => v.option_id === optionId);
         d.poll_votes = d.poll_votes.filter(v =>
@@ -1210,7 +1210,7 @@
       const base = 'poll_votes?post_id=eq.' + enc(postId) + '&member_id=eq.' + enc(meId);
       const mine = await rest(base + '&select=option_id');
       const had = (mine || []).some(v => v.option_id === optionId);
-      /* 하나만 고르는 투표면 내 표를 모두 치운다 */
+      /* 하나만 고르는 설문이면 내 답을 모두 치운다 */
       await rest(base + (multi ? '&option_id=eq.' + enc(optionId) : ''),
         { method: 'DELETE', prefer: 'return=minimal' });
       if (!had) {
