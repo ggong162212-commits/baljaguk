@@ -68,6 +68,7 @@
       settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: [
         { name: '천사들의 보금자리', area: '', address: '', credit: 2, unit: 'kg' },
         { name: '금파하우스', area: '', address: '', credit: 2000, unit: 'won' },
+        { name: '동물보호센터 다솜', area: '', address: '', credit: 2000, unit: 'won' },
         { name: '땅코볼별', area: '', address: '', credit: 2000, unit: 'won' }
       ], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
       applications: apps, members, events, attendance: att, finance: fin

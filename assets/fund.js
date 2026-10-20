@@ -14,6 +14,7 @@
   let entriesOpen = false;
   let groupByPlace = false;                  // 칩 묶어 보기
   let me = '';                               // 내 이름 찾기
+  let settings = null;
   let counted = false;                       // 숫자 올라가는 효과는 한 번만
 
   try { entriesOpen = localStorage.getItem(OPEN) === '1'; } catch (e) { }
@@ -35,6 +36,7 @@
 
     try {
       const s = await DB.settings.get();
+      settings = s || null;
       if (s && s.club_name) {
         $('#brandName').textContent = s.club_name;
         document.title = s.club_name + ' · 후원금 현황';
@@ -206,24 +208,50 @@
   /* ============================================================
      ② 적립 방식
      ============================================================ */
+  /* 설정에 적힌 봉사지를 단위별로 갈라서 이름을 뽑는다.
+     아직 기록이 없는 보호소도 안내에는 나와야 해서 설정을 먼저 본다. */
+  function spotsByUnit() {
+    let list = settings && settings.places;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
+    const won = [], kg = [];
+    if (Array.isArray(list) && list.length) {
+      list.forEach(x => {
+        if (typeof x === 'string') return;
+        const nm = String((x && x.name) || '').trim();
+        if (!nm || !Number((x && x.credit) || 0)) return;
+        (x.unit === 'kg' ? kg : won).push(nm);
+      });
+    }
+    /* 설정이 비어 있으면 실제 기록에서라도 뽑는다 */
+    if (!won.length && !kg.length) {
+      (data.places || []).forEach(p => {
+        if (!p.place) return;
+        (p.unit === 'kg' ? kg : won).push(p.place);
+      });
+    }
+    return { won, kg };
+  }
+
   function paintHow() {
     const entries = data.entries || [];
     const perWon = entries.filter(r => (r.unit || 'won') !== 'kg')
       .reduce((t, r) => Math.max(t, int(r.per)), 0);
     const perKg = entries.filter(r => r.unit === 'kg')
       .reduce((t, r) => Math.max(t, int(r.per)), 0);
-    /* 보호소마다 쌓는 것이 다르다 — 돈인 곳과 사료인 곳을 나눠서 설명한다 */
-    const kgSpots = (data.places || []).filter(p => p.unit === 'kg').map(p => p.place);
+    const spots = spotsByUnit();
 
     $('#howCard').innerHTML =
       '<div class="pill-note">' +
-      '봉사를 다녀오면 <b>참여한 인원수 × ' + (perWon ? num(perWon) + '원' : '정해진 금액') + '</b> 만큼 ' +
-      '그 보호소 앞으로 적립돼요.<br>' +
-      '모인 돈은 사료·배변패드처럼 보호소에 필요한 물품으로 전달합니다.' +
-      (perKg
-        ? '<br><br>' + (kgSpots.length ? '<b>' + esc(kgSpots.join(' · ')) + '</b>는 ' : '<b>일부 보호소</b>는 ') +
-          '돈 대신 <b>사료</b>로 받아요. 1인당 <b>' + num(perKg) + 'kg</b>씩 쌓입니다.'
+      '봉사를 다녀오면 <b>참여한 인원수 × 정해진 양</b>만큼 그 보호소 앞으로 쌓여요.' +
+      (spots.won.length
+        ? '<br><br><b>후원금</b> · ' + esc(spots.won.join(', ')) +
+          (perWon ? ' — 1인당 ' + num(perWon) + '원' : '')
         : '') +
+      (spots.kg.length
+        ? '<br><b>사료</b> · ' + esc(spots.kg.join(', ')) +
+          (perKg ? ' — 1인당 ' + num(perKg) + 'kg' : '')
+        : '') +
+      '<br><br>모인 후원금은 사료·배변패드처럼 보호소에 필요한 물품으로 바꿔 전달합니다.' +
       '</div>';
   }
 

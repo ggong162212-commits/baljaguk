@@ -852,20 +852,15 @@ window.Community = (function () {
     const kg = Number(a.credit_total_kg) || 0;
 
     box.innerHTML =
-      '<div class="card">' +
-      '<div class="row" style="gap:0">' +
-      '<div style="flex:1;text-align:center">' +
-      '<div class="money" style="font-size:26px;color:var(--brand-deep)">' + num(times) + '</div>' +
-      '<div class="mut" style="font-size:12px;margin-top:2px">봉사 횟수</div></div>' +
-      '<div style="width:1px;align-self:stretch;background:var(--line-2)"></div>' +
-      '<div style="flex:1;text-align:center">' +
-      '<div class="money" style="font-size:26px;color:var(--brand-deep)">' +
-      (kg && !money ? credit(kg, 'kg') : won(money)) + '</div>' +
-      '<div class="mut" style="font-size:12px;margin-top:2px">내가 쌓은 적립</div></div></div>' +
-      (kg && money
-        ? '<div class="divider"></div><div class="kv"><span class="k">사료</span>' +
-          '<span class="v">' + credit(kg, 'kg') + '</span></div>'
-        : '') +
+      /* 봉사 횟수 · 적립 · 사료 — 세 칸을 한 줄로 */
+      '<div class="card"><div class="stat3">' +
+      '<div><div class="v">' + num(times) + '</div>' +
+      '<div class="k">봉사 횟수</div></div>' +
+      '<div><div class="v">' + num(money) + '<span class="u">원</span></div>' +
+      '<div class="k">적립</div></div>' +
+      '<div><div class="v">' + num(kg) + '<span class="u">kg</span></div>' +
+      '<div class="k">사료</div></div>' +
+      '</div>' +
       (a.last_date
         ? '<div class="divider"></div><div class="kv"><span class="k">마지막 참여</span>' +
         '<span class="v">' + fmtDate(a.last_date) + '</span></div>' : '') +
