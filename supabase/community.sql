@@ -107,8 +107,16 @@ create table if not exists polls (
   multi      boolean not null default false,
   anonymous  boolean not null default false,
   closes_at  timestamptz,
-  closed_at  timestamptz
+  closed_at  timestamptz,
+  -- 퀴즈: 정답이 있으면 퀴즈다. 발표 전에는 어떤 응답에도 실리지 않는다
+  answer_option_id uuid,
+  reveal_at   timestamptz,
+  revealed_at timestamptz
 );
+-- 이미 만들어진 곳에도 더해 준다 (feed() 가 아래에서 이 칸들을 쓴다)
+alter table polls add column if not exists answer_option_id uuid;
+alter table polls add column if not exists reveal_at   timestamptz;
+alter table polls add column if not exists revealed_at timestamptz;
 
 create table if not exists poll_options (
   id      uuid primary key default gen_random_uuid(),
@@ -916,8 +924,14 @@ alter table posts drop constraint if exists posts_type_check;
 alter table posts add constraint posts_type_check
   check (type in ('review', 'poll', 'notice', 'free'));
 
-alter table polls add column if not exists answer_option_id uuid references poll_options(id) on delete set null;
-alter table polls add column if not exists revealed_at timestamptz;
+-- 칸은 위에서 이미 만들었다. 여기서는 어느 선택지인지 이어 주기만 한다
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'polls_answer_option_fk') then
+    alter table polls add constraint polls_answer_option_fk
+      foreign key (answer_option_id) references poll_options(id) on delete set null;
+  end if;
+end $$;
 
 -- 공지·공식투표는 운영진만. 자유글·후기는 모든 구성원.
 create or replace function posts_guard()
@@ -952,8 +966,6 @@ create trigger posts_guard_trg before insert or update on posts
 -- 22) 퀴즈 — 같은 투표 구조를 쓴다
 --     answer_option_id 가 있으면 퀴즈. 발표 전에는 정답도 분포도 내보내지 않는다.
 -- ------------------------------------------------------------
-alter table polls add column if not exists reveal_at timestamptz;
-
 -- 발표 전에는 답을 바꿀 수 있고, 발표 뒤에는 못 바꾼다
 create or replace function poll_guard()
 returns trigger

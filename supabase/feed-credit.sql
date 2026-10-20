@@ -89,7 +89,7 @@ select json_build_object(
                              memo, coalesce(has_photo, false) as has_photo
                         from shelter_payouts order by date desc limit 50) z),
   'campaigns', (select coalesce(json_agg(row_to_json(c)), '[]'::json)
-                  from (select c.id, c.title, c.goal, c.status, c.ends_on, c.memo,
+                  from (select c.id, c.title, c.goal, c.status, c.ends_on, c.note,
                                (select coalesce(sum(d.amount), 0)::int from donations d
                                  where d.campaign_id = c.id) as raised,
                                (select count(*)::int from donations d

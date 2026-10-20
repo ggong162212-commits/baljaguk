@@ -512,13 +512,116 @@ window.Community = (function () {
       '</article>';
   }
 
+  /* ============================================================
+     사진 크게 보기
+     누르면 전체 화면. 좌우로 넘기고, 두 손가락으로 키우고,
+     ✕ 나 안드로이드 뒤로 버튼으로 닫는다 — 막다른 곳이 되지 않게.
+     ============================================================ */
+  let lbOn = false;
+
+  function openShots(postId, start) {
+    const p = findRow(postId);
+    if (!p || !(p.photos || []).length) return;
+    const n = p.photos.length;
+    let at = Math.max(0, Math.min(n - 1, Number(start) || 0));
+
+    const box = document.createElement('div');
+    box.className = 'shotview';
+    box.innerHTML =
+      '<div class="shotview-top">' +
+      '<button class="shotview-x" type="button" aria-label="닫기">' + ic('x') + '</button>' +
+      '<span class="shotview-n">' + (at + 1) + ' / ' + n + '</span>' +
+      '</div>' +
+      '<div class="shotview-track">' +
+      p.photos.map((path, i) =>
+        '<div class="shotview-cell"><img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(path) + '"></div>'
+      ).join('') + '</div>';
+    document.body.appendChild(box);
+    document.body.style.overflow = 'hidden';
+    lbOn = true;
+
+    const track = box.querySelector('.shotview-track');
+    const nLabel = box.querySelector('.shotview-n');
+    loadPhotos(box);
+    requestAnimationFrame(() => { track.scrollLeft = at * track.clientWidth; });
+
+    track.addEventListener('scroll', () => {
+      const i = Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+      if (i !== at) { at = i; nLabel.textContent = (at + 1) + ' / ' + n; }
+    });
+
+    /* 두 손가락으로 키우기 — 키운 상태에서는 좌우 넘기기를 멈춘다 */
+    let scale = 1, base = 1, dist0 = 0;
+    const cell = () => track.children[at];
+    const gap = (e) => {
+      const a = e.touches[0], b = e.touches[1];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+    track.addEventListener('touchstart', e => {
+      if (e.touches.length === 2) { dist0 = gap(e); base = scale; }
+    }, { passive: true });
+    track.addEventListener('touchmove', e => {
+      if (e.touches.length !== 2 || !dist0) return;
+      e.preventDefault();
+      scale = Math.max(1, Math.min(4, base * (gap(e) / dist0)));
+      const c = cell(); if (c) c.firstChild.style.transform = 'scale(' + scale + ')';
+      track.style.overflowX = scale > 1.02 ? 'hidden' : 'auto';
+    }, { passive: false });
+    track.addEventListener('touchend', e => {
+      if (e.touches.length) return;
+      dist0 = 0;
+      if (scale < 1.1) {
+        scale = 1;
+        const c = cell(); if (c) c.firstChild.style.transform = '';
+        track.style.overflowX = 'auto';
+      }
+    });
+
+    /* 두 번 누르면 키웠다 돌아온다 — 인스타와 같게 */
+    let lastTap = 0;
+    track.addEventListener('click', () => {
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        const c = cell(); if (!c) return;
+        scale = scale > 1.02 ? 1 : 2;
+        c.firstChild.style.transform = scale > 1 ? 'scale(2)' : '';
+        track.style.overflowX = scale > 1 ? 'hidden' : 'auto';
+      }
+      lastTap = now;
+    });
+
+    const close = () => {
+      if (!lbOn) return;
+      lbOn = false;
+      box.remove();
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', onKey);
+      /* 뒤로 버튼으로 닫혔으면 기록을 또 건드리지 않는다 */
+      if (history.state && history.state.lb) history.back();
+    };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+
+    box.querySelector('.shotview-x').onclick = close;
+    document.addEventListener('keydown', onKey);
+
+    /* 안드로이드 뒤로 버튼으로도 닫힌다 */
+    try {
+      history.pushState({ lb: 1 }, '');
+      window.addEventListener('popstate', function once() {
+        window.removeEventListener('popstate', once);
+        if (lbOn) { lbOn = false; box.remove(); document.body.style.overflow = ''; }
+      });
+    } catch (e) { }
+  }
+
   /* 사진은 주소를 따로 받아와야 해서 자리만 먼저 만든다 */
   function photoStrip(p) {
     const ph = p.photos || [];
     if (!ph.length) return '';
     return '<div class="shots" data-shots="' + esc(p.id) + '">' +
       ph.map((path, i) =>
-        '<img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(path) + '">').join('') +
+        '<img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(path) + '" ' +
+        'data-big="' + esc(p.id) + '" data-at="' + i + '">').join('') +
       '</div>' +
       /* 점이 열 개면 줄이 길어져 알아보기 어렵다. 여섯 장 넘으면 숫자로 센다 */
       (ph.length > 1
@@ -605,6 +708,8 @@ window.Community = (function () {
       const hit = sel => e.target.closest('[' + sel + ']');
       let b;
 
+      /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
+      if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
       if ((b = hit('data-react'))) { pop(b); return hitReaction(b.dataset.react, b.dataset.k); }
       if ((b = hit('data-hint'))) {
         try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }
