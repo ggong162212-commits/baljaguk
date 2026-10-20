@@ -777,6 +777,7 @@ window.Community = (function () {
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
+      if (hit('data-myans')) return myAnswersSheet();
       if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
       if ((b = hit('data-askno'))) {
         skipReview(b.dataset.askno);
@@ -1734,6 +1735,130 @@ window.Community = (function () {
           : '')) + '</div></div>';
   }
 
+  /* ---------- 내 지난 응답 ----------
+     옛 설문(활동의견·개강파티)과 1365 명부를 각자 자기 것만 본다.
+     다른 사람 응답과 연락처는 서버 함수에서부터 나오지 않는다. */
+  const PARTY = { yes: '참석해요', no: '못 가요', maybe: '아직 몰라요' };
+
+  async function myAnswersSheet() {
+    const ov = sheet({ title: '내 응답', body: '<div id="myAns">' + paws() + '</div>' });
+    let h = null;
+    try { h = await DB.community.surveyHistory(); } catch (e) { }
+    const box = ov.querySelector('#myAns');
+    if (!box) return;
+
+    if (!h) {
+      box.innerHTML = '<div class="mut sm">불러오지 못했어요</div>';
+      return;
+    }
+
+    /* 이름이 겹쳐 아직 못 이은 경우 — 남의 응답이 보이면 안 되니 막아 둔다 */
+    if (h.ambiguous) {
+      box.innerHTML = '<div class="pill-note">명부에 같은 이름이 둘 이상이라 ' +
+        '지난 응답을 안전하게 찾지 못했어요.<br>운영진에게 문의해 주세요.</div>';
+      return;
+    }
+
+    const sv = h.survey || [], id1365 = h.id1365 || [];
+    if (!sv.length && !id1365.length) {
+      box.innerHTML = '<div class="card center" style="padding:26px 20px">' +
+        illus('emptyPoll', 'sm') +
+        '<h3 style="margin-top:10px;font-size:16px">아직 낸 응답이 없어요</h3>' +
+        '<p class="mut sm" style="margin-top:6px">설문이 열리면 여기에 모여요.</p></div>';
+      return;
+    }
+
+    box.innerHTML =
+      (sv.length
+        ? '<div class="section-title">' + ic('clipboard') + '<span>활동 의견</span></div>' +
+          sv.map(r =>
+            '<div class="card" style="margin-bottom:10px">' +
+            '<div class="row between" style="gap:8px">' +
+            '<span class="mut" style="font-size:11.5px">' + fmtDate(r.at) +
+            (r.topic ? ' · ' + esc(r.topic) : '') + '</span>' +
+            (h.open
+              ? '<button class="linkbtn" type="button" data-edit="' + esc(r.id) + '">고치기</button>'
+              : '<span class="badge">마감</span>') + '</div>' +
+            '<div class="kv"><span class="k">개강파티</span><span class="v">' +
+            (PARTY[r.party] || '-') + '</span></div>' +
+            (r.station
+              ? '<div class="kv"><span class="k">사는 곳</span><span class="v">' +
+                esc(r.station) + '</span></div>'
+              : '') +
+            (r.opinion
+              ? '<div style="margin-top:9px;font-size:13.5px;line-height:1.65;' +
+                'white-space:pre-wrap">' + esc(r.opinion) + '</div>'
+              : '') + '</div>').join('')
+        : '') +
+
+      (id1365.length
+        ? '<div class="section-title" style="margin-top:14px">' + ic('school') +
+          '<span>1365 정보</span></div>' +
+          id1365.map(t =>
+            '<div class="card">' +
+            '<div class="kv"><span class="k">1365 아이디</span><span class="v">' +
+            esc(t.portal_id || '-') + '</span></div>' +
+            (t.birth
+              ? '<div class="kv"><span class="k">생년월일</span><span class="v">' +
+                fmtDate(t.birth) + '</span></div>'
+              : '') +
+            (t.student_id
+              ? '<div class="kv"><span class="k">학번</span><span class="v">' +
+                esc(t.student_id) + '</span></div>'
+              : '') +
+            '<div class="mut" style="font-size:11.5px;margin-top:8px">' +
+            fmtDate(t.at) + '에 마지막으로 고쳤어요</div></div>').join('')
+        : '');
+
+    box.querySelectorAll('[data-edit]').forEach(b =>
+      b.onclick = () => editAnswer(sv.find(x => String(x.id) === b.dataset.edit)));
+  }
+
+  /* 설문이 열려 있을 때만 고칠 수 있다 */
+  function editAnswer(r) {
+    if (!r) return;
+    const ov = sheet({
+      title: '내 응답 고치기',
+      body:
+        '<div class="lb" style="margin-bottom:7px">개강파티에 오시나요?</div>' +
+        '<div class="seg" id="eParty" style="margin-bottom:14px">' +
+        ['yes', 'maybe', 'no'].map(k =>
+          '<button type="button" data-p="' + k + '"' +
+          (r.party === k ? ' class="on"' : '') + '>' + PARTY[k] + '</button>').join('') +
+        '</div>' +
+        '<label class="field"><span class="lb">사는 곳 <span class="mut">(가까운 지하철역)</span></span>' +
+        '<input class="input" id="eStation" value="' + esc(r.station || '') + '"></label>' +
+        '<label class="field"><span class="lb">하고 싶은 말</span>' +
+        '<textarea class="input" id="eOpinion" rows="4">' + esc(r.opinion || '') + '</textarea></label>' +
+        '<div class="sheet-foot">' +
+        '<button class="btn primary lg block" type="button" id="eSave">저장하기</button></div>'
+    });
+
+    ov.querySelectorAll('#eParty [data-p]').forEach(b => b.onclick = () => {
+      ov.querySelectorAll('#eParty [data-p]').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+    });
+
+    ov.querySelector('#eSave').onclick = async () => {
+      const btn = ov.querySelector('#eSave');
+      btn.disabled = true; btn.textContent = '저장 중…';
+      try {
+        const on = ov.querySelector('#eParty [data-p].on');
+        await DB.community.surveyUpdate(r.id, {
+          party: on ? on.dataset.p : r.party,
+          station: ov.querySelector('#eStation').value.trim(),
+          opinion: ov.querySelector('#eOpinion').value.trim()
+        });
+        closeSheet();
+        toast('고쳤어요', 'ok');
+        setTimeout(myAnswersSheet, 220);
+      } catch (e) {
+        toast(e.message || '고치지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '저장하기';
+      }
+    };
+  }
+
   async function renderPolls() {
     $('#headTitle').textContent = '설문';
     $('#headLead').textContent = '모두의 생각을 모아요.';
@@ -1744,7 +1869,16 @@ window.Community = (function () {
     const rows = res.rows || [];
     /* 카드의 동작(설문·반응·댓글)이 F.rows 를 보고 돌아간다 */
     F.rows = rows;
-    if (!rows.length) return paint(
+    /* 지난 설문은 각자 자기 것만 — 맨 위에 한 줄로 */
+    const mine = '<button class="row56" type="button" data-myans style="margin-bottom:12px">' +
+      '<span class="ic" style="width:38px;height:38px;border-radius:13px;display:grid;' +
+      'place-items:center;background:var(--brand-soft);color:var(--brand-deep)">' +
+      ic('clipboard') + '</span>' +
+      '<span class="mid"><span class="t">내 응답</span>' +
+      '<span class="s">지난 설문과 1365 정보를 봐요</span></span>' +
+      '<span class="end">' + ic('chevron') + '</span></button>';
+
+    if (!rows.length) return paint(mine +
       '<div class="card center" style="padding:28px 22px">' +
       illus('emptyPoll') +
       '<h3 style="margin-top:12px;font-size:17px">아직 설문이 없어요</h3></div>');
@@ -1757,7 +1891,7 @@ window.Community = (function () {
     const live = rows.filter(p => !closedOf(p));
     const done = rows.filter(closedOf);
 
-    paint(
+    paint(mine +
       (live.length
         ? '<div class="section-title">' + ic('clipboard') + '<span>진행 중</span></div>' +
           live.map(postCard).join('')

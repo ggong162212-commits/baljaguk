@@ -1147,3 +1147,90 @@ $$;
 
 revoke all on function my_review_prompt() from public, anon;
 grant execute on function my_review_prompt() to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 25) 지난 설문을 각자 볼 수 있게
+--
+--  member_1365 는 이미 member_id 를 갖고 있다 (명부와 이어져 있다).
+--  이어 줄 것은 survey_responses 뿐이다 — 옛 응답은 이름으로만 들어와 있다.
+--  같은 이름이 둘 이상이면 절대 자동으로 잇지 않는다
+--  — 남의 응답이 보이는 사고를 막으려고.
+-- ------------------------------------------------------------
+alter table survey_responses add column if not exists member_id uuid references members(id) on delete set null;
+create index if not exists survey_member_idx on survey_responses (member_id);
+
+-- 이름이 명부에 딱 하나일 때만 잇는다 (2026-10-20 읽기 조회: 68건 전부 하나였다)
+with one as (
+  /* 한 명뿐인 묶음만 고르므로 그 하나를 꺼낸다 (min(uuid) 는 없는 함수다) */
+  select btrim(name) as n, (array_agg(id))[1] as id
+    from members where status <> 'left'
+   group by btrim(name) having count(*) = 1
+)
+update survey_responses s set member_id = one.id
+  from one where s.member_id is null and btrim(s.name) = one.n;
+
+-- 내 지난 응답 — 내 것만. 이름·연락처는 돌려주지 않는다.
+create or replace function my_survey_history()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+with me_ as (select my_member_id() as id)
+select case when not is_member() then null else
+  json_build_object(
+    'open', coalesce((select survey_open from club_settings where id = 1), false),
+    'survey', (select coalesce(json_agg(json_build_object(
+                 'id', s.id, 'at', s.created_at, 'topic', s.topic,
+                 'party', s.party, 'station', s.station, 'opinion', s.opinion)
+                 order by s.created_at desc), '[]'::json)
+                from survey_responses s
+               where s.member_id = (select id from me_)),
+    'id1365', (select coalesce(json_agg(json_build_object(
+                 'id', t.id, 'at', t.updated_at,
+                 'portal_id', t.portal_id, 'birth', t.birth, 'student_id', t.student_id)
+                 order by t.updated_at desc), '[]'::json)
+                from member_1365 t
+               where t.member_id = (select id from me_)),
+    /* 이름이 겹쳐 아직 못 이은 것이 있으면 운영진에게 물어보라고 알린다 */
+    'ambiguous', exists (
+       select 1 from members m
+        where m.id = (select id from me_)
+          and (select count(*) from members x
+                where btrim(x.name) = btrim(m.name) and x.status <> 'left') > 1)
+  )
+end;
+$$;
+
+revoke all on function my_survey_history() from public, anon;
+grant execute on function my_survey_history() to authenticated;
+
+-- 내 응답 고치기 — 설문이 열려 있을 때만, 내 것만
+create or replace function my_survey_update(p_id uuid, p_party text, p_station text, p_opinion text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+declare ok boolean;
+begin
+  if not is_member() then return false; end if;
+  if not coalesce((select survey_open from club_settings where id = 1), false) then
+    raise exception '설문이 마감됐어요';
+  end if;
+  if p_party is not null and p_party not in ('yes', 'no', 'maybe') then
+    raise exception '참석 답이 올바르지 않아요';
+  end if;
+
+  update survey_responses
+     set party   = coalesce(p_party, party),
+         station = coalesce(btrim(p_station), station),
+         opinion = coalesce(btrim(p_opinion), opinion)
+   where id = p_id and member_id = my_member_id()
+  returning true into ok;
+
+  return coalesce(ok, false);
+end;
+$$;
+
+revoke all on function my_survey_update(uuid, text, text, text) from public, anon;
+grant execute on function my_survey_update(uuid, text, text, text) to authenticated;

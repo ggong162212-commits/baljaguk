@@ -1248,6 +1248,48 @@
       }) || [];
     },
 
+    /* ---------- 내 지난 설문 ----------
+       활동의견 설문과 1365 명부. 내 것만 돌려준다. */
+    async surveyHistory() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        return {
+          open: true,
+          survey: (d.survey_responses || []).filter(r => r.member_id === me)
+            .map(r => ({
+              id: r.id, at: r.created_at, topic: r.topic,
+              party: r.party, station: r.station, opinion: r.opinion
+            })),
+          id1365: (d.member_1365 || []).filter(t => t.member_id === me)
+            .map(t => ({
+              id: t.id, at: t.updated_at, portal_id: t.portal_id,
+              birth: t.birth, student_id: t.student_id
+            })),
+          ambiguous: false
+        };
+      }
+      return await rest('rpc/my_survey_history', { method: 'POST', body: {} });
+    },
+
+    async surveyUpdate(id, v) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const r = (d.survey_responses || []).find(x => x.id === id && x.member_id === me);
+        if (!r) throw new Error('응답을 찾지 못했어요');
+        if (v.party != null) r.party = v.party;
+        if (v.station != null) r.station = v.station;
+        if (v.opinion != null) r.opinion = v.opinion;
+        demoWrite(d); return true;
+      }
+      return await rest('rpc/my_survey_update', {
+        method: 'POST',
+        body: {
+          p_id: id, p_party: v.party || null,
+          p_station: v.station || null, p_opinion: v.opinion || null
+        }
+      });
+    },
+
     /* ---------- 후기 남기기 권유 ----------
        다녀왔는데 아직 안 쓴 봉사 하나. 7일까지만 권한다. */
     async reviewPrompt() {
