@@ -118,6 +118,25 @@ alter table polls add column if not exists answer_option_id uuid;
 alter table polls add column if not exists reveal_at   timestamptz;
 alter table polls add column if not exists revealed_at timestamptz;
 
+-- 오늘 만난 친구 (H1) — feed() 가 쓰므로 여기서 먼저 만든다
+create table if not exists animals (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  place      text not null,                 -- 어느 보호소 아이인지
+  name       text not null,
+  adopted_at date,                          -- 입양 간 날 (있으면 배지)
+  note       text,
+  unique (place, name)
+);
+alter table animals enable row level security;
+
+create table if not exists post_animals (
+  post_id   uuid not null references posts(id)   on delete cascade,
+  animal_id uuid not null references animals(id) on delete cascade,
+  primary key (post_id, animal_id)
+);
+alter table post_animals enable row level security;
+
 create table if not exists poll_options (
   id      uuid primary key default gen_random_uuid(),
   post_id uuid not null references posts(id) on delete cascade,
@@ -356,6 +375,12 @@ rows_ as (
                       where r.post_id = p.id and r.member_id = (select id from me_)),
     /* 퀴즈는 발표 전까지 정답도 분포도 내보내지 않는다.
        내가 뭘 골랐는지만 돌려준다 — 분포가 곧 정답 힌트가 되기 때문이다. */
+    /* 오늘 만난 친구 — 후기에 붙은 아이들 */
+    'animals', (select coalesce(json_agg(json_build_object(
+                  'id', a.id, 'name', a.name,
+                  'adopted', a.adopted_at is not null) order by a.name), '[]'::json)
+                  from post_animals pa join animals a on a.id = pa.animal_id
+                 where pa.post_id = p.id),
     'poll', (select json_build_object(
                'question', q.question, 'multi', q.multi, 'anonymous', q.anonymous,
                'closes_at', q.closes_at, 'closed_at', q.closed_at,
@@ -1234,3 +1259,231 @@ $$;
 
 revoke all on function my_survey_update(uuid, text, text, text) from public, anon;
 grant execute on function my_survey_update(uuid, text, text, text) to authenticated;
+
+
+-- ============================================================
+--  H. 더하기 — 오늘 만난 친구 · 신고 · 운영진 할 일 · 출석 체크
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- H1) 오늘 만난 친구 — 후기에 보호소 아이 이름을 붙인다
+-- ------------------------------------------------------------
+-- 표는 위(설문·투표 표 옆)에서 먼저 만든다 — feed() 가 아래에서 쓴다
+
+drop policy if exists "animals read"  on animals;
+drop policy if exists "animals write" on animals;
+drop policy if exists "animals admin" on animals;
+create policy "animals read"  on animals for select to authenticated using (is_member());
+-- 후기를 쓰다 없는 이름을 더할 수 있어야 한다
+create policy "animals write" on animals for insert to authenticated with check (is_member());
+create policy "animals admin" on animals for update to authenticated
+  using (is_admin()) with check (is_admin());
+
+drop policy if exists "post_animals read"  on post_animals;
+drop policy if exists "post_animals write" on post_animals;
+create policy "post_animals read" on post_animals for select to authenticated using (is_member());
+create policy "post_animals write" on post_animals for all to authenticated
+  using (exists (select 1 from posts p where p.id = post_id
+                  and (p.author_id = my_member_id() or is_admin())))
+  with check (exists (select 1 from posts p where p.id = post_id
+                  and (p.author_id = my_member_id() or is_admin())));
+
+-- 보호소별 아이 목록 (후기 수와 함께)
+create or replace function animals_at(p_place text default null)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_member() then null else
+  (select coalesce(json_agg(json_build_object(
+            'id', a.id, 'place', a.place, 'name', a.name,
+            'adopted', a.adopted_at is not null, 'adopted_at', a.adopted_at,
+            'posts', (select count(*)::int from post_animals pa
+                       join posts p on p.id = pa.post_id
+                      where pa.animal_id = a.id and not p.hidden))
+            order by (a.adopted_at is not null), a.name), '[]'::json)
+     from animals a
+    where p_place is null or a.place = p_place)
+end;
+$$;
+
+revoke all on function animals_at(text) from public, anon;
+grant execute on function animals_at(text) to authenticated;
+
+-- ------------------------------------------------------------
+-- H7) 신고 — 신고한 사람은 운영진만 본다
+-- ------------------------------------------------------------
+create table if not exists reports (
+  id          uuid primary key default gen_random_uuid(),
+  created_at  timestamptz not null default now(),
+  reporter_id uuid references members(id) on delete set null,
+  post_id     uuid references posts(id)    on delete cascade,
+  comment_id  uuid references comments(id) on delete cascade,
+  reason      text not null default '',
+  done_at     timestamptz,
+  done_by     uuid references members(id) on delete set null,
+  check (post_id is not null or comment_id is not null)
+);
+alter table reports enable row level security;
+create index if not exists reports_open_idx on reports (done_at, created_at desc);
+
+drop policy if exists "reports write" on reports;
+drop policy if exists "reports admin" on reports;
+-- 낸 사람도 자기 신고를 다시 읽지 못한다. 운영진만 본다.
+create policy "reports write" on reports for insert to authenticated
+  with check (is_member() and reporter_id = my_member_id());
+create policy "reports admin" on reports for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+create or replace function report_send(p_post uuid, p_comment uuid, p_reason text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_member() then return false; end if;
+  if p_post is null and p_comment is null then return false; end if;
+  /* 같은 사람이 같은 글을 여러 번 신고해도 한 번만 쌓인다 */
+  if exists (select 1 from reports r
+              where r.reporter_id = my_member_id()
+                and r.done_at is null
+                and r.post_id is not distinct from p_post
+                and r.comment_id is not distinct from p_comment) then
+    return true;
+  end if;
+  insert into reports (reporter_id, post_id, comment_id, reason)
+  values (my_member_id(), p_post, p_comment, coalesce(btrim(p_reason), ''));
+  return true;
+end;
+$$;
+
+revoke all on function report_send(uuid, uuid, text) from public, anon;
+grant execute on function report_send(uuid, uuid, text) to authenticated;
+
+-- ------------------------------------------------------------
+-- H6) 운영진 할 일 — 확정 안 한 봉사 · 가입 대기 · 신고
+-- ------------------------------------------------------------
+create or replace function admin_todo()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_admin() then null else
+  json_build_object(
+    'unconfirmed', (select count(*)::int from events e
+                     where e.date < current_date and e.confirmed_at is null),
+    'applications', (select count(*)::int from applications a
+                      where coalesce(a.status, 'pending') = 'pending'),
+    'reports',     (select count(*)::int from reports r where r.done_at is null)
+  )
+end;
+$$;
+
+revoke all on function admin_todo() from public, anon;
+grant execute on function admin_todo() to authenticated;
+
+
+-- ------------------------------------------------------------
+-- H5) 현장 출석 체크 — 그날만 쓰는 번호
+--     부원이 찍으면 「현장 참석」이 남는다.
+--     실적·적립은 지금처럼 운영진이 확정해야 쌓인다 (여기선 안 쌓인다).
+-- ------------------------------------------------------------
+alter table events add column if not exists checkin_code text;
+
+create table if not exists checkins (
+  event_id   uuid not null references events(id)  on delete cascade,
+  member_id  uuid not null references members(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (event_id, member_id)
+);
+alter table checkins enable row level security;
+
+drop policy if exists "checkins read"  on checkins;
+drop policy if exists "checkins admin" on checkins;
+create policy "checkins read"  on checkins for select to authenticated using (is_member());
+create policy "checkins admin" on checkins for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+-- 운영진이 그날 번호를 연다 (여섯 자리)
+create or replace function checkin_open(p_event uuid)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare c text;
+begin
+  if not is_admin() then return null; end if;
+  select checkin_code into c from events where id = p_event;
+  if c is null then
+    c := lpad((floor(random() * 1000000))::int::text, 6, '0');
+    update events set checkin_code = c where id = p_event;
+  end if;
+  return c;
+end;
+$$;
+
+-- 부원이 찍는다. 그날 열린 봉사에만, 번호가 맞아야 한다.
+create or replace function checkin_do(p_event uuid, p_code text)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare e events%rowtype;
+begin
+  if not is_member() then return json_build_object('ok', false, 'why', 'nologin'); end if;
+  select * into e from events where id = p_event;
+  if e.id is null then return json_build_object('ok', false, 'why', 'noevent'); end if;
+  if e.date <> current_date then return json_build_object('ok', false, 'why', 'notToday'); end if;
+  if e.checkin_code is null or e.checkin_code <> btrim(p_code) then
+    return json_build_object('ok', false, 'why', 'wrong');
+  end if;
+
+  insert into checkins (event_id, member_id) values (p_event, my_member_id())
+  on conflict do nothing;
+
+  return json_build_object('ok', true, 'place', e.place, 'date', e.date);
+end;
+$$;
+
+revoke all on function checkin_open(uuid) from public, anon;
+revoke all on function checkin_do(uuid, text) from public, anon;
+grant execute on function checkin_open(uuid) to authenticated;
+grant execute on function checkin_do(uuid, text) to authenticated;
+
+
+-- 신고 목록 (운영진만). 글 내용과 신고한 사람 이름을 같이 준다.
+create or replace function reports_open()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_admin() then null else
+  (select coalesce(json_agg(json_build_object(
+            'id', r.id, 'created_at', r.created_at, 'reason', r.reason,
+            'post_id', r.post_id, 'comment_id', r.comment_id,
+            'reporter', (select m.name from members m where m.id = r.reporter_id),
+            'body', coalesce(
+                      (select p.body from posts p    where p.id = r.post_id),
+                      (select c.body from comments c where c.id = r.comment_id)))
+            order by r.created_at desc), '[]'::json)
+     from reports r where r.done_at is null)
+end;
+$$;
+
+create or replace function report_done(p_id uuid)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then return false; end if;
+  update reports set done_at = now(), done_by = my_member_id()
+   where id = p_id and done_at is null;
+  return true;
+end;
+$$;
+
+revoke all on function reports_open() from public, anon;
+revoke all on function report_done(uuid) from public, anon;
+grant execute on function reports_open() to authenticated;
+grant execute on function report_done(uuid) to authenticated;

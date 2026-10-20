@@ -830,7 +830,9 @@
   function cdemo() {
     const d = demoRead();
     ['posts', 'post_photos', 'comments', 'reactions',
-      'polls', 'poll_options', 'poll_votes', 'event_waitlist', 'member_notices'].forEach(k => { if (!d[k]) d[k] = []; });
+      'polls', 'poll_options', 'poll_votes', 'event_waitlist', 'member_notices',
+      'animals', 'post_animals', 'reports', 'checkins',
+      'survey_responses', 'member_1365'].forEach(k => { if (!d[k]) d[k] = []; });
     return d;
   }
   const myDemoId = () => localStorage.getItem('baljaguk.demoMe') || '';
@@ -882,6 +884,11 @@
       insta_ok: !!p.insta_ok,
       mine: p.author_id === meId,
       author: demoMember(p.author_id),
+      animals: (d.post_animals || []).filter(x => x.post_id === p.id)
+        .map(x => (d.animals || []).find(a => a.id === x.animal_id))
+        .filter(Boolean)
+        .map(a => ({ id: a.id, name: a.name, adopted: !!a.adopted_at }))
+        .sort((x, y) => x.name.localeCompare(y.name, 'ko')),
       photos: d.post_photos.filter(f => f.post_id === p.id)
         .sort((a, b) => a.sort - b.sort).map(f => f.path),
       comment_count: d.comments.filter(c => c.post_id === p.id && !c.hidden).length,
@@ -921,6 +928,43 @@
       })() : null
     };
   }
+
+  /* ---------- 운영진 할 일 ---------- */
+  DB.adminTodo = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      const today = DB.today();
+      return {
+        unconfirmed: (d.events || []).filter(e => String(e.date) < today && !e.confirmed_at).length,
+        applications: (d.applications || []).filter(a => (a.status || 'pending') === 'pending').length,
+        reports: (d.reports || []).filter(r => !r.done_at).length
+      };
+    }
+    return await rest('rpc/admin_todo', { method: 'POST', body: {} });
+  };
+
+  DB.reportsOpen = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      return (d.reports || []).filter(r => !r.done_at).map(r => ({
+        id: r.id, created_at: r.created_at, reason: r.reason,
+        post_id: r.post_id, comment_id: r.comment_id,
+        reporter: (demoMember(r.reporter_id) || {}).name,
+        body: (d.posts || []).concat(d.comments || [])
+          .filter(x => x.id === (r.post_id || r.comment_id)).map(x => x.body)[0] || ''
+      })).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    }
+    return await rest('rpc/reports_open', { method: 'POST', body: {} });
+  };
+
+  DB.reportDone = async function (id) {
+    if (!HAS_SB) {
+      const d = cdemo(), r = (d.reports || []).find(x => x.id === id);
+      if (r) { r.done_at = new Date().toISOString(); demoWrite(d); }
+      return true;
+    }
+    return await rest('rpc/report_done', { method: 'POST', body: { p_id: id } });
+  };
 
   DB.community = {
     REACTIONS,
@@ -978,6 +1022,8 @@
         };
         d.posts.push(p);
         photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
+        (v.animals || []).forEach(aid =>
+          d.post_animals.push({ post_id: p.id, animal_id: aid }));
         if (v.poll) {
           const made = (v.poll.options || []).map((lb, i) => {
             const o = { id: uid(), post_id: p.id, label: lb, sort: i };
@@ -1013,6 +1059,12 @@
         await rest('post_photos', {
           method: 'POST', prefer: 'return=minimal',
           body: paths.map((pth, i) => ({ post_id: id, path: pth, sort: i }))
+        });
+      }
+      if ((v.animals || []).length) {
+        await rest('post_animals', {
+          method: 'POST', prefer: 'return=minimal,resolution=ignore-duplicates',
+          body: v.animals.map(aid => ({ post_id: id, animal_id: aid }))
         });
       }
       if (v.poll) {
@@ -1246,6 +1298,115 @@
       return await rest('rpc/poll_who', {
         method: 'POST', body: { p_option: optionId }
       }) || [];
+    },
+
+    /* ---------- 오늘 만난 친구 ---------- */
+    async animalsAt(place) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.animals || [])
+          .filter(a => !place || a.place === place)
+          .map(a => ({
+            id: a.id, place: a.place, name: a.name,
+            adopted: !!a.adopted_at, adopted_at: a.adopted_at,
+            posts: (d.post_animals || []).filter(x => x.animal_id === a.id).length
+          }))
+          .sort((x, y) => (x.adopted - y.adopted) || x.name.localeCompare(y.name, 'ko'));
+      }
+      return await rest('rpc/animals_at', { method: 'POST', body: { p_place: place || null } });
+    },
+
+    /* 없는 이름이면 새로 만든다. 후기를 쓰다 바로 더할 수 있게. */
+    async animalAdd(place, name) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.animals = d.animals || [];
+        let a = d.animals.find(x => x.place === place && x.name === name);
+        if (!a) {
+          a = { id: uid(), place: place, name: name, adopted_at: null,
+                created_at: new Date().toISOString() };
+          d.animals.push(a);
+          demoWrite(d);
+        }
+        return a;
+      }
+      const rows = await rest('animals', {
+        method: 'POST', prefer: 'return=representation,resolution=merge-duplicates',
+        body: { place: place, name: name }
+      });
+      return rows && rows[0];
+    },
+
+    async animalAdopted(id, yes) {
+      if (!HAS_SB) {
+        const d = cdemo(), a = (d.animals || []).find(x => x.id === id);
+        if (a) { a.adopted_at = yes ? DB.today() : null; demoWrite(d); }
+        return true;
+      }
+      await rest('animals?id=eq.' + encodeURIComponent(id), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { adopted_at: yes ? DB.today() : null }
+      });
+      return true;
+    },
+
+    /* ---------- 신고 ---------- */
+    async report(o) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.reports = d.reports || [];
+        const me = myDemoId();
+        const dup = d.reports.some(r => r.reporter_id === me && !r.done_at &&
+          r.post_id === (o.post || null) && r.comment_id === (o.comment || null));
+        if (!dup) {
+          d.reports.push({
+            id: uid(), created_at: new Date().toISOString(), reporter_id: me,
+            post_id: o.post || null, comment_id: o.comment || null,
+            reason: o.reason || '', done_at: null
+          });
+          demoWrite(d);
+        }
+        return true;
+      }
+      return await rest('rpc/report_send', {
+        method: 'POST',
+        body: { p_post: o.post || null, p_comment: o.comment || null, p_reason: o.reason || '' }
+      });
+    },
+
+    /* ---------- 현장 출석 ---------- */
+    async checkinOpen(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return null;
+        if (!e.checkin_code) {
+          e.checkin_code = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+          demoWrite(d);
+        }
+        return e.checkin_code;
+      }
+      return await rest('rpc/checkin_open', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    async checkinDo(eventId, code) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return { ok: false, why: 'noevent' };
+        if (String(e.date) !== DB.today()) return { ok: false, why: 'notToday' };
+        if (!e.checkin_code || e.checkin_code !== String(code).trim()) {
+          return { ok: false, why: 'wrong' };
+        }
+        d.checkins = d.checkins || [];
+        if (!d.checkins.some(c => c.event_id === eventId && c.member_id === me)) {
+          d.checkins.push({ event_id: eventId, member_id: me, created_at: new Date().toISOString() });
+          demoWrite(d);
+        }
+        return { ok: true, place: e.place, date: e.date };
+      }
+      return await rest('rpc/checkin_do', {
+        method: 'POST', body: { p_event: eventId, p_code: String(code).trim() }
+      });
     },
 
     /* ---------- 내 지난 설문 ----------

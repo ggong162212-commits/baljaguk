@@ -571,6 +571,7 @@ window.Community = (function () {
         ? '<div class="mut" style="font-size:11.5px;margin-top:7px">' +
         '인스타그램 사용에 동의한 사진이에요</div>'
         : '') +
+      animalChips(p) +
       '</div>' +
       (p.poll ? pollBlock(p) : '') +
       reactRow(p) +
@@ -776,6 +777,8 @@ window.Community = (function () {
 
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
+      if ((b = hit('data-animal'))) return animalSheet(b.dataset.animal, b.dataset.aname);
+      if ((b = hit('data-checkin'))) return checkinSheet(b.dataset.checkin);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
       if (hit('data-myans')) return myAnswersSheet();
       if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
@@ -930,6 +933,112 @@ window.Community = (function () {
   }
 
   /* ---------- 글 메뉴 (수정·삭제·숨기기·고정) ---------- */
+  /* ---------- 현장 출석 체크 ----------
+     운영진이 그날 연 여섯 자리 번호를 넣는다.
+     찍어도 실적·적립은 안 쌓인다 — 그건 운영진이 확정해야 쌓인다. */
+  function checkinSheet(eventId) {
+    const ov = sheet({
+      title: '현장 출석 체크',
+      body:
+        '<p class="mut sm" style="margin-bottom:14px;line-height:1.6">' +
+        '운영진이 알려주는 여섯 자리 번호를 넣어주세요.<br>' +
+        '찍어도 봉사 실적은 운영진이 확정해야 쌓여요.</p>' +
+        '<label class="field"><input class="input lgin" id="ciCode" inputmode="numeric" ' +
+        'maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.28em"></label>' +
+        '<div class="sheet-foot">' +
+        '<button class="btn primary lg block" type="button" id="ciGo">출석 찍기</button></div>'
+    });
+
+    const input = ov.querySelector('#ciCode');
+    setTimeout(() => input && input.focus(), 80);
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/[^0-9]/g, '').slice(0, 6);
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') ov.querySelector('#ciGo').click();
+    });
+
+    ov.querySelector('#ciGo').onclick = async () => {
+      const btn = ov.querySelector('#ciGo');
+      const code = input.value.trim();
+      if (code.length !== 6) return toast('여섯 자리를 넣어주세요', 'err');
+      btn.disabled = true; btn.textContent = '확인 중…';
+      try {
+        const r = await DB.community.checkinDo(eventId, code);
+        if (r && r.ok) {
+          closeSheet();
+          cheer && cheer();
+          toast('출석했어요. 오늘도 고마워요!', 'ok');
+          return;
+        }
+        toast(({
+          notToday: '오늘 가는 봉사가 아니에요',
+          wrong: '번호가 맞지 않아요',
+          noevent: '봉사를 찾지 못했어요',
+          nologin: '로그인이 풀렸어요'
+        }[(r && r.why) || ''] || '찍지 못했어요'), 'err');
+      } catch (e) {
+        toast(e.message || '찍지 못했어요', 'err');
+      } finally {
+        btn.disabled = false; btn.textContent = '출석 찍기';
+      }
+    };
+  }
+
+  /* ---------- 신고 ----------
+     운영진에게만 간다. 누가 신고했는지는 글쓴이에게 보이지 않는다. */
+  const REASONS = [
+    '욕설이나 비방이에요',
+    '사진에 다른 사람이 원치 않게 나왔어요',
+    '광고나 관계없는 글이에요',
+    '그 밖의 이유'
+  ];
+
+  function reportSheet(target) {
+    const ov = sheet({
+      title: '신고하기',
+      body:
+        '<p class="mut sm" style="margin-bottom:12px;line-height:1.6">' +
+        '운영진만 보고 처리해요. 글쓴이에게는 누가 신고했는지 보이지 않아요.</p>' +
+        '<div style="display:grid;gap:7px">' +
+        REASONS.map((r, i) =>
+          '<button type="button" class="check' + (i === 0 ? ' on' : '') + '" data-r="' + i + '" ' +
+          'style="width:100%;text-align:left">' +
+          '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+          '<span class="grow sm">' + r + '</span></button>').join('') +
+        '</div>' +
+        '<label class="field" style="margin-top:12px"><span class="lb">더 적을 말 ' +
+        '<span class="mut">(선택)</span></span>' +
+        '<textarea class="input" id="rNote" rows="3"></textarea></label>' +
+        '<div class="sheet-foot">' +
+        '<button class="btn primary lg block" type="button" id="rSend">보내기</button></div>'
+    });
+
+    ov.querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
+      ov.querySelectorAll('[data-r]').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+    });
+
+    ov.querySelector('#rSend').onclick = async () => {
+      const btn = ov.querySelector('#rSend');
+      btn.disabled = true; btn.textContent = '보내는 중…';
+      try {
+        const on = ov.querySelector('[data-r].on');
+        const why = REASONS[Number(on ? on.dataset.r : 0)];
+        const note = ov.querySelector('#rNote').value.trim();
+        await DB.community.report({
+          post: target.post || null, comment: target.comment || null,
+          reason: note ? why + ' — ' + note : why
+        });
+        closeSheet();
+        toast('운영진에게 알렸어요', 'ok');
+      } catch (e) {
+        toast(e.message || '보내지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '보내기';
+      }
+    };
+  }
+
   function postMenu(id) {
     const p = findRow(id);
     if (!p) return;
@@ -945,6 +1054,10 @@ window.Community = (function () {
         btns.push('<button class="btn ghost block" type="button" data-act="pin">' +
           (p.pinned ? '고정 풀기' : '맨 위에 고정') + '</button>');
     }
+    /* 남의 글만 신고할 수 있다. 누가 신고했는지는 운영진만 본다 */
+    if (!p.mine) {
+      btns.push('<button class="btn ghost block" type="button" data-act="report">신고하기</button>');
+    }
     if (!btns.length) btns.push('<div class="mut sm">할 수 있는 게 없어요</div>');
 
     const ov = sheet({ title: '글', body: '<div style="display:grid;gap:8px">' + btns.join('') + '</div>' });
@@ -958,6 +1071,7 @@ window.Community = (function () {
           await DB.community.removePost(id);
           toast('지웠어요'); return renderHome(true);
         }
+        if (act === 'report') return reportSheet({ post: id });
         if (act === 'hide') { await DB.community.setHidden(id, !p.hidden); toast(p.hidden ? '다시 보여요' : '숨겼어요'); return renderHome(true); }
         if (act === 'pin') { await DB.community.setPinned(id, !p.pinned); toast(p.pinned ? '고정을 풀었어요' : '맨 위에 고정했어요'); return renderHome(true); }
       } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
@@ -983,6 +1097,113 @@ window.Community = (function () {
   /* ============================================================
      글쓰기 — 봉사 후기
      ============================================================ */
+  /* ---------- 오늘 만난 친구 ----------
+     후기에 보호소 아이 이름을 붙인다. 이름을 누르면 그 아이가 나온 후기가 모인다. */
+  function animalChips(p) {
+    const list = p.animals || [];
+    if (!list.length) return '';
+    return '<div class="animals">' + list.map(a =>
+      '<button class="apaw" type="button" data-animal="' + esc(a.id) + '" ' +
+      'data-aname="' + esc(a.name) + '">' + ic('paw') +
+      '<span>' + esc(a.name) + '</span>' +
+      (a.adopted ? '<span class="adopted">입양</span>' : '') + '</button>').join('') + '</div>';
+  }
+
+  /* 그 아이가 나온 후기 모아보기 */
+  async function animalSheet(id, name) {
+    const ov = sheet({
+      title: esc(name) + ' 이야기',
+      body: '<div id="anBox">' + paws() + '</div>'
+    });
+    let rows = [];
+    try {
+      const r = await DB.community.feed({ limit: 50 });
+      rows = (r && r.rows || []).filter(p =>
+        (p.animals || []).some(a => String(a.id) === String(id)));
+    } catch (e) { }
+
+    const box = ov.querySelector('#anBox');
+    if (!box) return;
+    if (!rows.length) {
+      box.innerHTML = '<div class="mut sm">아직 이 친구가 나온 후기가 없어요</div>';
+      return;
+    }
+    box.innerHTML = rows.map(p =>
+      '<button class="pastrow" type="button" data-open="' + esc(p.id) + '">' +
+      '<span class="nm">' + esc(cut(p.body || '사진 후기', 24)) + '</span>' +
+      '<span class="rt">' + fmtDate(p.date || p.created_at) + '</span></button>').join('');
+  }
+
+  /* 후기 쓰기 단계 — 오늘 만난 친구 고르기 */
+  function animalStep(getPlace) {
+    return {
+      key: 'animals', short: '만난 친구',
+      q: '오늘 만난 친구가 있나요?',
+      hint: '이름을 고르면 나중에 그 아이 이야기만 모아 볼 수 있어요.',
+      body: '<div id="anList" class="mut sm">' + paws() + '</div>' +
+        '<div class="row" style="gap:6px;margin-top:10px">' +
+        '<input class="input grow" id="anNew" placeholder="목록에 없으면 여기에 이름을">' +
+        '<button type="button" class="btn ghost" id="anAdd">더하기</button></div>',
+
+      after: async (r, vals) => {
+        const place = (typeof getPlace === 'function' && getPlace(vals)) || '';
+        r.__picked = (vals.animals || []).slice();
+
+        const paint = (list) => {
+          const box = r.querySelector('#anList');
+          if (!list.length) {
+            box.innerHTML = '<div class="mut sm">아직 등록된 친구가 없어요. ' +
+              '아래에 이름을 적어 더해주세요.</div>';
+            return;
+          }
+          box.innerHTML = '<div class="row" style="gap:7px;flex-wrap:wrap">' +
+            list.map(a =>
+              '<button type="button" class="apaw pick' +
+              (r.__picked.some(x => x.id === a.id) ? ' on' : '') + '" ' +
+              'data-pick-an="' + esc(a.id) + '" data-an-name="' + esc(a.name) + '">' +
+              ic('paw') + '<span>' + esc(a.name) + '</span>' +
+              (a.adopted ? '<span class="adopted">입양</span>' : '') +
+              '</button>').join('') + '</div>';
+
+          box.querySelectorAll('[data-pick-an]').forEach(b => b.onclick = () => {
+            const id = b.dataset.pickAn, nm = b.dataset.anName;
+            const i = r.__picked.findIndex(x => String(x.id) === String(id));
+            if (i >= 0) r.__picked.splice(i, 1);
+            else r.__picked.push({ id: id, name: nm });
+            b.classList.toggle('on');
+          });
+        };
+
+        let list = [];
+        try { list = await DB.community.animalsAt(place) || []; } catch (e) { }
+        r.__all = list;
+        paint(list);
+
+        const add = async () => {
+          const nm = r.querySelector('#anNew').value.trim();
+          if (!nm) return;
+          if (!place) { toast('먼저 보호소를 골라주세요', 'err'); return; }
+          try {
+            const a = await DB.community.animalAdd(place, nm);
+            if (a && !r.__all.some(x => x.id === a.id)) {
+              r.__all.push({ id: a.id, name: a.name, adopted: false, posts: 0 });
+            }
+            if (a) r.__picked.push({ id: a.id, name: a.name });
+            r.querySelector('#anNew').value = '';
+            paint(r.__all);
+          } catch (e) { toast(e.message || '더하지 못했어요', 'err'); }
+        };
+        r.querySelector('#anAdd').onclick = add;
+        r.querySelector('#anNew').addEventListener('keydown', e => {
+          if (e.key === 'Enter') { e.preventDefault(); add(); }
+        });
+      },
+
+      read: r => r.__picked || [],
+      sum: v => v.length ? v.map(a => a.name).join(' · ') : '없음'
+    };
+  }
+
   /* ---------- 글쓰기 ----------
      먼저 어떤 글인지 고르고, 고른 것에 맞는 단계만 묻는다.
      후기는 봉사·사진·글·설문, 자유글은 사진·글·설문. */
@@ -1462,6 +1683,7 @@ window.Community = (function () {
           valid: v => v.date ? '' : '날짜를 골라주세요',
           sum: v => fmtDate(v.date) + (v.place ? ' · ' + v.place : '')
         },
+        animalStep(v => (v.when && v.when.place) || ''),
         photoStep(true),
         {
           key: 'body', short: '글',
@@ -1481,7 +1703,8 @@ window.Community = (function () {
           type: 'review', event_id: v.when.event_id,
           date: v.when.date, place: v.when.place,
           body: v.body, photos: v.photos.list,
-          insta_ok: v.photos.insta, poll: pollPayload(v.poll)
+          insta_ok: v.photos.insta, poll: pollPayload(v.poll),
+          animals: (v.animals || []).map(a => a.id)
         });
         closeSheet();
         cheer && cheer();
@@ -1593,6 +1816,7 @@ window.Community = (function () {
     }
     if (AM_ADMIN) btns.push('<button class="btn ghost block" type="button" data-a="hide">' +
       (found.hidden ? '다시 보이기' : '숨기기') + '</button>');
+    if (!found.mine) btns.push('<button class="btn ghost block" type="button" data-a="report">신고하기</button>');
     if (!btns.length) return;
 
     const ov = sheet({ title: '댓글', body: '<div style="display:grid;gap:8px">' + btns.join('') + '</div>' });
@@ -1600,6 +1824,7 @@ window.Community = (function () {
       const a = b.dataset.a;
       closeSheet();
       try {
+        if (a === 'report') return reportSheet({ comment: commentId });
         if (a === 'edit') {
           const ov2 = sheet({
             title: '댓글 고치기',
@@ -2178,6 +2403,12 @@ window.Community = (function () {
 
       '<div class="mut" style="font-size:12px;margin-top:8px">' +
       (cap ? '선착순 ' + num(taken) + ' / ' + num(cap) + '명' : num(taken) + '명 신청') + '</div>' +
+
+      /* 오늘 가는 봉사면 현장에서 출석을 찍을 수 있다 */
+      (mine && String(e.date) === DB.today()
+        ? '<button class="btn soft block" type="button" style="margin-top:11px" ' +
+          'data-checkin="' + esc(e.id) + '">' + ic('check') + '<span>현장 출석 체크</span></button>'
+        : '') +
 
       '<div style="margin-top:11px">' +
       (mine

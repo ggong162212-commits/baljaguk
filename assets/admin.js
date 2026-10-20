@@ -6,6 +6,12 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
+  /* 긴 글을 줄여 보여 준다 */
+  const cut = (t, n) => {
+    const x = String(t || '').replace(/\s+/g, ' ').trim();
+    return x.length > n ? x.slice(0, n) + '…' : x;
+  };
+
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [], pays: [] };
   const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'survey', q4: '', idSeg: 'done', rankAll: false };
   let cur = 'form';
@@ -425,6 +431,88 @@
       vol: renderVol, fin: renderFin, donate: renderDonate, settings: renderSettings
     }[cur] || (() => { }))();
     UI.initGrow();
+    paintTodo();
+  }
+
+  /* ---------- 운영진 할 일 ----------
+     확정 안 한 봉사 · 가입 대기 · 신고. 누르면 그 자리로 간다.
+     챙길 게 없으면 아무것도 안 보인다. */
+  async function paintTodo() {
+    /* 지금 보고 있는 화면의 제목 아래에 붙인다.
+       화면마다 제목이 따로 있어서 보이는 것을 찾아야 한다. */
+    const view = document.querySelector('#v-' + cur);
+    if (!view) return;
+    let box = view.querySelector('.todobox');
+    if (!box) {
+      const head = view.querySelector('.pagehead');
+      if (!head) return;
+      head.insertAdjacentHTML('afterend', '<div class="todobox"></div>');
+      box = view.querySelector('.todobox');
+    }
+    /* 다른 화면에 남아 있던 것은 지운다 */
+    document.querySelectorAll('.todobox').forEach(x => { if (x !== box) x.innerHTML = ''; });
+
+    let t = null;
+    try { t = await DB.adminTodo(); } catch (e) { }
+    if (!t) { box.innerHTML = ''; return; }
+
+    const items = [
+      ['vol', 'calendar', '확정 안 한 봉사', t.unconfirmed],
+      ['apply', 'mail', '가입 대기', t.applications],
+      ['reports', 'alert', '신고', t.reports]
+    ].filter(x => Number(x[3]) > 0);
+
+    if (!items.length) { box.innerHTML = ''; return; }
+
+    box.innerHTML = '<div class="todo">' + items.map(([k, i, label, n]) =>
+      '<button type="button" class="todoit" data-todo="' + k + '">' +
+      '<span class="ic">' + ic(i) + '</span>' +
+      '<span class="tx">' + label + '</span>' +
+      '<span class="n">' + num(n) + '</span></button>').join('') + '</div>';
+
+    box.querySelectorAll('[data-todo]').forEach(b => b.onclick = () => {
+      const k = b.dataset.todo;
+      if (k === 'reports') return reportsSheet();
+      go(k);
+    });
+  }
+
+  /* 신고 목록 — 운영진만 본다 */
+  async function reportsSheet() {
+    const ov = sheet({ title: '신고', body: '<div id="rpList" class="mut sm">불러오는 중…</div>' });
+    let list = [];
+    try { list = await DB.reportsOpen(); } catch (e) { }
+    const box = ov.querySelector('#rpList');
+    if (!box) return;
+    if (!list.length) {
+      box.innerHTML = '<div class="mut sm">처리할 신고가 없어요</div>';
+      return;
+    }
+    box.innerHTML = list.map(r =>
+      '<div class="card" style="margin-bottom:10px">' +
+      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(r.created_at) + '</div>' +
+      '<div style="margin-top:6px;font-size:13.5px;font-weight:600">' + esc(r.reason) + '</div>' +
+      (r.body
+        ? '<div class="pill-note" style="margin-top:9px">' + esc(cut(r.body, 90)) + '</div>'
+        : '') +
+      '<div class="mut" style="font-size:11.5px;margin-top:7px">신고한 사람: ' +
+      esc(r.reporter || '(알 수 없음)') + '</div>' +
+      '<div class="row" style="gap:7px;margin-top:11px">' +
+      (r.post_id
+        ? '<button class="btn ghost sm grow" type="button" data-rhide="' + esc(r.post_id) + '">' +
+          '글 숨기기</button>'
+        : '') +
+      '<button class="btn soft sm grow" type="button" data-rdone="' + esc(r.id) + '">' +
+      '처리했어요</button></div></div>').join('');
+
+    box.querySelectorAll('[data-rdone]').forEach(b => b.onclick = async () => {
+      try { await DB.reportDone(b.dataset.rdone); toast('처리했어요', 'ok'); closeSheet(); render(); }
+      catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
+    });
+    box.querySelectorAll('[data-rhide]').forEach(b => b.onclick = async () => {
+      try { await DB.community.setHidden(b.dataset.rhide, true); toast('숨겼어요', 'ok'); }
+      catch (e) { toast(e.message || '숨기지 못했어요', 'err'); }
+    });
   }
 
   /* ============================================================
@@ -1363,6 +1451,15 @@
       '<input id="pickSearch" placeholder="이름으로 찾아서 추가"></div>' +
       '<div id="pickResults"></div>' +
       '<div class="picker" id="picker"></div>' +
+      /* 오늘 가는 봉사면 현장 출석 번호를 열 수 있다 */
+      (!isNew && ev.date === DB.today()
+        ? '<div class="divider"></div>' +
+          '<div class="lb" style="margin-bottom:7px">현장 출석</div>' +
+          '<div id="ciBox"><button class="btn soft block" type="button" data-ciopen>' +
+          ic('unlock') + '<span>출석 번호 열기</span></button></div>' +
+          '<span class="hint">부원이 번호를 넣으면 「현장 참석」이 남아요. ' +
+          '실적은 아래 확정하기로 쌓여요.</span>'
+        : '') +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>봉사모임 만들기</button>'
         : (confirmed
@@ -1380,6 +1477,28 @@
             ic('check') + '<span>봉사 확정하기</span></button>'));
 
     const ov = sheet({ title: isNew ? fmtDate(F.day) + ' 봉사모임' : '봉사모임 수정', body, noFocus: true });
+
+    /* 출석 번호 — 한 번 열면 그날 내내 같은 번호를 쓴다 */
+    const ci = ov.querySelector('[data-ciopen]');
+    if (ci) ci.onclick = async () => {
+      ci.disabled = true;
+      try {
+        const code = await DB.community.checkinOpen(ev.id);
+        const box = ov.querySelector('#ciBox');
+        const n = (S.checkins || []).filter(c => c.event_id === ev.id).length;
+        box.innerHTML =
+          '<div class="card flat" style="text-align:center;padding:16px">' +
+          '<div class="mut sm">부원에게 알려줄 번호</div>' +
+          '<div style="font-size:30px;font-weight:800;letter-spacing:.16em;margin-top:6px">' +
+          esc(code) + '</div>' +
+          '<div class="mut" style="font-size:11.5px;margin-top:7px">지금까지 ' + n + '명 찍었어요</div>' +
+          '</div>';
+      } catch (e) {
+        toast(e.message || '열지 못했어요', 'err');
+        ci.disabled = false;
+      }
+    };
+
     const cp = ov.querySelector('[data-copysignup]');
     if (cp) cp.onclick = () => copy(signupURL(ev.id), '신청 폼 주소를 복사했어요');
     const op = ov.querySelector('[data-opensignup]');
