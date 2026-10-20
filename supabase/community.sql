@@ -40,6 +40,10 @@ grant execute on function my_member_id() to authenticated;
 grant execute on function is_member()    to authenticated;
 
 
+-- 프로필 사진 경로 (G단계에서 씁니다. 지금은 비어 있어도 됩니다)
+alter table members add column if not exists photo_path text;
+
+
 -- ------------------------------------------------------------
 -- 1) 글 — 봉사 후기 / 투표 / 공지
 -- ------------------------------------------------------------
@@ -269,3 +273,160 @@ begin
   end if;
 exception when duplicate_object then null;
 end $$;
+
+
+-- ------------------------------------------------------------
+-- 7) 피드 — 한 번에 모아서 내려준다 (이름·역할만, 연락처·학번 없음)
+--    p_cursor 보다 오래된 글을 p_limit 개만큼. 고정 공지는 첫 장에만 맨 위로.
+-- ------------------------------------------------------------
+create or replace function feed(
+  p_cursor timestamptz default null,
+  p_type   text        default null,   -- review / poll / notice / null(전체)
+  p_place  text        default null,
+  p_limit  int         default 20)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+with me_ as (select my_member_id() as id),
+pick as (
+  select p.*
+    from posts p
+   where (p_cursor is null or p.created_at < p_cursor)
+     and (p_type   is null or p.type  = p_type)
+     and (p_place  is null or p.place = p_place)
+     and (not p.hidden
+          or p.author_id = (select id from me_)
+          or is_admin())
+   order by p.created_at desc
+   limit greatest(1, least(coalesce(p_limit, 20), 50))
+),
+rows_ as (
+  select json_build_object(
+    'id', p.id,
+    'created_at', p.created_at,
+    'type', p.type,
+    'event_id', p.event_id,
+    'place', p.place,
+    'date', p.date,
+    'body', case when p.hidden and p.author_id <> (select id from me_) and not is_admin()
+                 then '' else p.body end,
+    'pinned', p.pinned,
+    'hidden', p.hidden,
+    'edited_at', p.edited_at,
+    'mine', p.author_id = (select id from me_),
+    'author', (select json_build_object('id', m.id, 'name', m.name, 'role', m.role, 'photo', m.photo_path)
+                 from members m where m.id = p.author_id),
+    'photos', (select coalesce(json_agg(f.path order by f.sort), '[]'::json)
+                 from post_photos f where f.post_id = p.id),
+    'comment_count', (select count(*)::int from comments c
+                       where c.post_id = p.id and not c.hidden),
+    'reactions', (select coalesce(json_object_agg(k, n), '{}'::json) from (
+                    select kind as k, count(*)::int as n from reactions r
+                     where r.post_id = p.id group by kind) z),
+    'my_reactions', (select coalesce(json_agg(r.kind), '[]'::json) from reactions r
+                      where r.post_id = p.id and r.member_id = (select id from me_)),
+    'poll', (select json_build_object(
+               'question', q.question, 'multi', q.multi, 'anonymous', q.anonymous,
+               'closes_at', q.closes_at, 'closed_at', q.closed_at,
+               'options', (select coalesce(json_agg(json_build_object(
+                             'id', o.id, 'label', o.label,
+                             'votes', (select count(*)::int from poll_votes v where v.option_id = o.id),
+                             'mine', exists (select 1 from poll_votes v
+                                              where v.option_id = o.id
+                                                and v.member_id = (select id from me_)))
+                             order by o.sort), '[]'::json)
+                           from poll_options o where o.post_id = p.id))
+              from polls q where q.post_id = p.id)
+  ) as j, p.created_at
+  from pick p
+)
+select case when not is_member() then null else
+  json_build_object(
+    'rows',   (select coalesce(json_agg(j order by created_at desc), '[]'::json) from rows_),
+    'cursor', (select min(created_at) from rows_),
+    'pinned', case when p_cursor is null then (
+                select json_build_object(
+                  'id', p.id, 'body', p.body, 'created_at', p.created_at,
+                  'author', (select m.name from members m where m.id = p.author_id))
+                  from posts p
+                 where p.type = 'notice' and p.pinned and not p.hidden
+                 order by p.created_at desc limit 1) end
+  )
+end;
+$$;
+
+revoke all on function feed(timestamptz, text, text, int) from public, anon;
+grant execute on function feed(timestamptz, text, text, int) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 8) 댓글 읽기 — 이름·역할만
+-- ------------------------------------------------------------
+create or replace function post_comments(p_post uuid)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case when not is_member() then null else coalesce(
+    (select json_agg(json_build_object(
+       'id', c.id, 'created_at', c.created_at, 'parent_id', c.parent_id,
+       'body', case when c.hidden then '' else c.body end,
+       'hidden', c.hidden, 'edited_at', c.edited_at,
+       'mine', c.author_id = my_member_id(),
+       'author', (select json_build_object('id', m.id, 'name', m.name,
+                         'role', m.role, 'photo', m.photo_path)
+                    from members m where m.id = c.author_id))
+       order by c.created_at)
+       from comments c where c.post_id = p_post), '[]'::json)
+  end;
+$$;
+
+revoke all on function post_comments(uuid) from public, anon;
+grant execute on function post_comments(uuid) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 9) 누가 이 반응을 눌렀나 (길게 누르면 보는 목록) — 이름만
+-- ------------------------------------------------------------
+create or replace function reaction_who(p_post uuid, p_kind text)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case when not is_member() then null else coalesce(
+    (select json_agg(m.name order by m.name)
+       from reactions r join members m on m.id = r.member_id
+      where r.post_id = p_post and r.kind = p_kind), '[]'::json)
+  end;
+$$;
+
+revoke all on function reaction_who(uuid, text) from public, anon;
+grant execute on function reaction_who(uuid, text) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 10) 사진 보관함 — 비공개 버킷. 구성원만 보고, 올린 사람만 지운다.
+--     community = 후기 사진 · avatars = 프로필 사진(G단계)
+-- ------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+     values ('community', 'community', false)
+on conflict (id) do update set public = false;
+
+insert into storage.buckets (id, name, public)
+     values ('avatars', 'avatars', false)
+on conflict (id) do update set public = false;
+
+drop policy if exists "community read"   on storage.objects;
+drop policy if exists "community write"  on storage.objects;
+drop policy if exists "community delete" on storage.objects;
+
+create policy "community read" on storage.objects for select to authenticated
+  using (bucket_id in ('community', 'avatars') and is_member());
+
+create policy "community write" on storage.objects for insert to authenticated
+  with check (bucket_id in ('community', 'avatars') and is_member());
+
+create policy "community delete" on storage.objects for delete to authenticated
+  using (bucket_id in ('community', 'avatars')
+         and (owner = auth.uid() or is_admin()));

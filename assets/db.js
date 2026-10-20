@@ -790,5 +790,342 @@
     return { open: true, until: s.form_close_at || null };
   };
 
+  /* ============================================================
+     커뮤니티 — 피드·댓글·반응
+     실제 모드는 서버 함수가 모아서 내려준다 (연락처·학번은 안 실린다).
+     체험 모드는 같은 모양을 브라우저 안에서 만든다.
+     ============================================================ */
+
+  const REACTIONS = ['heart', 'paw', 'haha', 'moved', 'clap', 'best'];
+
+  /* 체험 모드 저장소 — 없으면 빈 칸을 만들어 둔다 */
+  function cdemo() {
+    const d = demoRead();
+    ['posts', 'post_photos', 'comments', 'reactions',
+      'polls', 'poll_options', 'poll_votes'].forEach(k => { if (!d[k]) d[k] = []; });
+    return d;
+  }
+  const myDemoId = () => localStorage.getItem('baljaguk.demoMe') || '';
+  function demoMember(id) {
+    const m = (demoRead().members || []).find(x => x.id === id);
+    return m ? { id: m.id, name: m.name, role: m.role, photo: m.photo_path || null } : null;
+  }
+
+  /* 체험 모드에서 글 한 줄을 실제 모드와 같은 모양으로 */
+  function demoPostRow(d, p, meId) {
+    const rs = d.reactions.filter(r => r.post_id === p.id);
+    const counts = {};
+    rs.forEach(r => { counts[r.kind] = (counts[r.kind] || 0) + 1; });
+    const poll = d.polls.find(q => q.post_id === p.id);
+    return {
+      id: p.id, created_at: p.created_at, type: p.type, event_id: p.event_id || null,
+      place: p.place || null, date: p.date || null,
+      body: (p.hidden && p.author_id !== meId) ? '' : p.body,
+      pinned: !!p.pinned, hidden: !!p.hidden, edited_at: p.edited_at || null,
+      mine: p.author_id === meId,
+      author: demoMember(p.author_id),
+      photos: d.post_photos.filter(f => f.post_id === p.id)
+        .sort((a, b) => a.sort - b.sort).map(f => f.path),
+      comment_count: d.comments.filter(c => c.post_id === p.id && !c.hidden).length,
+      reactions: counts,
+      my_reactions: rs.filter(r => r.member_id === meId).map(r => r.kind),
+      poll: poll ? {
+        question: poll.question, multi: !!poll.multi, anonymous: !!poll.anonymous,
+        closes_at: poll.closes_at || null, closed_at: poll.closed_at || null,
+        options: d.poll_options.filter(o => o.post_id === p.id)
+          .sort((a, b) => a.sort - b.sort).map(o => ({
+            id: o.id, label: o.label,
+            votes: d.poll_votes.filter(v => v.option_id === o.id).length,
+            mine: d.poll_votes.some(v => v.option_id === o.id && v.member_id === meId)
+          }))
+      } : null
+    };
+  }
+
+  DB.community = {
+    REACTIONS,
+
+    /* ---------- 피드 ---------- */
+    async feed(opt) {
+      const o = opt || {};
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        let list = d.posts.slice()
+          .filter(p => !p.hidden || p.author_id === meId)
+          .filter(p => !o.type || p.type === o.type)
+          .filter(p => !o.place || p.place === o.place)
+          .filter(p => !o.cursor || String(p.created_at) < String(o.cursor))
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+          .slice(0, o.limit || 20);
+        const pin = o.cursor ? null : d.posts
+          .filter(p => p.type === 'notice' && p.pinned && !p.hidden)
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+        return {
+          rows: list.map(p => demoPostRow(d, p, meId)),
+          cursor: list.length ? list[list.length - 1].created_at : null,
+          pinned: pin ? {
+            id: pin.id, body: pin.body, created_at: pin.created_at,
+            author: (demoMember(pin.author_id) || {}).name
+          } : null
+        };
+      }
+      return await rest('rpc/feed', {
+        method: 'POST', body: {
+          p_cursor: o.cursor || null, p_type: o.type || null,
+          p_place: o.place || null, p_limit: o.limit || 20
+        }
+      });
+    },
+
+    /* ---------- 글 ---------- */
+    /* 사진은 이미 줄여둔 dataURL 배열로 받는다 */
+    async createPost(v) {
+      const photos = (v.photos || []).slice(0, 5);
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        const p = {
+          id: uid(), created_at: new Date().toISOString(), author_id: meId,
+          type: v.type || 'review', event_id: v.event_id || null,
+          place: v.place || null, date: v.date || null,
+          body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null
+        };
+        d.posts.push(p);
+        photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
+        if (v.poll) {
+          d.polls.push({
+            post_id: p.id, question: v.poll.question, multi: !!v.poll.multi,
+            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null, closed_at: null
+          });
+          (v.poll.options || []).forEach((lb, i) =>
+            d.poll_options.push({ id: uid(), post_id: p.id, label: lb, sort: i }));
+        }
+        demoWrite(d);
+        return { id: p.id };
+      }
+      const rows = await rest('posts', {
+        method: 'POST', prefer: 'return=representation',
+        body: {
+          type: v.type || 'review', event_id: v.event_id || null,
+          place: v.place || null, date: v.date || null,
+          body: String(v.body || ''), pinned: !!v.pinned,
+          author_id: await DB.community.myId()
+        }
+      });
+      const id = rows && rows[0] && rows[0].id;
+      if (!id) throw new Error('글을 올리지 못했어요');
+      if (photos.length) {
+        const paths = [];
+        for (let i = 0; i < photos.length; i++) paths.push(await DB.community.uploadPhoto(id, photos[i], i));
+        await rest('post_photos', {
+          method: 'POST', prefer: 'return=minimal',
+          body: paths.map((pth, i) => ({ post_id: id, path: pth, sort: i }))
+        });
+      }
+      if (v.poll) {
+        await rest('polls', {
+          method: 'POST', prefer: 'return=minimal',
+          body: {
+            post_id: id, question: v.poll.question, multi: !!v.poll.multi,
+            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null
+          }
+        });
+        await rest('poll_options', {
+          method: 'POST', prefer: 'return=minimal',
+          body: (v.poll.options || []).map((lb, i) => ({ post_id: id, label: lb, sort: i }))
+        });
+      }
+      return { id };
+    },
+
+    async updatePost(id, patch) {
+      if (!HAS_SB) {
+        const d = cdemo(), p = d.posts.find(x => x.id === id);
+        if (!p) throw new Error('글을 찾지 못했어요');
+        Object.assign(p, patch, { edited_at: new Date().toISOString() });
+        demoWrite(d); return true;
+      }
+      await rest('posts?id=eq.' + enc(id), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: Object.assign({}, patch, { edited_at: new Date().toISOString() })
+      });
+      return true;
+    },
+
+    async removePost(id) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.posts = d.posts.filter(p => p.id !== id);
+        d.post_photos = d.post_photos.filter(f => f.post_id !== id);
+        d.comments = d.comments.filter(c => c.post_id !== id);
+        d.reactions = d.reactions.filter(r => r.post_id !== id);
+        demoWrite(d); return true;
+      }
+      await rest('posts?id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+      return true;
+    },
+
+    /* 운영진: 지우지 않고 숨긴다 */
+    setHidden: (id, on) => DB.community.updatePost(id, { hidden: !!on }),
+    setPinned: (id, on) => DB.community.updatePost(id, { pinned: !!on }),
+
+    /* ---------- 댓글 ---------- */
+    async comments(postId) {
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        return d.comments.filter(c => c.post_id === postId)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+          .map(c => ({
+            id: c.id, created_at: c.created_at, parent_id: c.parent_id || null,
+            body: c.hidden ? '' : c.body, hidden: !!c.hidden, edited_at: c.edited_at || null,
+            mine: c.author_id === meId, author: demoMember(c.author_id)
+          }));
+      }
+      return await rest('rpc/post_comments', { method: 'POST', body: { p_post: postId } }) || [];
+    },
+
+    async addComment(postId, body, parentId) {
+      const text = String(body || '').trim();
+      if (!text) throw new Error('내용을 적어주세요');
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        d.comments.push({
+          id: uid(), created_at: new Date().toISOString(), post_id: postId,
+          parent_id: parentId || null, author_id: meId, body: text, hidden: false, edited_at: null
+        });
+        demoWrite(d); return true;
+      }
+      await rest('comments', {
+        method: 'POST', prefer: 'return=minimal',
+        body: {
+          post_id: postId, parent_id: parentId || null,
+          body: text, author_id: await DB.community.myId()
+        }
+      });
+      return true;
+    },
+
+    async updateComment(id, body) {
+      const text = String(body || '').trim();
+      if (!text) throw new Error('내용을 적어주세요');
+      if (!HAS_SB) {
+        const d = cdemo(), c = d.comments.find(x => x.id === id);
+        if (c) { c.body = text; c.edited_at = new Date().toISOString(); demoWrite(d); }
+        return true;
+      }
+      await rest('comments?id=eq.' + enc(id), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { body: text, edited_at: new Date().toISOString() }
+      });
+      return true;
+    },
+
+    async removeComment(id) {
+      if (!HAS_SB) {
+        const d = cdemo(); d.comments = d.comments.filter(c => c.id !== id); demoWrite(d); return true;
+      }
+      await rest('comments?id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+      return true;
+    },
+
+    async hideComment(id, on) {
+      if (!HAS_SB) {
+        const d = cdemo(), c = d.comments.find(x => x.id === id);
+        if (c) { c.hidden = !!on; demoWrite(d); }
+        return true;
+      }
+      await rest('comments?id=eq.' + enc(id), {
+        method: 'PATCH', prefer: 'return=minimal', body: { hidden: !!on }
+      });
+      return true;
+    },
+
+    /* ---------- 반응 ---------- */
+    /* 같은 걸 다시 누르면 취소된다 */
+    async toggleReaction(postId, kind) {
+      if (REACTIONS.indexOf(kind) < 0) throw new Error('없는 반응이에요');
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        const i = d.reactions.findIndex(r =>
+          r.post_id === postId && r.member_id === meId && r.kind === kind);
+        if (i >= 0) d.reactions.splice(i, 1);
+        else d.reactions.push({ post_id: postId, member_id: meId, kind, created_at: new Date().toISOString() });
+        demoWrite(d);
+        return i < 0;
+      }
+      const meId = await DB.community.myId();
+      const q = 'reactions?post_id=eq.' + enc(postId) +
+        '&member_id=eq.' + enc(meId) + '&kind=eq.' + enc(kind);
+      const has = await rest(q + '&select=kind');
+      if (has && has.length) {
+        await rest(q, { method: 'DELETE', prefer: 'return=minimal' });
+        return false;
+      }
+      await rest('reactions', {
+        method: 'POST', prefer: 'return=minimal',
+        body: { post_id: postId, member_id: meId, kind }
+      });
+      return true;
+    },
+
+    /* 길게 누르면 누가 눌렀는지 — 이름만 */
+    async reactionWho(postId, kind) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return d.reactions.filter(r => r.post_id === postId && r.kind === kind)
+          .map(r => (demoMember(r.member_id) || {}).name).filter(Boolean).sort();
+      }
+      return await rest('rpc/reaction_who', {
+        method: 'POST', body: { p_post: postId, p_kind: kind }
+      }) || [];
+    },
+
+    /* ---------- 사진 ---------- */
+    /* 비공개 버킷에 올리고, 볼 때는 서명된 주소를 받아온다 */
+    async uploadPhoto(postId, dataUrl, i) {
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = postId + '/' + Date.now() + '-' + i + '.jpg';
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': blob.type || 'image/jpeg'
+        },
+        body: blob
+      });
+      if (!r.ok) throw new Error('사진을 올리지 못했어요');
+      return path;
+    },
+
+    async photoUrl(path) {
+      if (!HAS_SB) return path;               /* 체험 모드는 dataURL 그대로 */
+      if (!path) return '';
+      if (/^data:/.test(path)) return path;
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/community/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expiresIn: 3600 })
+      });
+      if (!r.ok) return '';
+      const j = await r.json().catch(() => ({}));
+      return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+    },
+
+    /* 내 구성원 id — 서버가 정해준다 */
+    async myId() {
+      if (!HAS_SB) return myDemoId();
+      const v = await rest('rpc/my_member_id', { method: 'POST', body: {} });
+      if (!v) throw new Error('명부와 이어진 계정이 아니에요');
+      return v;
+    }
+  };
+
   window.DB = DB;
 })();
