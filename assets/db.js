@@ -1248,6 +1248,30 @@
       }) || [];
     },
 
+    /* ---------- 후기 남기기 권유 ----------
+       다녀왔는데 아직 안 쓴 봉사 하나. 7일까지만 권한다. */
+    async reviewPrompt() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return null;
+        const today = DB.today();
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const mine = (d.attendance || []).filter(a => a.member_id === me);
+        const cands = mine
+          .map(a => (d.events || []).find(e => e.id === a.event_id))
+          .filter(e => e && String(e.date) <= today && String(e.date) >= weekAgo)
+          .filter(e => !(d.posts || []).some(p =>
+            p.type === 'review' && p.event_id === e.id && p.author_id === me && !p.hidden))
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const e = cands[0];
+        return e ? {
+          event_id: e.id, date: e.date, place: e.place, title: e.title,
+          confirmed: !!e.confirmed_at
+        } : null;
+      }
+      return await rest('rpc/my_review_prompt', { method: 'POST', body: {} });
+    },
+
     /* ---------- 퀴즈 정답 발표 ----------
        예약 시각이 지났으면 누가 열어도, 아직이면 만든 사람만.
        E단계에 pg_cron 이 들어오면 시간 맞춰 저절로 돈다. */

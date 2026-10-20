@@ -261,6 +261,7 @@ window.Community = (function () {
 
     paint(
       '<div id="pin"></div>' +
+      '<div id="ask"></div>' +
       '<div class="titlerow">' +
       '<div class="chipwrap"><div class="chips" id="chips"></div></div>' +
       '<button class="iconbtn sq" type="button" id="wallBtn" aria-label="사진 모아보기">' +
@@ -404,6 +405,8 @@ window.Community = (function () {
     /* 발표 시각이 지난 퀴즈가 있으면 먼저 처리하고 다시 그린다 */
     if (first && await sweepQuizzes(res.rows)) return renderHome(true);
 
+    if (first) paintReviewAsk();
+
     if (first) {
       const pins = res.pinned || [];
       F.pins = pins;
@@ -464,6 +467,50 @@ window.Community = (function () {
       '<span class="ic">' + ic('megaphone') + '</span>' +
       '<span class="tx">' + esc(cut(p.body, 34)) + '</span>' +
       '<span class="ar">' + ic('chevron') + '</span></button>';
+  }
+
+  /* ---------- 후기 남기기 권유 ----------
+     봉사를 다녀왔는데 아직 안 썼으면 홈 맨 위에 한 번 묻는다.
+     나에게만 보이고, 쓰거나 「괜찮아요」를 누르면 사라진다. */
+  const SKIP_KEY = 'baljaguk.reviewSkip';
+  const skipped = () => {
+    try { return JSON.parse(localStorage.getItem(SKIP_KEY) || '[]'); }
+    catch (e) { return []; }
+  };
+  const skipReview = id => {
+    try {
+      const l = skipped(); l.push(String(id));
+      localStorage.setItem(SKIP_KEY, JSON.stringify(l.slice(-30)));
+    } catch (e) { }
+  };
+
+  /* 오늘·어제는 그렇게 부르고, 그 전은 날짜로 */
+  function whenWord(date) {
+    const d = String(date || '').slice(0, 10);
+    const today = DB.today();
+    if (d === today) return '오늘';
+    const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (d === y) return '어제';
+    const t = new Date(d + 'T00:00:00');
+    return (t.getMonth() + 1) + '월 ' + t.getDate() + '일';
+  }
+
+  async function paintReviewAsk() {
+    const box = $('#ask');
+    if (!box) return;
+    let r = null;
+    try { r = await DB.community.reviewPrompt(); } catch (e) { }
+    if (!r || skipped().indexOf(String(r.event_id)) >= 0) { box.innerHTML = ''; return; }
+
+    box.innerHTML =
+      '<div class="card askcard">' +
+      illus('emptyFeed', 'sm') +
+      '<h3>' + whenWord(r.date) + ' ' + esc(r.place || '') + ' 봉사 어땠어요?</h3>' +
+      '<p class="mut sm">짧아도 좋아요. 기억에 남는 순간 하나면 충분해요.</p>' +
+      '<button class="btn primary lg block" type="button" data-ask="' + esc(r.event_id) + '">' +
+      '후기 남기기</button>' +
+      '<button class="linkbtn" type="button" data-askno="' + esc(r.event_id) + '">괜찮아요</button>' +
+      '</div>';
   }
 
   /* 공지 한 줄을 누르면 그 자리에서 펼친다. 다시 누르면 접는다. */
@@ -730,6 +777,12 @@ window.Community = (function () {
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
+      if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
+      if ((b = hit('data-askno'))) {
+        skipReview(b.dataset.askno);
+        const box = $('#ask'); if (box) box.innerHTML = '';
+        return;
+      }
       if ((b = hit('data-react'))) { pop(b); return hitReaction(b.dataset.react, b.dataset.k); }
       if ((b = hit('data-hint'))) {
         try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }

@@ -919,3 +919,10 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 /* 구성원 줄은 두 줄로 — 넘치면 줄이지 말고 숨긴다 */
 .item .sub{flex-wrap:nowrap;overflow:hidden}
 .item .sub > *{flex:none}
+
+/* 후기 남기기 권유 — 나에게만 보이는 카드 */
+.askcard{text-align:center;padding:22px 20px 18px;margin-bottom:12px}
+.askcard h3{margin-top:10px;font-size:16px;line-height:1.45}
+.askcard p{margin-top:6px}
+.askcard .btn{margin-top:14px}
+.askcard .linkbtn{margin-top:9px;font-size:12.5px;color:var(--ink-3)}

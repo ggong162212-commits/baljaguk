@@ -1112,3 +1112,38 @@ end $$;
 
 revoke all on function claim_member(text, text) from public, anon;
 grant execute on function claim_member(text, text) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 24) 후기 남기기 권유 — 다녀왔는데 아직 안 쓴 봉사 하나
+--     봉사 날부터 7일까지만. 여러 개면 가장 최근 하나.
+--     확정됐으면 확정 명단, 확정 전이면 신청자 (대기자는 뺀다).
+-- ------------------------------------------------------------
+create or replace function my_review_prompt()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+with me_ as (select my_member_id() as id)
+select case when not is_member() then null else (
+  select json_build_object(
+           'event_id', e.id, 'date', e.date, 'place', e.place,
+           'title', e.title, 'confirmed', e.confirmed_at is not null)
+    from attendance a
+    join events e on e.id = a.event_id
+   where a.member_id = (select id from me_)
+     and e.date <= current_date
+     and e.date >= current_date - 7
+     /* 이미 쓴 봉사는 권하지 않는다 */
+     and not exists (
+       select 1 from posts p
+        where p.type = 'review'
+          and p.event_id = e.id
+          and p.author_id = (select id from me_)
+          and not p.hidden)
+   order by e.date desc
+   limit 1) end;
+$$;
+
+revoke all on function my_review_prompt() from public, anon;
+grant execute on function my_review_prompt() to authenticated;
