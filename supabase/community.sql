@@ -59,7 +59,9 @@ create table if not exists posts (
   pinned      boolean not null default false,
   hidden      boolean not null default false,
   hidden_by   uuid references members(id) on delete set null,
-  edited_at   timestamptz
+  edited_at   timestamptz,
+  -- 올린 사람이 발자국 인스타그램에 써도 된다고 한 경우에만 true
+  insta_ok    boolean not null default false
 );
 create index if not exists posts_created_idx on posts (created_at desc);
 create index if not exists posts_type_idx    on posts (type, created_at desc);
@@ -314,6 +316,7 @@ rows_ as (
     'pinned', p.pinned,
     'hidden', p.hidden,
     'edited_at', p.edited_at,
+    'insta_ok', p.insta_ok,
     'mine', p.author_id = (select id from me_),
     'author', (select json_build_object('id', m.id, 'name', m.name, 'role', m.role, 'photo', m.photo_path)
                  from members m where m.id = p.author_id),
@@ -321,6 +324,16 @@ rows_ as (
                  from post_photos f where f.post_id = p.id),
     'comment_count', (select count(*)::int from comments c
                        where c.post_id = p.id and not c.hidden),
+    -- 카드 안에 바로 보여줄 최근 댓글 2개
+    'recent_comments', (select coalesce(json_agg(j order by at), '[]'::json) from (
+         select json_build_object(
+                  'id', c.id, 'created_at', c.created_at, 'body', c.body,
+                  'mine', c.author_id = (select id from me_),
+                  'author', (select m.name from members m where m.id = c.author_id)) as j,
+                c.created_at as at
+           from comments c
+          where c.post_id = p.id and not c.hidden
+          order by c.created_at desc limit 2) y),
     'reactions', (select coalesce(json_object_agg(k, n), '{}'::json) from (
                     select kind as k, count(*)::int as n from reactions r
                      where r.post_id = p.id group by kind) z),

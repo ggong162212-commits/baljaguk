@@ -822,11 +822,21 @@
       place: p.place || null, date: p.date || null,
       body: (p.hidden && p.author_id !== meId) ? '' : p.body,
       pinned: !!p.pinned, hidden: !!p.hidden, edited_at: p.edited_at || null,
+      insta_ok: !!p.insta_ok,
       mine: p.author_id === meId,
       author: demoMember(p.author_id),
       photos: d.post_photos.filter(f => f.post_id === p.id)
         .sort((a, b) => a.sort - b.sort).map(f => f.path),
       comment_count: d.comments.filter(c => c.post_id === p.id && !c.hidden).length,
+      recent_comments: d.comments
+        .filter(c => c.post_id === p.id && !c.hidden)
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+        .slice(-2)
+        .map(c => ({
+          id: c.id, created_at: c.created_at, body: c.body,
+          mine: c.author_id === meId,
+          author: (demoMember(c.author_id) || {}).name || '?'
+        })),
       reactions: counts,
       my_reactions: rs.filter(r => r.member_id === meId).map(r => r.kind),
       poll: poll ? {
@@ -888,7 +898,8 @@
           id: uid(), created_at: new Date().toISOString(), author_id: meId,
           type: v.type || 'review', event_id: v.event_id || null,
           place: v.place || null, date: v.date || null,
-          body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null
+          body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null,
+          insta_ok: !!v.insta_ok
         };
         d.posts.push(p);
         photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
@@ -909,6 +920,7 @@
           type: v.type || 'review', event_id: v.event_id || null,
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned,
+          insta_ok: !!v.insta_ok,
           author_id: await DB.community.myId()
         }
       });

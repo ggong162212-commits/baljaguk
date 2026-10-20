@@ -155,7 +155,7 @@ window.Community = (function () {
       return;
     }
     $('#list').innerHTML = F.rows.map(postCard).join('');
-    bindCards($('#list'));
+    bindOnce();
     paintChips();
     paintMoreButton();
     loadPhotos($('#list'));
@@ -195,7 +195,6 @@ window.Community = (function () {
 
   /* ---------- 글 한 장 ---------- */
   function postCard(p) {
-    const hiddenByAdmin = p.hidden;
     const who = p.author || { name: '?' };
     return '<article class="card post" data-post="' + esc(p.id) + '">' +
       '<div class="who">' + avatar(who) +
@@ -206,7 +205,7 @@ window.Community = (function () {
       '<button class="iconbtn sm" type="button" data-menu="' + esc(p.id) + '" aria-label="더보기">' +
       ic('chevron') + '</button></div>' +
 
-      (hiddenByAdmin
+      (p.hidden
         ? '<div class="pill-note">운영진이 숨긴 글이에요. 나와 운영진에게만 보여요.</div>'
         : '') +
 
@@ -221,12 +220,14 @@ window.Community = (function () {
       (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
 
       photoStrip(p) +
+      /* 인스타에 써도 되는 사진인지 — 피드 만드는 사람이 바로 알 수 있게 */
+      ((p.photos || []).length && p.insta_ok
+        ? '<div class="mut" style="font-size:11.5px;margin-top:7px">' +
+        '인스타그램 사용에 동의한 사진이에요</div>'
+        : '') +
       (p.poll ? pollBlock(p) : '') +
       reactRow(p) +
-
-      '<div class="row" style="margin-top:10px;gap:8px">' +
-      '<button class="btn ghost sm grow" type="button" data-cmt="' + esc(p.id) + '">' +
-      ic('mail') + '<span>댓글 ' + (p.comment_count || 0) + '</span></button></div>' +
+      commentBlock(p) +
       '</article>';
   }
 
@@ -257,55 +258,106 @@ window.Community = (function () {
     }
   }
 
+  /* ---------- 반응 ---------- */
+  /* 한 사람이 여러 종류를 달 수 있다. 같은 걸 다시 누르면 취소된다. */
   function reactRow(p) {
     const counts = p.reactions || {};
     const mine = p.my_reactions || [];
     const shown = KINDS.filter(k => counts[k]);
+    const total = shown.reduce((t, k) => t + counts[k], 0);
     return '<div class="reacts" data-reacts="' + esc(p.id) + '">' +
       shown.map(k =>
         '<button class="react' + (mine.indexOf(k) >= 0 ? ' on' : '') + '" type="button" ' +
-        'data-k="' + k + '" title="' + EMOJI_NAME[k] + '">' +
+        'data-react="' + esc(p.id) + '" data-k="' + k + '" title="' + EMOJI_NAME[k] + '">' +
         '<span>' + EMOJI[k] + '</span><span class="n">' + counts[k] + '</span></button>').join('') +
-      '<button class="react add" type="button" data-pick="1" aria-label="반응 달기">' +
-      ic('plus') + '</button></div>';
+      '<button class="react add" type="button" data-pick="' + esc(p.id) + '" aria-label="반응 달기">' +
+      ic('plus') + '</button>' +
+      (total
+        ? '<button class="react add" type="button" data-who="' + esc(p.id) + '" ' +
+        'aria-label="누가 반응했는지 보기">' + ic('users') +
+        '<span class="n">' + total + '</span></button>'
+        : '') +
+      '</div>';
   }
 
-  /* ---------- 카드 안의 버튼들 ---------- */
-  function bindCards(root) {
-    /* 반응 — 누르면 켜고 끈다. 길게 누르면 누가 눌렀는지 */
-    root.querySelectorAll('[data-reacts]').forEach(box => {
-      const id = box.dataset.reacts;
-      box.querySelectorAll('[data-k]').forEach(b => {
-        let timer = null, held = false;
-        const who = () => { held = true; whoSheet(id, b.dataset.k); };
-        b.addEventListener('pointerdown', () => { held = false; timer = setTimeout(who, 500); });
-        ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
-          b.addEventListener(ev, () => clearTimeout(timer)));
-        b.addEventListener('click', async () => {
-          if (held) { held = false; return; }
-          await hitReaction(id, b.dataset.k);
-        });
-        b.addEventListener('contextmenu', e => { e.preventDefault(); who(); });
-      });
-      const add = box.querySelector('[data-pick]');
-      if (add) add.onclick = () => pickReaction(id);
+  /* ---------- 댓글 (카드 안에서 바로) ---------- */
+  function commentBlock(p) {
+    const list = p.recent_comments || [];
+    const more = (p.comment_count || 0) - list.length;
+    return '<div class="cmts" data-cmts="' + esc(p.id) + '">' +
+      (more > 0
+        ? '<button class="morecmt" type="button" data-all="' + esc(p.id) + '">' +
+        '댓글 ' + (p.comment_count || 0) + '개 모두 보기</button>'
+        : '') +
+      '<div data-clist="' + esc(p.id) + '">' + list.map(commentLine).join('') + '</div>' +
+      '<div class="cwrite">' +
+      '<input class="input" type="text" data-cin="' + esc(p.id) + '" ' +
+      'placeholder="댓글 달기…" autocomplete="off" enterkeyhint="send">' +
+      '<button class="btn primary sm" type="button" data-csend="' + esc(p.id) + '">전송</button>' +
+      '</div></div>';
+  }
+
+  function commentLine(c) {
+    const name = typeof c.author === 'string' ? c.author : ((c.author || {}).name || '?');
+    return '<div class="cline" data-c="' + esc(c.id) + '">' +
+      '<b>' + esc(name) + '</b> ' +
+      '<span class="tx">' + (c.hidden ? '<span class="mut">운영진이 숨긴 댓글이에요</span>' : esc(c.body)) + '</span> ' +
+      '<span class="at">' + relTime(c.created_at) + (c.edited_at ? ' · 수정됨' : '') + '</span>' +
+      (c.mine || AM_ADMIN
+        ? ' <button class="linkbtn" type="button" data-cmenu="' + esc(c.id) + '">⋯</button>'
+        : '') +
+      '</div>';
+  }
+
+  /* ---------- 카드 안의 동작 — 한 곳에서 받는다 ----------
+     카드마다 따로 붙이면 다시 그릴 때 핸들러가 겹쳐서
+     한 번 눌렀는데 두 번 실행되는 일이 생긴다. */
+  let delegated = false;
+  function bindOnce() {
+    if (delegated) return;
+    delegated = true;
+    const view = $('#view');
+
+    view.addEventListener('click', async e => {
+      const hit = sel => e.target.closest('[' + sel + ']');
+      let b;
+
+      if ((b = hit('data-react'))) return hitReaction(b.dataset.react, b.dataset.k);
+      if ((b = hit('data-pick'))) return pickReaction(b.dataset.pick);
+      if ((b = hit('data-who'))) return whoSheet(b.dataset.who);
+      if ((b = hit('data-menu'))) return postMenu(b.dataset.menu);
+      if ((b = hit('data-open'))) return;
+      if ((b = hit('data-csend'))) return sendComment(b.dataset.csend);
+      if ((b = hit('data-all'))) return expandComments(b.dataset.all);
+      if ((b = hit('data-cmenu'))) return openCommentMenu(b.dataset.cmenu);
+      if ((b = hit('data-vote'))) return toast('투표는 다음 단계에서 열려요');
     });
 
-    root.querySelectorAll('[data-cmt]').forEach(b =>
-      b.addEventListener('click', () => commentSheet(b.dataset.cmt)));
+    /* 엔터로도 보낸다 — 카톡처럼 */
+    view.addEventListener('keydown', e => {
+      const inp = e.target.closest('[data-cin]');
+      if (inp && e.key === 'Enter') { e.preventDefault(); sendComment(inp.dataset.cin); }
+    });
 
-    root.querySelectorAll('[data-menu]').forEach(b =>
-      b.addEventListener('click', () => postMenu(b.dataset.menu)));
+    /* 반응을 길게 누르면 누가 눌렀는지 */
+    let hold = null;
+    view.addEventListener('pointerdown', e => {
+      const b = e.target.closest('[data-react]');
+      if (!b) return;
+      hold = setTimeout(() => { hold = 'done'; whoSheet(b.dataset.react); }, 500);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+      view.addEventListener(ev, () => { if (hold && hold !== 'done') clearTimeout(hold); }));
 
     /* 사진을 넘기면 아래 점도 같이 움직인다 */
-    root.querySelectorAll('[data-shots]').forEach(box => {
-      const dots = root.querySelector('[data-dots="' + box.dataset.shots + '"]');
+    view.addEventListener('scroll', e => {
+      const box = e.target.closest ? e.target.closest('[data-shots]') : null;
+      if (!box) return;
+      const dots = view.querySelector('[data-dots="' + box.dataset.shots + '"]');
       if (!dots) return;
-      box.addEventListener('scroll', () => {
-        const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
-        Array.prototype.forEach.call(dots.children, (d, n) => d.classList.toggle('on', n === i));
-      });
-    });
+      const i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
+      Array.prototype.forEach.call(dots.children, (d, n) => d.classList.toggle('on', n === i));
+    }, true);
   }
 
   function findRow(id) { return F.rows.filter(r => r.id === id)[0]; }
@@ -320,48 +372,72 @@ window.Community = (function () {
       if (!row.reactions[kind]) delete row.reactions[kind];
       row.my_reactions = (row.my_reactions || []).filter(k => k !== kind);
       if (on) row.my_reactions.push(kind);
-      refreshReacts(id);
+      redrawReacts(id);
     } catch (e) { toast(e.message || '반응을 달지 못했어요', 'err'); }
   }
 
-  function refreshReacts(id) {
+  function redrawReacts(id) {
     const row = findRow(id);
     const box = $('#view').querySelector('[data-reacts="' + id + '"]');
     if (!row || !box) return;
     const wrap = document.createElement('div');
     wrap.innerHTML = reactRow(row);
     box.replaceWith(wrap.firstChild);
-    bindCards($('#view'));
   }
 
   function pickReaction(id) {
     const ov = sheet({
       title: '반응 달기',
-      body: '<div class="row" style="flex-wrap:wrap;gap:9px;justify-content:center;padding:6px 0">' +
+      body: '<p class="mut sm" style="margin:0 0 10px">여러 개 골라도 괜찮아요.</p>' +
+        '<div class="row" style="flex-wrap:wrap;gap:9px;justify-content:center;padding:6px 0">' +
         KINDS.map(k =>
           '<button class="react" type="button" data-pk="' + k + '" ' +
           'style="flex-direction:column;gap:3px;padding:12px 14px;font-size:24px">' +
           '<span>' + EMOJI[k] + '</span>' +
           '<span class="n">' + EMOJI_NAME[k] + '</span></button>').join('') + '</div>'
     });
+    const mark = () => {
+      const row = findRow(id) || {};
+      const mine = row.my_reactions || [];
+      ov.querySelectorAll('[data-pk]').forEach(b =>
+        b.classList.toggle('on', mine.indexOf(b.dataset.pk) >= 0));
+    };
+    mark();
+    /* 시트를 열어둔 채로 여러 개 고를 수 있게 둔다 */
     ov.querySelectorAll('[data-pk]').forEach(b => b.onclick = async () => {
-      closeSheet(); await hitReaction(id, b.dataset.pk);
+      await hitReaction(id, b.dataset.pk);
+      mark();
     });
   }
 
-  async function whoSheet(id, kind) {
+  /* 카카오톡처럼 — 어떤 반응을 누가 달았는지 한눈에 */
+  async function whoSheet(id) {
+    const row = findRow(id) || {};
+    const counts = row.reactions || {};
+    const shown = KINDS.filter(k => counts[k]);
     const ov = sheet({
-      title: EMOJI[kind] + ' ' + EMOJI_NAME[kind],
+      title: '반응한 사람',
       body: '<div id="whoList" class="mut sm">불러오는 중…</div>'
     });
-    try {
-      const names = await DB.community.reactionWho(id, kind);
-      ov.querySelector('#whoList').innerHTML = names.length
-        ? names.map(n => '<div class="kv"><span class="k">' + esc(n) + '</span></div>').join('')
-        : '<div class="mut sm">아직 없어요</div>';
-    } catch (e) {
-      ov.querySelector('#whoList').textContent = '불러오지 못했어요';
+    if (!shown.length) {
+      ov.querySelector('#whoList').innerHTML = '<div class="mut sm">아직 없어요</div>';
+      return;
     }
+    const parts = [];
+    for (let i = 0; i < shown.length; i++) {
+      const k = shown[i];
+      let names = [];
+      try { names = await DB.community.reactionWho(id, k); } catch (e) { }
+      parts.push(
+        '<div style="padding:11px 0;border-bottom:1px dashed var(--line-2)">' +
+        '<div class="row" style="gap:7px;align-items:center">' +
+        '<span style="font-size:19px">' + EMOJI[k] + '</span>' +
+        '<b class="sm">' + EMOJI_NAME[k] + '</b>' +
+        '<span class="mut sm">' + names.length + '</span></div>' +
+        '<div class="sm" style="margin-top:5px;line-height:1.7;color:var(--ink-3)">' +
+        (names.length ? names.map(esc).join(' · ') : '—') + '</div></div>');
+    }
+    ov.querySelector('#whoList').innerHTML = parts.join('');
   }
 
   /* ---------- 글 메뉴 (수정·삭제·숨기기·고정) ---------- */
@@ -445,16 +521,33 @@ window.Community = (function () {
         places.map(p => '<option>' + esc(p) + '</option>').join('') +
         '</select></label></div></div>' +
 
-        '<label class="field"><span class="lb">사진 (최대 5장)</span>' +
-        '<input class="input" type="file" id="wPhotos" accept="image/*" multiple></label>' +
-        '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap"></div>' +
-        '<p class="pill-note" style="margin-top:8px">다른 부원 얼굴이 나오면 동의를 받아 주세요.</p>' +
+        '<div class="field"><span class="lb">사진 ' +
+        '<span class="mut" style="font-weight:400">(최대 5장)</span></span>' +
+        '<div class="dropzone" id="wDrop" tabindex="0" role="button" aria-label="사진 고르기">' +
+        '<div id="wIdle"><div class="big">' + ic('image') + '</div>' +
+        '<div class="sm mut" style="margin-top:4px">눌러서 사진을 고르세요. 알아서 줄여서 올려요</div></div>' +
+        '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap;justify-content:center"></div>' +
+        '</div>' +
+        '<input type="file" id="wPhotos" accept="image/*" multiple hidden>' +
+        '<button type="button" class="btn ghost sm block" id="wClear" ' +
+        'style="margin-top:8px" hidden>사진 지우기</button></div>' +
+
+        /* 인스타 사용 동의 — 안 고르면 기본은 '안 됨'이다 */
+        '<button type="button" class="check" id="wInsta" style="margin-top:8px;width:100%;text-align:left">' +
+        '<span class="box" aria-hidden="true">' + ic('check') + '</span>' +
+        '<span class="grow"><span class="sm" style="font-weight:700">' +
+        '발자국 인스타그램에 올려도 괜찮아요</span>' +
+        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+        '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>' +
 
         '<label class="field" style="margin-top:12px"><span class="lb">어떤 하루였나요</span>' +
         '<textarea class="input" id="wBody" rows="5" placeholder="오늘 만난 아이들, 기억에 남는 순간…"></textarea></label>' +
 
         '<button class="btn primary lg block" type="button" id="wSave">올리기</button>'
     });
+
+    const insta = ov.querySelector('#wInsta');
+    insta.addEventListener('click', () => insta.classList.toggle('on'));
 
     const sel = ov.querySelector('#wEv');
     const own = ov.querySelector('#wOwn');
@@ -463,16 +556,37 @@ window.Community = (function () {
 
     /* 사진은 올리기 전에 줄인다. 줄이면서 위치정보도 떨어져 나간다 */
     let shots = [];
-    ov.querySelector('#wPhotos').addEventListener('change', async e => {
+    const file = ov.querySelector('#wPhotos');
+    const drop = ov.querySelector('#wDrop');
+    const idle = ov.querySelector('#wIdle');
+    const thumbs = ov.querySelector('#wThumbs');
+    const clear = ov.querySelector('#wClear');
+
+    drop.addEventListener('click', () => file.click());
+    drop.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
+    });
+    clear.addEventListener('click', e => {
+      e.stopPropagation();
+      shots = []; file.value = '';
+      thumbs.innerHTML = ''; idle.hidden = false; clear.hidden = true;
+    });
+
+    file.addEventListener('change', async e => {
       const files = Array.prototype.slice.call(e.target.files || []).slice(0, 5);
+      if (!files.length) return;
       shots = [];
-      ov.querySelector('#wThumbs').innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
+      idle.hidden = true;
+      thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
       for (let i = 0; i < files.length; i++) {
         try { shots.push(await resizeImage(files[i], 1600, .82)); }
         catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
       }
-      ov.querySelector('#wThumbs').innerHTML = shots.map(s =>
-        '<img src="' + s + '" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:11px">').join('');
+      if (!shots.length) { idle.hidden = false; thumbs.innerHTML = ''; return; }
+      thumbs.innerHTML = shots.map(s =>
+        '<img src="' + s + '" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:11px">').join('') +
+        '<div class="sm mut" style="width:100%;margin-top:6px">' + shots.length + '장 · 다시 눌러 바꿀 수 있어요</div>';
+      clear.hidden = false;
     });
 
     ov.querySelector('#wSave').onclick = async () => {
@@ -492,7 +606,8 @@ window.Community = (function () {
       btn.disabled = true; btn.textContent = '올리는 중…';
       try {
         await DB.community.createPost({
-          type: 'review', event_id: eventId, date, place, body, photos: shots
+          type: 'review', event_id: eventId, date, place, body, photos: shots,
+          insta_ok: insta.classList.contains('on')
         });
         closeSheet();
         cheer && cheer();
@@ -506,69 +621,73 @@ window.Community = (function () {
   }
 
   /* ============================================================
-     댓글
+     댓글 — 카드 안에서 바로 쓰고 바로 보인다
      ============================================================ */
-  async function commentSheet(postId) {
-    const ov = sheet({
-      title: '댓글',
-      body: '<div id="cList" class="mut sm">불러오는 중…</div>' +
-        '<div class="divider"></div>' +
-        '<label class="field"><span class="lb">댓글 쓰기</span>' +
-        '<textarea class="input" id="cBody" rows="2" placeholder="따뜻한 말 한마디"></textarea></label>' +
-        '<button class="btn primary block" type="button" id="cSend">남기기</button>'
-    });
-
-    async function draw() {
-      let list = [];
-      try { list = await DB.community.comments(postId); }
-      catch (e) { ov.querySelector('#cList').textContent = '불러오지 못했어요'; return; }
-      ov.querySelector('#cList').innerHTML = list.length
-        ? list.map(c =>
-          '<div class="row" style="gap:8px;align-items:flex-start;padding:9px 0;' +
-          'border-bottom:1px dashed var(--line-2)">' +
-          avatar(c.author || { name: '?' }, 'sm') +
-          '<div class="grow"><div class="sm"><b>' + esc((c.author || {}).name || '?') + '</b> ' +
-          '<span class="mut" style="font-size:11.5px">' + relTime(c.created_at) +
-          (c.edited_at ? ' · 수정됨' : '') + '</span></div>' +
-          '<div class="sm" style="margin-top:3px;line-height:1.6;white-space:pre-wrap">' +
-          (c.hidden ? '<span class="mut">운영진이 숨긴 댓글이에요</span>' : esc(c.body)) + '</div></div>' +
-          (c.mine || AM_ADMIN
-            ? '<button class="iconbtn sm" type="button" data-cm="' + esc(c.id) + '" aria-label="더보기">' +
-            ic('chevron') + '</button>' : '') +
-          '</div>').join('')
-        : '<div class="mut sm">아직 댓글이 없어요. 처음 남겨보세요.</div>';
-
-      ov.querySelectorAll('[data-cm]').forEach(b => b.onclick = () => {
-        const c = list.filter(x => x.id === b.dataset.cm)[0];
-        commentMenu(c, draw);
-      });
+  async function sendComment(postId) {
+    const inp = $('#view').querySelector('[data-cin="' + postId + '"]');
+    if (!inp) return;
+    const v = inp.value.trim();
+    if (!v) return;
+    inp.disabled = true;
+    try {
+      await DB.community.addComment(postId, v);
+      inp.value = '';
+      const row = findRow(postId);
+      if (row) row.comment_count = (row.comment_count || 0) + 1;
+      await refreshComments(postId);
+    } catch (e) {
+      toast(e.message || '남기지 못했어요', 'err');
+    } finally {
+      inp.disabled = false;
+      inp.focus();
     }
-
-    ov.querySelector('#cSend').onclick = async () => {
-      const t = ov.querySelector('#cBody');
-      const v = t.value.trim();
-      if (!v) return toast('내용을 적어주세요', 'err');
-      try {
-        await DB.community.addComment(postId, v);
-        t.value = '';
-        const row = findRow(postId);
-        if (row) row.comment_count = (row.comment_count || 0) + 1;
-        await draw();
-      } catch (e) { toast(e.message || '남기지 못했어요', 'err'); }
-    };
-
-    draw();
   }
 
-  function commentMenu(c, after) {
-    if (!c) return;
+  /* 최근 2개만 다시 그린다 (모두 보기를 펼친 상태면 전부) */
+  async function refreshComments(postId, all) {
+    const box = $('#view').querySelector('[data-clist="' + postId + '"]');
+    const row = findRow(postId);
+    if (!box || !row) return;
+    let list = [];
+    try { list = await DB.community.comments(postId); } catch (e) { return; }
+    const shown = list.filter(c => !c.hidden || c.mine || AM_ADMIN);
+    row.comment_count = list.filter(c => !c.hidden).length;
+    const use = all ? shown : shown.slice(-2);
+    row.recent_comments = use;
+    box.innerHTML = use.map(commentLine).join('');
+
+    const wrap = $('#view').querySelector('[data-cmts="' + postId + '"]');
+    const btn = wrap && wrap.querySelector('[data-all]');
+    const rest = shown.length - use.length;
+    if (btn) {
+      if (rest > 0) { btn.hidden = false; btn.textContent = '댓글 ' + shown.length + '개 모두 보기'; }
+      else btn.hidden = true;
+    } else if (rest > 0 && wrap) {
+      wrap.insertAdjacentHTML('afterbegin',
+        '<button class="morecmt" type="button" data-all="' + esc(postId) + '">' +
+        '댓글 ' + shown.length + '개 모두 보기</button>');
+    }
+  }
+
+  function expandComments(postId) { refreshComments(postId, true); }
+
+  async function openCommentMenu(commentId) {
+    /* 어느 글의 댓글인지 찾아서 그 목록에서 집어온다 */
+    let found = null, postId = null;
+    for (let i = 0; i < F.rows.length; i++) {
+      const hit = (F.rows[i].recent_comments || []).filter(c => c.id === commentId)[0];
+      if (hit) { found = hit; postId = F.rows[i].id; break; }
+    }
+    if (!found) return;
+
     const btns = [];
-    if (c.mine) {
+    if (found.mine) {
       btns.push('<button class="btn ghost block" type="button" data-a="edit">고치기</button>');
       btns.push('<button class="btn ghost block" type="button" data-a="del">지우기</button>');
     }
     if (AM_ADMIN) btns.push('<button class="btn ghost block" type="button" data-a="hide">' +
-      (c.hidden ? '다시 보이기' : '숨기기') + '</button>');
+      (found.hidden ? '다시 보이기' : '숨기기') + '</button>');
+    if (!btns.length) return;
 
     const ov = sheet({ title: '댓글', body: '<div style="display:grid;gap:8px">' + btns.join('') + '</div>' });
     ov.querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
@@ -579,23 +698,24 @@ window.Community = (function () {
           const ov2 = sheet({
             title: '댓글 고치기',
             body: '<label class="field"><textarea class="input" id="ceB" rows="3">' +
-              esc(c.body) + '</textarea></label>' +
+              esc(found.body) + '</textarea></label>' +
               '<button class="btn primary block" type="button" id="ceS">저장</button>'
           });
           ov2.querySelector('#ceS').onclick = async () => {
             const v = ov2.querySelector('#ceB').value.trim();
+            if (!v) return toast('내용을 적어주세요', 'err');
             closeSheet();
-            await DB.community.updateComment(c.id, v);
-            after();
+            await DB.community.updateComment(commentId, v);
+            refreshComments(postId);
           };
           return;
         }
         if (a === 'del') {
           if (!await confirmSheet('댓글을 지울까요?', '', '지우기', true)) return;
-          await DB.community.removeComment(c.id);
+          await DB.community.removeComment(commentId);
         }
-        if (a === 'hide') await DB.community.hideComment(c.id, !c.hidden);
-        after();
+        if (a === 'hide') await DB.community.hideComment(commentId, !found.hidden);
+        refreshComments(postId);
       } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     });
   }
@@ -653,15 +773,8 @@ window.Community = (function () {
       '<h3 style="margin-top:10px;font-size:17px">아직 투표가 없어요</h3>' +
       '<p class="mut sm" style="margin-top:8px">누구나 만들 수 있어요.</p></div>');
     paint(rows.map(postCard).join(''));
-    bindCards($('#view'));
-    bindVotes($('#view'));
+    bindOnce();
     loadPhotos($('#view'));
-  }
-
-  function bindVotes(root) {
-    root.querySelectorAll('[data-vote]').forEach(b => b.addEventListener('click', async () => {
-      toast('투표는 다음 단계에서 열려요');
-    }));
   }
 
   /* ============================================================
