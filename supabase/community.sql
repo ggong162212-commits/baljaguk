@@ -1487,3 +1487,430 @@ revoke all on function reports_open() from public, anon;
 revoke all on function report_done(uuid) from public, anon;
 grant execute on function reports_open() to authenticated;
 grant execute on function report_done(uuid) to authenticated;
+
+
+-- ============================================================
+--  E. 알림 — 종류별 끄고 켜기, 보낼 거리 모으기
+-- ============================================================
+
+-- 알림 종류를 늘린다. 기존 세 칸(want_notice/comment/reaction)은 그대로 두고 더한다.
+alter table push_subscriptions add column if not exists want_post     boolean not null default true;  -- 새 글
+alter table push_subscriptions add column if not exists want_reply    boolean not null default true;  -- 대댓글
+alter table push_subscriptions add column if not exists want_vol      boolean not null default true;  -- 봉사 열림
+alter table push_subscriptions add column if not exists want_promoted boolean not null default true;  -- 대기→신청
+alter table push_subscriptions add column if not exists want_poll     boolean not null default true;  -- 설문 마감
+alter table push_subscriptions add column if not exists want_quiz     boolean not null default true;  -- 퀴즈 결과
+alter table push_subscriptions add column if not exists want_before   boolean not null default true;  -- 봉사 전날
+alter table push_subscriptions add column if not exists want_thanks   boolean not null default true;  -- 봉사 감사
+alter table push_subscriptions add column if not exists last_seen     timestamptz;
+
+-- 보낼 알림을 쌓아 두는 곳. Edge Function 이 가져가 보낸다.
+-- 같은 것을 두 번 보내지 않게 dedupe_key 로 막는다.
+create table if not exists push_outbox (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  member_id  uuid references members(id) on delete cascade,  -- null 이면 전체
+  kind       text not null,
+  title      text not null,
+  body       text not null default '',
+  url        text,                      -- 누르면 갈 곳
+  dedupe_key text unique,
+  /* 이 일을 한 사람 — 전체 알림일 때 본인에게는 안 보내려고 */
+  actor_id   uuid references members(id) on delete set null,
+  sent_at    timestamptz,
+  tries      int not null default 0
+);
+alter table push_outbox add column if not exists actor_id uuid references members(id) on delete set null;
+alter table push_outbox enable row level security;
+create index if not exists outbox_todo_idx on push_outbox (sent_at, created_at);
+
+-- 아무도 직접 못 읽는다. Edge Function 은 service_role 로 들어온다.
+drop policy if exists "outbox admin" on push_outbox;
+create policy "outbox admin" on push_outbox for select to authenticated using (is_admin());
+
+-- 알림 설정 읽기·쓰기 (내 기기 것만)
+create or replace function push_prefs(p_endpoint text)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_member() then null else
+  (select row_to_json(x) from (
+     select want_post, want_comment, want_reply, want_reaction, want_notice,
+            want_vol, want_promoted, want_poll, want_quiz, want_before, want_thanks
+       from push_subscriptions
+      where member_id = my_member_id() and endpoint = p_endpoint) x)
+end;
+$$;
+
+create or replace function push_prefs_set(p_endpoint text, p_key text, p_on boolean)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_member() then return false; end if;
+  /* 칸 이름을 그대로 받지 않는다 — 허용한 것만 */
+  if p_key not in ('want_post','want_comment','want_reply','want_reaction','want_notice',
+                   'want_vol','want_promoted','want_poll','want_quiz','want_before','want_thanks') then
+    raise exception '모르는 알림 종류예요';
+  end if;
+
+  execute format(
+    'update push_subscriptions set %I = $1 where member_id = $2 and endpoint = $3', p_key)
+    using coalesce(p_on, true), my_member_id(), p_endpoint;
+  return true;
+end;
+$$;
+
+revoke all on function push_prefs(text) from public, anon;
+revoke all on function push_prefs_set(text, text, boolean) from public, anon;
+grant execute on function push_prefs(text) to authenticated;
+grant execute on function push_prefs_set(text, text, boolean) to authenticated;
+
+-- 이 기기를 등록한다 (같은 기기면 덮어쓴다)
+create or replace function push_subscribe(p_endpoint text, p_p256dh text, p_auth text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_member() then return false; end if;
+  insert into push_subscriptions (member_id, endpoint, p256dh, auth)
+  values (my_member_id(), p_endpoint, p_p256dh, p_auth)
+  on conflict (endpoint) do update
+    set member_id = excluded.member_id,
+        p256dh    = excluded.p256dh,
+        auth      = excluded.auth;
+  return true;
+end;
+$$;
+
+create or replace function push_unsubscribe(p_endpoint text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  delete from push_subscriptions
+   where endpoint = p_endpoint and member_id = my_member_id();
+  return true;
+end;
+$$;
+
+revoke all on function push_subscribe(text, text, text) from public, anon;
+revoke all on function push_unsubscribe(text) from public, anon;
+grant execute on function push_subscribe(text, text, text) to authenticated;
+grant execute on function push_unsubscribe(text) to authenticated;
+
+-- 나에게만 보내 보기 (알림 미리보기)
+create or replace function push_test(p_kind text, p_title text, p_body text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_member() then return false; end if;
+  insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+  values (my_member_id(), coalesce(p_kind, 'test'),
+          coalesce(p_title, '발자국'), coalesce(p_body, ''),
+          'me.html', 'test:' || my_member_id() || ':' || extract(epoch from now())::bigint);
+  return true;
+end;
+$$;
+
+revoke all on function push_test(text, text, text) from public, anon;
+grant execute on function push_test(text, text, text) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 알림을 쌓는 자리
+--  · 글·댓글·반응은 그 자리에서 (트리거)
+--  · 봉사 전날·감사·설문 마감·퀴즈 발표는 시각이 되면 (pg_cron)
+-- ------------------------------------------------------------
+
+-- 글이 올라오면 — 공지는 「공지」로만, 나머지는 「새 글」로
+create or replace function outbox_on_post()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+declare who text; head text; tail text;
+begin
+  if new.hidden then return new; end if;
+  select name into who from members where id = new.author_id;
+
+  if new.type = 'notice' then
+    head := '[공지] ' || left(coalesce(new.body, ''), 30);
+    tail := coalesce(new.body, '');
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key, actor_id)
+    values (null, 'notice', head, tail, 'me.html#post=' || new.id, 'notice:' || new.id,
+            new.author_id)
+    on conflict (dedupe_key) do nothing;
+    return new;
+  end if;
+
+  if new.type = 'review' then
+    head := coalesce(who, '누군가') || '님이 ' || coalesce(new.place, '봉사') || ' 후기를 올렸어요';
+  elsif exists (select 1 from polls q where q.post_id = new.id and q.answer_option_id is not null) then
+    head := coalesce(who, '누군가') || '님이 퀴즈를 냈어요';
+  else
+    head := coalesce(who, '누군가') || '님이 새 글을 올렸어요';
+  end if;
+
+  insert into push_outbox (member_id, kind, title, body, url, dedupe_key, actor_id)
+  values (null, 'post', head, left(coalesce(new.body, ''), 40),
+          'me.html#post=' || new.id, 'post:' || new.id, new.author_id)
+  on conflict (dedupe_key) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists outbox_post_trg on posts;
+create trigger outbox_post_trg after insert on posts
+  for each row execute function outbox_on_post();
+
+-- 댓글 — 내 글에 달리면 글쓴이에게, 내 댓글에 달리면 그 사람에게.
+-- 같은 사람이 둘 다면 한 번만.
+create or replace function outbox_on_comment()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  who text; owner uuid; parent_owner uuid;
+begin
+  select name into who from members where id = new.author_id;
+  select author_id into owner from posts where id = new.post_id;
+  if new.parent_id is not null then
+    select author_id into parent_owner from comments where id = new.parent_id;
+  end if;
+
+  /* 대댓글 — 내 댓글에 답글 */
+  if parent_owner is not null and parent_owner <> new.author_id then
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+    values (parent_owner, 'reply',
+            coalesce(who, '누군가') || '님이 내 댓글에 답글을 남겼어요',
+            left(coalesce(new.body, ''), 40),
+            'me.html#post=' || new.post_id, 'reply:' || new.id)
+    on conflict (dedupe_key) do nothing;
+  end if;
+
+  /* 댓글 — 내 글에. 글쓴이가 위에서 이미 받았으면 안 보낸다 */
+  if owner is not null and owner <> new.author_id
+     and (parent_owner is null or parent_owner <> owner) then
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+    values (owner, 'comment',
+            coalesce(who, '누군가') || '님이 댓글을 남겼어요',
+            left(coalesce(new.body, ''), 40),
+            'me.html#post=' || new.post_id, 'comment:' || new.id)
+    on conflict (dedupe_key) do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists outbox_comment_trg on comments;
+create trigger outbox_comment_trg after insert on comments
+  for each row execute function outbox_on_comment();
+
+-- 봉사 신청이 열리면 전체에게
+create or replace function outbox_on_event()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if new.date < current_date then return new; end if;
+  insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+  values (null, 'vol', '봉사 신청이 열렸어요',
+          to_char(new.date, 'MM/DD') || '(' ||
+          case extract(dow from new.date)::int
+            when 0 then '일' when 1 then '월' when 2 then '화' when 3 then '수'
+            when 4 then '목' when 5 then '금' else '토' end || ') ' ||
+          coalesce(to_char(new.start_time, 'HH24:MI') || ' ', '') ||
+          coalesce(new.place, '') ||
+          case when new.capacity > 0 then ' · 선착순 ' || new.capacity || '명' else '' end,
+          'me.html#tab=vol', 'vol:' || new.id)
+  on conflict (dedupe_key) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists outbox_event_trg on events;
+create trigger outbox_event_trg after insert on events
+  for each row execute function outbox_on_event();
+
+
+-- ------------------------------------------------------------
+-- 시각이 되면 도는 것들 — pg_cron 이 5분마다 push_tick() 을 부른다
+--   · 봉사 전날 저녁 8시
+--   · 봉사 당일 (오전 시작은 13:00, 오후 시작은 시작+3시간)
+--   · 설문 마감 하루 전 (아직 참여 안 한 사람에게만)
+--   · 퀴즈 발표 시각
+-- 모두 dedupe_key 로 막아 두 번 가지 않는다.
+-- ------------------------------------------------------------
+create or replace function push_tick()
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  n_before int := 0; n_thanks int := 0; n_poll int := 0; n_quiz int := 0;
+  kst timestamptz := now();
+  r record;
+  dow text;
+begin
+  /* ---- 봉사 전날 저녁 8시 ---- */
+  for r in
+    select e.*, a.member_id
+      from events e join attendance a on a.event_id = e.id
+     where e.date = (current_date + 1)
+       and (now() at time zone 'Asia/Seoul')::time >= time '20:00'
+  loop
+    dow := case extract(dow from r.date)::int
+             when 0 then '일' when 1 then '월' when 2 then '화' when 3 then '수'
+             when 4 then '목' when 5 then '금' else '토' end;
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+    values (r.member_id, 'before',
+            '내일(' || dow || ') ' ||
+            coalesce(to_char(r.start_time, 'HH24:MI') || ' ', '') ||
+            coalesce(r.place, '') || ' 봉사예요',
+            case when coalesce(btrim(r.note), '') <> ''
+                 then '준비물: ' || r.note
+                 else '잊지 말고 와 주세요 🐾' end,
+            'me.html#tab=vol', 'before:' || r.id || ':' || r.member_id)
+    on conflict (dedupe_key) do nothing;
+    n_before := n_before + 1;
+  end loop;
+
+  /* ---- 봉사 당일 감사 ---- */
+  for r in
+    select e.*, a.member_id
+      from events e join attendance a on a.event_id = e.id
+     where e.date = current_date
+       and (now() at time zone 'Asia/Seoul')::time >=
+           case when e.start_time is null or e.start_time < time '12:00'
+                then time '13:00'
+                else e.start_time + interval '3 hours' end
+  loop
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+    values (r.member_id, 'thanks', '오늘 와줘서 고맙다멍!',
+            '덕분에 지루한 일상 속 웃음이 가득했다멍. 후기도 남겨 줄래멍?',
+            'me.html#tab=home', 'thanks:' || r.id || ':' || r.member_id)
+    on conflict (dedupe_key) do nothing;
+    n_thanks := n_thanks + 1;
+  end loop;
+
+  /* ---- 설문 마감 하루 전 — 아직 참여 안 한 사람에게만 ---- */
+  for r in
+    select p.id as post_id, q.question, m.id as member_id
+      from polls q
+      join posts p on p.id = q.post_id
+      cross join members m
+     where p.type = 'poll' and not p.hidden
+       and q.closed_at is null
+       and q.closes_at is not null
+       and q.closes_at > now()
+       and q.closes_at <= now() + interval '24 hours'
+       and m.status <> 'left'
+       and not exists (select 1 from poll_votes v
+                        where v.post_id = p.id and v.member_id = m.id)
+  loop
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+    values (r.member_id, 'poll', '설문이 내일 마감돼요 · 아직 참여 전이에요',
+            r.question, 'me.html#post=' || r.post_id,
+            'poll:' || r.post_id || ':' || r.member_id)
+    on conflict (dedupe_key) do nothing;
+    n_poll := n_poll + 1;
+  end loop;
+
+  /* ---- 퀴즈 발표 시각이 지난 것 ---- */
+  for r in
+    select q.post_id from polls q
+     where q.answer_option_id is not null
+       and q.revealed_at is null
+       and q.reveal_at is not null
+       and q.reveal_at <= now()
+  loop
+    perform reveal_quiz_sys(r.post_id);
+    n_quiz := n_quiz + 1;
+  end loop;
+
+  return json_build_object('before', n_before, 'thanks', n_thanks,
+                           'poll', n_poll, 'quiz', n_quiz, 'at', kst);
+end;
+$$;
+
+-- 예약 발표는 사람이 아니라 시계가 부른다 — is_member() 검사를 하지 않는 쪽
+create or replace function reveal_quiz_sys(p_post uuid)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+declare q polls%rowtype; ans text; qq text;
+begin
+  select * into q from polls where post_id = p_post;
+  if q.post_id is null or q.answer_option_id is null or q.revealed_at is not null then
+    return;
+  end if;
+
+  update polls set revealed_at = now() where post_id = p_post and revealed_at is null;
+  if not found then return; end if;
+
+  select label into ans from poll_options where id = q.answer_option_id;
+  qq := coalesce(q.question, '');
+
+  insert into member_notices (member_id, kind, body, post_id)
+  select v.member_id, 'quiz',
+         case when v.option_id = q.answer_option_id
+              then '정답이에요! ' || coalesce(ans, '') || ' 였어요 🐾'
+              else '아쉬워요! 정답은 ' || coalesce(ans, '') || ' 였어요' end,
+         p_post
+    from (select distinct on (member_id) member_id, option_id
+            from poll_votes where post_id = p_post
+           order by member_id, created_at) v;
+
+  insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+  select v.member_id, 'quiz',
+         case when v.option_id = q.answer_option_id then '정답이에요! 🐾' else '아쉬워요!' end,
+         qq || ' → ' ||
+         case when v.option_id = q.answer_option_id
+              then coalesce(ans, '') || '였어요'
+              else '정답은 ' || coalesce(ans, '') || '였어요' end,
+         'me.html#post=' || p_post,
+         'quiz:' || p_post || ':' || v.member_id
+    from (select distinct on (member_id) member_id, option_id
+            from poll_votes where post_id = p_post
+           order by member_id, created_at) v
+  on conflict (dedupe_key) do nothing;
+end;
+$$;
+
+revoke all on function push_tick() from public, anon, authenticated;
+revoke all on function reveal_quiz_sys(uuid) from public, anon, authenticated;
+
+-- 대기에서 올라가면 알림
+create or replace function outbox_on_promote()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+declare e events%rowtype; dow text;
+begin
+  select * into e from events where id = new.event_id;
+  if e.id is null then return new; end if;
+  dow := case extract(dow from e.date)::int
+           when 0 then '일' when 1 then '월' when 2 then '화' when 3 then '수'
+           when 4 then '목' when 5 then '금' else '토' end;
+
+  insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+  values (new.member_id, 'promoted', '자리가 났어요!',
+          to_char(e.date, 'MM/DD') || '(' || dow || ') ' ||
+          coalesce(to_char(e.start_time, 'HH24:MI') || ' ', '') ||
+          coalesce(e.place, '') || ' 봉사에 신청됐어요. 못 가면 꼭 취소해 주세요',
+          'me.html#tab=vol', 'promoted:' || e.id || ':' || new.member_id)
+  on conflict (dedupe_key) do nothing;
+  return new;
+end;
+$$;

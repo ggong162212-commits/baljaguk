@@ -26,6 +26,18 @@ window.CONFIG = {
   // 「비상 로그인」에서 이메일·비밀번호를 그때그때 직접 입력합니다.
   ADMIN_EMAIL: 'unyoung@baljaguk.club',
 
+  // 알림(웹 푸시)에 쓰는 공개 키.
+  // 비워 두면 알림 기능이 화면에 안 나옵니다 (나머지는 그대로 동작).
+  //
+  //  만드는 법 — 아무 곳에서나 한 번만:
+  //    npx web-push generate-vapid-keys
+  //  나온 Public Key 를 여기에, Private Key 는 Supabase 쪽에만 넣습니다.
+  //    Edge Functions → Secrets 에 VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY, VAPID_SUBJECT
+  //
+  //  ★ Private Key 는 이 파일에 절대 적지 않습니다.
+  //    이 파일은 사이트에 들어온 누구나 열어볼 수 있습니다.
+  VAPID_PUBLIC_KEY: '',
+
   // 설문(survey.html) 회차. 학기가 바뀌면 이 값만 바꾸면 응답이 새로 쌓입니다.
   SURVEY_TOPIC: '2026-2',
 

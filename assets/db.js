@@ -930,6 +930,60 @@
   }
 
   /* ---------- 운영진 할 일 ---------- */
+  /* ---------- 알림 ---------- */
+  DB.push = {
+    async subscribe(endpoint, p256dh, auth) {
+      if (!HAS_SB) {
+        try { localStorage.setItem('baljaguk.pushDemo', endpoint); } catch (e) { }
+        return true;
+      }
+      return await rest('rpc/push_subscribe', {
+        method: 'POST',
+        body: { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth }
+      });
+    },
+
+    async unsubscribe(endpoint) {
+      if (!HAS_SB) {
+        try { localStorage.removeItem('baljaguk.pushDemo'); } catch (e) { }
+        return true;
+      }
+      return await rest('rpc/push_unsubscribe', {
+        method: 'POST', body: { p_endpoint: endpoint }
+      });
+    },
+
+    /* 종류별 끄고 켜기 — 이 기기 것만 */
+    async prefs(endpoint) {
+      if (!HAS_SB) {
+        try { return JSON.parse(localStorage.getItem('baljaguk.pushPrefs') || 'null'); }
+        catch (e) { return null; }
+      }
+      return await rest('rpc/push_prefs', { method: 'POST', body: { p_endpoint: endpoint } });
+    },
+
+    async setPref(endpoint, key, on) {
+      if (!HAS_SB) {
+        let v = {};
+        try { v = JSON.parse(localStorage.getItem('baljaguk.pushPrefs') || '{}'); } catch (e) { }
+        v[key] = !!on;
+        try { localStorage.setItem('baljaguk.pushPrefs', JSON.stringify(v)); } catch (e) { }
+        return true;
+      }
+      return await rest('rpc/push_prefs_set', {
+        method: 'POST', body: { p_endpoint: endpoint, p_key: key, p_on: !!on }
+      });
+    },
+
+    /* 나에게만 보내 보기 */
+    async test(kind, title, body) {
+      if (!HAS_SB) return { demo: true };
+      return await rest('rpc/push_test', {
+        method: 'POST', body: { p_kind: kind, p_title: title, p_body: body }
+      });
+    }
+  };
+
   DB.adminTodo = async function () {
     if (!HAS_SB) {
       const d = cdemo();

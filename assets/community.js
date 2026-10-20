@@ -124,6 +124,194 @@ window.Community = (function () {
   }
 
   /* ---------- 내 프로필 ---------- */
+  /* ---------- 알림 설정 ----------
+     켜고 끄기, 종류별 고르기, 나에게만 보내 보기.
+     카톡 안 브라우저와 아이폰(홈 추가 전)은 받을 수 없어서 안내를 대신 보인다. */
+  const NKINDS = [
+    ['want_post',     '새 글',      '누가 글을 올리면'],
+    ['want_comment',  '댓글',       '내 글에 댓글이 달리면'],
+    ['want_reply',    '답글',       '내 댓글에 답글이 달리면'],
+    ['want_reaction', '반응',       '내 글에 반응이 달리면'],
+    ['want_vol',      '봉사 열림',  '새 봉사 신청이 열리면'],
+    ['want_promoted', '대기 → 신청', '대기에서 자리가 나면'],
+    ['want_notice',   '공지',       '운영진 공지'],
+    ['want_poll',     '설문 마감',  '아직 참여 안 한 설문이 마감되기 전날'],
+    ['want_quiz',     '퀴즈 결과',  '퀴즈 정답이 발표되면'],
+    ['want_before',   '봉사 전날',  '전날 저녁 8시'],
+    ['want_thanks',   '봉사 감사',  '다녀온 날']
+  ];
+
+  /* 미리보기 — 실제로 보내 보는 문구 */
+  const NSAMPLE = {
+    want_post:     ['이보호님이 새 글을 올렸어요', '오늘 처음 간 보금자리! 아이들이 생각보다 훨씬…'],
+    want_comment:  ['이보호님이 댓글을 남겼어요', '다음엔 같이 가요'],
+    want_reply:    ['이보호님이 내 댓글에 답글을 남겼어요', '저도요! 그날 봬요'],
+    want_reaction: ['이보호님 외 2명이 내 후기에 반응했어요', '💗 🐾 👏'],
+    want_vol:      ['봉사 신청이 열렸어요', '10/31(토) 13:00 금파하우스 · 선착순 8명'],
+    want_promoted: ['자리가 났어요!', '10/31(토) 13:00 금파하우스 봉사에 신청됐어요. 못 가면 꼭 취소해 주세요'],
+    want_notice:   ['[공지] 11월 정기모임 안내', '11/8(토) 오후 2시, 학생회관 3층이에요'],
+    want_poll:     ['설문이 내일 마감돼요 · 아직 참여 전이에요', '다음 봉사는 언제가 좋을까요?'],
+    want_quiz:     ['정답이에요! 🐾', '이 친구 이름은 뭘까요? → 단비였어요'],
+    want_before:   ['내일(토) 13:00 금파하우스 봉사예요', '준비물: 목장갑, 편한 옷'],
+    want_thanks:   ['오늘 와줘서 고맙다멍!', '덕분에 지루한 일상 속 웃음이 가득했다멍. 후기도 남겨 줄래멍?']
+  };
+
+  /* 체험 모드에서 알림이 어떻게 보이는지 — 화면 위에 띄워 준다 */
+  function showBanner(title, body) {
+    document.querySelectorAll('.pushban').forEach(x => x.remove());
+    const el = document.createElement('div');
+    el.className = 'pushban';
+    el.innerHTML =
+      '<span class="ic">' + ic('paw') + '</span>' +
+      '<span class="tx"><span class="t">' + esc(title) + '</span>' +
+      '<span class="b">' + esc(body) + '</span></span>';
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('in'));
+    setTimeout(() => {
+      el.classList.remove('in');
+      setTimeout(() => el.remove(), 260);
+    }, 4200);
+    el.onclick = () => { el.classList.remove('in'); setTimeout(() => el.remove(), 260); };
+  }
+
+  async function notifySheet() {
+    const ov = sheet({ title: '알림 설정', body: '<div id="nBox">' + paws() + '</div>' });
+    await paintNotify(ov.querySelector('#nBox'));
+  }
+
+  async function paintNotify(box) {
+    if (!box) return;
+    const st = Push.state();
+
+    /* 받을 수 없는 경우 — 왜 그런지와 어떻게 하면 되는지만 */
+    if (st !== 'granted') {
+      box.innerHTML = notifyGuide(st);
+      const go = box.querySelector('[data-nOn]');
+      if (go) go.onclick = async () => {
+        go.disabled = true; go.textContent = '여는 중…';
+        try { await Push.enable(); await paintNotify(box); }
+        catch (e) {
+          toast(e.message || '켜지 못했어요', 'err');
+          go.disabled = false; go.textContent = '알림 켜기';
+        }
+      };
+      const out = box.querySelector('[data-nOut]');
+      if (out) out.onclick = () => {
+        if (!Push.openOutside()) {
+          toast('오른쪽 아래 ··· 를 눌러 「Safari로 열기」를 골라주세요');
+        }
+      };
+      return;
+    }
+
+    /* 받을 수 있는 경우 — 종류별로 */
+    const sub = await Push.current();
+    const ep = sub ? sub.endpoint : '';
+    let prefs = null;
+    try { prefs = await DB.push.prefs(ep); } catch (e) { }
+    const on = k => !prefs || prefs[k] !== false;
+
+    box.innerHTML =
+      '<div class="row between" style="gap:8px;margin-bottom:14px">' +
+      '<span class="sm" style="font-weight:700;color:var(--brand-deep)">' +
+      ic('check') + ' 알림을 받고 있어요</span>' +
+      '<button class="linkbtn" type="button" data-nOff>끄기</button></div>' +
+
+      NKINDS.map(([k, label, when]) =>
+        '<div class="nrow">' +
+        '<div class="grow"><div class="t">' + label + '</div>' +
+        '<div class="s">' + when + '</div></div>' +
+        '<button class="linkbtn sm" type="button" data-ntest="' + k + '">보내 보기</button>' +
+        '<button type="button" class="sw' + (on(k) ? ' on' : '') + '" ' +
+        'data-nk="' + k + '" role="switch" aria-checked="' + (on(k) ? 'true' : 'false') +
+        '" aria-label="' + label + ' 알림"><span></span></button></div>').join('') +
+
+      '<p class="mut" style="font-size:11.5px;margin-top:14px;line-height:1.6">' +
+      '이 기기에서만 적용돼요. 다른 폰에서도 받으려면 거기서도 켜주세요.</p>';
+
+    box.querySelectorAll('[data-nk]').forEach(b => b.onclick = async () => {
+      const k = b.dataset.nk;
+      const next = !b.classList.contains('on');
+      b.classList.toggle('on', next);
+      b.setAttribute('aria-checked', next ? 'true' : 'false');
+      try { await DB.push.setPref(ep, k, next); }
+      catch (e) {
+        b.classList.toggle('on', !next);
+        toast(e.message || '바꾸지 못했어요', 'err');
+      }
+    });
+
+    box.querySelectorAll('[data-ntest]').forEach(b => b.onclick = async () => {
+      const k = b.dataset.ntest;
+      const s = NSAMPLE[k] || ['발자국', ''];
+      b.disabled = true;
+      try {
+        const r = await DB.push.test(k.replace('want_', ''), s[0], s[1]);
+        /* 체험 모드는 실제로 못 보내니 화면 위에 배너로 보여준다 */
+        if (r && r.demo) { showBanner(s[0], s[1]); }
+        else toast('나에게만 보냈어요. 잠시 뒤 떠요', 'ok');
+      } catch (e) {
+        toast(e.message || '보내지 못했어요', 'err');
+      } finally {
+        setTimeout(() => { b.disabled = false; }, 1200);
+      }
+    });
+
+    const off = box.querySelector('[data-nOff]');
+    if (off) off.onclick = async () => {
+      if (!await confirmSheet('알림을 끌까요?',
+        '봉사 안내와 공지를 못 받게 돼요. 언제든 다시 켤 수 있어요.', '끄기')) return;
+      try { await Push.disable(); await paintNotify(box); }
+      catch (e) { toast(e.message || '끄지 못했어요', 'err'); }
+    };
+  }
+
+  /* 왜 못 받는지 — 경우마다 다르게 */
+  function notifyGuide(st) {
+    const card = (icon, title, lines, btn) =>
+      '<div class="card center" style="padding:24px 20px">' +
+      '<div class="bigic">' + ic(icon) + '</div>' +
+      '<h3 style="margin-top:12px;font-size:16px">' + title + '</h3>' +
+      '<p class="mut sm" style="margin-top:8px;line-height:1.65">' + lines + '</p>' +
+      (btn || '') + '</div>';
+
+    if (st === 'off') {
+      return card('clock', '알림은 곧 열려요',
+        '준비가 끝나면 여기서 켤 수 있어요.');
+    }
+    if (st === 'inapp') {
+      return card('alert', '카카오톡 안에서는 알림을 켤 수 없어요',
+        '카카오톡 안 브라우저는 알림을 받지 못해요.<br>' +
+        '크롬이나 사파리로 열어주세요.',
+        '<button class="btn primary lg block" type="button" data-nOut style="margin-top:16px">' +
+        '다른 브라우저로 열기</button>' +
+        (Push.isIOS
+          ? '<p class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.6">' +
+            '아이폰은 오른쪽 아래 <b>···</b> → <b>Safari로 열기</b> 를 눌러주세요.</p>'
+          : ''));
+    }
+    if (st === 'needHome') {
+      return card('download', '먼저 홈 화면에 추가해주세요',
+        '아이폰은 홈 화면에 추가한 뒤에만 알림을 받을 수 있어요.<br><br>' +
+        '아래 <b>공유</b> 버튼 → <b>홈 화면에 추가</b> → ' +
+        '생긴 발바닥 아이콘으로 다시 들어와주세요.');
+    }
+    if (st === 'denied') {
+      return card('alert', '알림이 꺼져 있어요',
+        '브라우저 설정에서 이 사이트의 알림을 허용해주세요.<br>' +
+        '주소창 왼쪽 자물쇠 → 알림 → 허용');
+    }
+    if (st === 'unsupported') {
+      return card('alert', '이 브라우저는 알림을 못 받아요',
+        '크롬이나 사파리에서 열어주세요.');
+    }
+    return card('alert', '알림을 켤까요?',
+      '봉사 안내, 공지, 내 글에 달린 댓글을 바로 받아볼 수 있어요.<br>' +
+      '종류별로 끄고 켤 수 있어요.',
+      '<button class="btn primary lg block" type="button" data-nOn style="margin-top:16px">' +
+      '알림 켜기</button>');
+  }
+
   function profileSheet() {
     const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     const ov = sheet({
@@ -156,6 +344,10 @@ window.Community = (function () {
 
         '<div class="divider"></div>' +
         '<div style="display:grid;gap:8px">' +
+        (Push.hasKey
+          ? '<button class="btn ghost block" type="button" id="pfBell">' +
+            ic('alert') + '<span>알림 설정</span></button>'
+          : '') +
         '<button class="btn ghost block" type="button" id="pfTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
@@ -164,6 +356,9 @@ window.Community = (function () {
     });
 
     loadAvatars(ov);
+
+    const bell = ov.querySelector('#pfBell');
+    if (bell) bell.onclick = () => { closeSheet(); setTimeout(notifySheet, 180); };
 
     /* 봉사 횟수·적립을 한 줄로 */
     DB.myActivity().then(a => {
