@@ -1011,7 +1011,7 @@
       renderVol();
     }));
     $$('#calendar [data-ev]').forEach(el => el.addEventListener('click', () => eventSheet(byId(S.events, el.dataset.ev))));
-    $('#newEv').addEventListener('click', () => eventSheet(null));
+    $('#newEv').addEventListener('click', newEventWizard);
 
     paintRank();
   }
@@ -1145,6 +1145,103 @@
     const base = place || volPlace();
     const same = S.events.filter(e => e.date === date && e.place === place && e.id !== skipId).length;
     return same ? base + ' ' + (same + 1) : base;
+  }
+
+  /* ---------- 봉사모임 만들기 (단계형) ----------
+     새로 만들 때는 묻는 게 많아 한 번에 하나씩 묻는다.
+     수정은 한눈에 봐야 해서 기존 한 화면을 그대로 쓴다. */
+  function newEventWizard() {
+    const places = volPlaces();
+    const names = places.map(p => p.name);
+
+    UI.wizard({
+      title: '봉사모임 만들기',
+      doneLabel: '만들기',
+      steps: [
+        {
+          key: 'date', short: '날짜',
+          q: '언제 가나요?',
+          hint: '날짜를 고르면 제목은 알아서 붙여요.',
+          body: '<label class="field"><input class="input lgin" type="date" id="nDate" ' +
+            'value="' + esc(F.day || DB.today()) + '"></label>' +
+            '<label class="field"><span class="lb">모이는 시간 <span class="mut">(선택)</span></span>' +
+            '<input class="input" type="time" id="nTime" value="10:00"></label>',
+          read: r => ({ date: r.querySelector('#nDate').value, time: r.querySelector('#nTime').value }),
+          fill: (r, v) => {
+            r.querySelector('#nDate').value = v.date || '';
+            r.querySelector('#nTime').value = v.time || '';
+          },
+          valid: v => v.date ? '' : '날짜를 골라주세요',
+          sum: v => fmtDate(v.date) + (v.time ? ' ' + v.time : '')
+        },
+        {
+          key: 'place', short: '보호소',
+          q: '어느 보호소인가요?',
+          hint: '적립은 보호소 설정을 그대로 따라가요.',
+          body: '<div style="display:grid;gap:8px">' + names.map((n, i) =>
+            '<button type="button" class="check" data-p="' + esc(n) + '"' +
+            (i === 0 ? ' class="check on"' : '') + ' style="width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">' + esc(n) + '</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+            (places[i].credit
+              ? '1인당 ' + UI.credit(places[i].credit, places[i].unit)
+              : '적립 없음') + '</span></span></button>').join('') + '</div>',
+          after: (r, vals) => {
+            const pick = nm => r.querySelectorAll('[data-p]').forEach(b =>
+              b.classList.toggle('on', b.dataset.p === nm));
+            r.querySelectorAll('[data-p]').forEach(b =>
+              b.addEventListener('click', () => pick(b.dataset.p)));
+            pick((vals.place && vals.place.name) || names[0]);
+          },
+          read: r => {
+            const on = r.querySelector('[data-p].on') || r.querySelector('[data-p]');
+            const nm = on ? on.dataset.p : names[0];
+            return { name: nm, credit: creditOf(nm), unit: unitOf(nm) };
+          },
+          sum: v => v.name
+        },
+        {
+          key: 'cap', short: '정원',
+          q: '몇 명까지 받을까요?',
+          hint: '비워두면 인원 제한 없이 받아요. 정원이 차면 대기로 받습니다.',
+          body: '<label class="field"><input class="input lgin" type="number" min="1" ' +
+            'id="nCap" placeholder="예: 8"></label>',
+          read: r => r.querySelector('#nCap').value,
+          fill: (r, v) => { r.querySelector('#nCap').value = v || ''; },
+          sum: v => v ? v + '명' : '제한 없음'
+        },
+        {
+          key: 'open', short: '신청 열기',
+          q: '신청은 언제부터 받을까요?',
+          hint: '비워두면 지금부터 바로 받아요.',
+          body: '<label class="field"><input class="input" type="datetime-local" id="nOpen"></label>',
+          read: r => r.querySelector('#nOpen').value,
+          fill: (r, v) => { r.querySelector('#nOpen').value = v || ''; },
+          sum: v => v ? fmtDateTime(v) + '부터' : '지금부터'
+        }
+      ],
+      done: async v => {
+        const row = await DB.events.create({
+          title: autoTitle(v.date.date, v.place.name, null),
+          date: v.date.date,
+          start_time: v.date.time || null,
+          place: v.place.name,
+          note: '',
+          capacity: Number(v.cap) || null,
+          credit_per_person: v.place.credit,
+          credit_unit: v.place.unit,
+          signup_open_at: v.open ? new Date(v.open).toISOString() : null
+        });
+        closeSheet();
+        F.day = v.date.date;
+        await reload();
+        toast('봉사모임을 만들었어요', 'ok');
+        /* 참석자는 만들고 나서 고른다 */
+        const made = byId(S.events, row.id);
+        if (made) eventSheet(made);
+      }
+    });
   }
 
   function eventSheet(ev) {
