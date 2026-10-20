@@ -470,3 +470,96 @@ $$;
 
 revoke all on function poll_who(uuid) from public, anon;
 grant execute on function poll_who(uuid) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 12) 로그인한 구성원의 봉사 신청 — 이름이 아니라 내 id 로 한다.
+--     이름으로 맞추면 동명이인이 있을 때 남의 신청이 내 것으로 보인다.
+-- ------------------------------------------------------------
+create or replace function my_signups()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case when not is_member() then null else coalesce(
+    (select json_agg(a.event_id) from attendance a where a.member_id = my_member_id()),
+    '[]'::json) end;
+$$;
+
+create or replace function event_signup_me(p_event uuid)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  me_  uuid := my_member_id();
+  ev   events%rowtype;
+  cnt  int;
+begin
+  if me_ is null then return 'nomatch'; end if;
+  select * into ev from events where id = p_event;
+  if not found then return 'noevent'; end if;
+  if ev.signup_open_at is not null and now() < ev.signup_open_at then return 'before'; end if;
+  if exists (select 1 from attendance where event_id = p_event and member_id = me_) then return 'dup'; end if;
+  select count(*) into cnt from attendance where event_id = p_event;
+  if coalesce(ev.capacity, 0) > 0 and cnt >= ev.capacity then return 'full'; end if;
+  insert into attendance (event_id, member_id, hours) values (p_event, me_, 0);
+  return 'ok';
+end;
+$$;
+
+create or replace function event_cancel_me(p_event uuid)
+returns text
+language plpgsql security definer
+set search_path = public
+as $$
+declare me_ uuid := my_member_id();
+begin
+  if me_ is null then return 'nomatch'; end if;
+  delete from attendance where event_id = p_event and member_id = me_;
+  return 'ok';
+end;
+$$;
+
+revoke all on function my_signups()            from public, anon;
+revoke all on function event_signup_me(uuid)   from public, anon;
+revoke all on function event_cancel_me(uuid)   from public, anon;
+grant execute on function my_signups()          to authenticated;
+grant execute on function event_signup_me(uuid) to authenticated;
+grant execute on function event_cancel_me(uuid) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 13) 새 소식 — 내 글에 달린 댓글·반응. 내가 한 것은 빼고.
+-- ------------------------------------------------------------
+create or replace function my_news(p_limit int default 30)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+with me_ as (select my_member_id() as id),
+mine as (select id, type, body from posts where author_id = (select id from me_)),
+rows_ as (
+  select 'comment' as kind, c.created_at, c.post_id,
+         (select m.name from members m where m.id = c.author_id) as who,
+         c.body as detail, null::text as kindly
+    from comments c join mine on mine.id = c.post_id
+   where c.author_id <> (select id from me_) and not c.hidden
+  union all
+  select 'reaction', r.created_at, r.post_id,
+         (select m.name from members m where m.id = r.member_id),
+         null, r.kind
+    from reactions r join mine on mine.id = r.post_id
+   where r.member_id <> (select id from me_)
+)
+select case when not is_member() then null else coalesce(
+  (select json_agg(json_build_object(
+     'kind', kind, 'at', created_at, 'post_id', post_id,
+     'who', who, 'detail', detail, 'react', kindly) order by created_at desc)
+     from (select * from rows_ order by created_at desc
+            limit greatest(1, least(coalesce(p_limit, 30), 100))) z),
+  '[]'::json) end;
+$$;
+
+revoke all on function my_news(int) from public, anon;
+grant execute on function my_news(int) to authenticated;

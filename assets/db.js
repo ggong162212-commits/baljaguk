@@ -1174,6 +1174,67 @@
       }) || [];
     },
 
+    /* ---------- 새 소식 ---------- */
+    /* 내 글에 달린 댓글·반응. 내가 한 것은 세지 않는다 */
+    async news() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return [];
+        const mine = d.posts.filter(p => p.author_id === me).map(p => p.id);
+        const out = [];
+        d.comments.filter(c => mine.indexOf(c.post_id) >= 0 && c.author_id !== me && !c.hidden)
+          .forEach(c => out.push({
+            kind: 'comment', at: c.created_at, post_id: c.post_id,
+            who: (demoMember(c.author_id) || {}).name, detail: c.body, react: null
+          }));
+        d.reactions.filter(r => mine.indexOf(r.post_id) >= 0 && r.member_id !== me)
+          .forEach(r => out.push({
+            kind: 'reaction', at: r.created_at || new Date().toISOString(), post_id: r.post_id,
+            who: (demoMember(r.member_id) || {}).name, detail: null, react: r.kind
+          }));
+        return out.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
+      }
+      return await rest('rpc/my_news', { method: 'POST', body: { p_limit: 30 } }) || [];
+    },
+
+    /* ---------- 봉사 신청 (로그인한 구성원) ---------- */
+    /* 이름이 아니라 내 id 로 한다. 동명이인이 있어도 섞이지 않는다 */
+    async mySignups() {
+      if (!HAS_SB) {
+        const id = myDemoId();
+        if (!id) return [];
+        return (cdemo().attendance || [])
+          .filter(a => a.member_id === id).map(a => a.event_id);
+      }
+      return await rest('rpc/my_signups', { method: 'POST', body: {} }) || [];
+    },
+
+    async signup(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return 'nomatch';
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return 'noevent';
+        if (e.signup_open_at && Date.now() < Date.parse(e.signup_open_at)) return 'before';
+        d.attendance = d.attendance || [];
+        if (d.attendance.some(a => a.event_id === eventId && a.member_id === me)) return 'dup';
+        const taken = d.attendance.filter(a => a.event_id === eventId).length;
+        if (Number(e.capacity) > 0 && taken >= Number(e.capacity)) return 'full';
+        d.attendance.push({ id: uid(), event_id: eventId, member_id: me, hours: 0 });
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/event_signup_me', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    async cancelSignup(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        d.attendance = (d.attendance || []).filter(a => !(a.event_id === eventId && a.member_id === me));
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/event_cancel_me', { method: 'POST', body: { p_event: eventId } });
+    },
+
     /* ---------- 사진 ---------- */
     /* 비공개 버킷에 올리고, 볼 때는 서명된 주소를 받아온다 */
     async uploadPhoto(postId, dataUrl, i) {

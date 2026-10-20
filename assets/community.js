@@ -53,6 +53,7 @@ window.Community = (function () {
     $('#fab').innerHTML = ic('plus');
 
     go('home');
+    paintTabDot();
   }
 
   function go(tab) {
@@ -302,7 +303,7 @@ window.Community = (function () {
         'data-react="' + esc(p.id) + '" data-k="' + k + '" title="' + EMOJI_NAME[k] + '">' +
         '<span>' + EMOJI[k] + '</span><span class="n">' + counts[k] + '</span></button>').join('') +
       '<button class="react add" type="button" data-pick="' + esc(p.id) + '" aria-label="반응 달기">' +
-      ic('plus') + '</button>' +
+      ic('plus') + (shown.length ? '' : '<span class="lbl">반응</span>') + '</button>' +
       '</div>' +
       (total
         ? '<div class="mut" style="font-size:11.5px;margin-top:6px">' +
@@ -357,6 +358,8 @@ window.Community = (function () {
       if ((b = hit('data-cmenu'))) return feedCommentMenu(b.dataset.cmenu);
       if ((b = hit('data-vote'))) return castVote(b);
       if ((b = hit('data-close'))) return closePoll(b.dataset.close);
+      if ((b = hit('data-signup'))) return doSignup(b.dataset.signup, false);
+      if ((b = hit('data-cancel'))) return doSignup(b.dataset.cancel, true);
     });
 
     /* 반응을 길게 누르면 누가 눌렀는지 */
@@ -817,8 +820,8 @@ window.Community = (function () {
           'data-multi="' + (q.multi ? '1' : '') + '" data-anon="' + (q.anonymous ? '1' : '') + '"' +
           (closed ? ' disabled' : '') + '>' +
           '<span class="fillbar" style="width:' + pct + '%"></span>' +
-          '<span class="lb"><b>' + esc(o.label) + '</b>' +
-          '<span class="mut sm">' + num(o.votes || 0) + '명 · ' + pct + '%</span></span></button>';
+          '<span class="lb"><span class="nm">' + ic('check') + '<span>' + esc(o.label) + '</span></span>' +
+          '<span class="cnt">' + num(o.votes || 0) + '명 · ' + pct + '%</span></span></button>';
       }).join('') +
       '<div class="row between" style="margin-top:7px;gap:8px">' +
       '<span class="mut" style="font-size:11.5px">' +
@@ -904,9 +907,20 @@ window.Community = (function () {
   /* ---------- 투표 만들기 (운영진만) ---------- */
   function pollSheet() {
     let count = 2;
+    const EG = ['예: 토요일 오전', '예: 일요일 오후', '예: 둘 다 괜찮아요',
+      '예: 평일 저녁', '예: 이번엔 어려워요', '예: 아직 모르겠어요'];
     const optRow = i =>
       '<label class="field" style="margin-bottom:8px"><span class="lb">선택지 ' + (i + 1) + '</span>' +
-      '<input class="input" data-opt-in="' + i + '" placeholder="예: 토요일 오전"></label>';
+      '<input class="input" data-opt-in="' + i + '" placeholder="' + EG[i % EG.length] + '"></label>';
+
+    /* 비워 두면 마감 없는 투표가 된다. 3일 뒤 저녁 9시를 기본으로 */
+    const dflt = (function () {
+      const t = new Date(Date.now() + 3 * 864e5);
+      t.setHours(21, 0, 0, 0);
+      const p2 = n => String(n).padStart(2, '0');
+      return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) +
+        'T' + p2(t.getHours()) + ':' + p2(t.getMinutes());
+    })();
 
     const ov = sheet({
       title: '투표 만들기',
@@ -916,7 +930,7 @@ window.Community = (function () {
         '<div id="pOpts">' + optRow(0) + optRow(1) + '</div>' +
         '<button class="btn ghost sm block" type="button" id="pAdd">선택지 더하기</button>' +
         '<label class="field" style="margin-top:12px"><span class="lb">언제까지 받을까요</span>' +
-        '<input class="input" type="datetime-local" id="pEnd"></label>' +
+        '<input class="input" type="datetime-local" id="pEnd" value="' + dflt + '"></label>' +
         '<button type="button" class="check" id="pMulti" style="width:100%;text-align:left;margin-bottom:8px">' +
         '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
         '<span class="sm" style="font-weight:700">여러 개 고를 수 있게</span></button>' +
@@ -975,21 +989,104 @@ window.Community = (function () {
   async function renderVol() {
     $('#headTitle').textContent = '봉사';
     $('#headLead').textContent = '다가오는 봉사와 지난 기록이에요.';
-    paint('<div class="card"><h3>봉사 일정</h3>' +
-      '<div class="sub">신청과 취소는 봉사 화면에서 할 수 있어요.</div><div class="sp"></div>' +
-      '<a class="btn primary block" href="volunteer.html">봉사 일정 열기</a></div>' +
-      '<div id="past">' + loading() + '</div>');
+    paint('<div id="soon">' + loading(1) + '</div><div id="past"></div>');
 
-    let a = null;
-    try { a = await DB.myActivity(); } catch (e) { }
-    const recs = (a && a.records) || [];
-    $('#past').innerHTML = recs.length
-      ? '<div class="card"><h3>내가 다녀온 봉사</h3><div class="sp"></div>' +
-      recs.map(r => '<div class="kv"><span class="k">' + fmtDate(r.date) +
-        (r.place ? ' · ' + esc(r.place) : '') + '</span>' +
-        '<span class="v">' + (Number(r.per) > 0 ? '+' + credit(r.per, r.unit) : '<span class="mut">적립 없음</span>') +
-        '</span></div>').join('') + '</div>'
-      : '<div class="card center" style="padding:26px"><div class="mut sm">아직 다녀온 봉사가 없어요</div></div>';
+    let evs = [];
+    try { evs = await DB.events.list(); } catch (e) {
+      return paint('<div class="card center" style="padding:28px 22px">' + illus('error') +
+        '<h3 style="margin-top:12px;font-size:16px">일정을 불러오지 못했어요</h3>' +
+        '<div style="margin-top:14px"><button class="btn primary" type="button" id="rt">다시 시도</button></div></div>');
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const soon = evs.filter(e => String(e.date) >= today)
+      .sort((x, y) => String(x.date).localeCompare(String(y.date)));
+    const past = evs.filter(e => String(e.date) < today)
+      .sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 12);
+
+    /* 신청 현황은 일정마다, 내 신청 여부는 id 로 한 번에 */
+    const info = {};
+    for (let i = 0; i < soon.length; i++) {
+      try { info[soon[i].id] = await DB.eventPublic(soon[i].id); } catch (e) { }
+    }
+    let mineIds = [];
+    try { mineIds = await DB.community.mySignups(); } catch (e) { }
+
+    $('#soon').innerHTML = soon.length
+      ? '<div class="section-title">' + ic('calendar') + '<span>다가오는 봉사</span></div>' +
+        soon.map(e => volCard(e, info[e.id], mineIds.indexOf(e.id) >= 0)).join('')
+      : '<div class="card center" style="padding:26px 22px">' + illus('emptyFeed', 'sm') +
+        '<h3 style="margin-top:10px;font-size:16px">다가오는 봉사가 없어요</h3>' +
+        '<p class="mut sm" style="margin-top:6px">일정이 올라오면 여기에 보여요.</p></div>';
+
+    /* 지난 봉사에 후기가 몇 개 달렸는지 */
+    let reviews = [];
+    try {
+      const r = await DB.community.feed({ type: 'review', limit: 50 });
+      reviews = (r && r.rows) || [];
+    } catch (e) { }
+    const cnt = id => reviews.filter(x => x.event_id === id).length;
+
+    $('#past').innerHTML = past.length
+      ? '<div class="section-title" style="margin-top:16px">' + ic('clock') + '<span>지난 봉사</span></div>' +
+        '<div class="card" style="padding:4px 16px">' + past.map(e =>
+          '<div class="kv"><span class="k">' + fmtDate(e.date) +
+          (e.place ? ' · ' + esc(e.place) : '') +
+          (e.confirmed_at ? '' : ' <span class="badge">확정 전</span>') + '</span>' +
+          '<span class="v mut" style="font-size:12px">후기 ' + cnt(e.id) + '개</span></div>').join('') +
+        '</div>'
+      : '';
+  }
+
+  function volCard(e, pub, mine) {
+    const taken = (pub && Number(pub.taken)) || 0;
+    const cap = Number(e.capacity) || 0;
+    const full = cap > 0 && taken >= cap && !mine;
+
+    return '<div class="card" data-ev="' + esc(e.id) + '">' +
+      '<div class="row between" style="align-items:flex-start;gap:10px">' +
+      '<div class="grow"><div style="font-weight:700;font-size:15px">' +
+      fmtDate(e.date) + ' (' + UI.weekday(e.date) + ')' +
+      (e.start_time ? ' ' + esc(e.start_time) : '') + '</div>' +
+      '<div class="mut sm" style="margin-top:3px">' + esc(e.place || '') +
+      (e.title ? ' · ' + esc(e.title) : '') + '</div></div>' +
+      (mine ? '<span class="badge approved">신청함</span>' : '') + '</div>' +
+
+      '<div class="mut" style="font-size:12px;margin-top:8px">' +
+      (cap ? '선착순 ' + num(taken) + ' / ' + num(cap) + '명' : num(taken) + '명 신청') + '</div>' +
+
+      '<div style="margin-top:11px">' +
+      (mine
+        ? '<button class="btn ghost block" type="button" data-cancel="' + esc(e.id) + '">신청 취소</button>'
+        : (full
+          ? '<button class="btn block" type="button" disabled>자리가 다 찼어요</button>'
+          : '<button class="btn primary block" type="button" data-signup="' + esc(e.id) + '">신청하기</button>')) +
+      '</div></div>';
+  }
+
+  /* 누르면 바로 바뀌고, 안 되면 쉬운 말로 알린다 */
+  const SIGNUP_MSG = {
+    dup: '이미 신청하셨어요', full: '자리가 다 찼어요',
+    closed: '아직 신청을 받지 않아요', before: '아직 신청 기간이 아니에요',
+    nomatch: '로그인이 풀렸어요. 다시 들어와주세요',
+    noevent: '없는 일정이에요'
+  };
+
+  async function doSignup(id, cancel) {
+    const btn = $('#view').querySelector('[data-' + (cancel ? 'cancel' : 'signup') + '="' + id + '"]');
+    if (btn) { btn.disabled = true; btn.textContent = cancel ? '취소 중…' : '신청 중…'; }
+    try {
+      const r = cancel
+        ? await DB.community.cancelSignup(id)
+        : await DB.community.signup(id);
+      if (r !== 'ok') throw new Error(SIGNUP_MSG[r] || '처리하지 못했어요');
+      toast(cancel ? '신청을 취소했어요' : '신청했어요!', 'ok');
+      if (!cancel) cheer && cheer();
+      renderVol();
+    } catch (e) {
+      toast(e.message || '처리하지 못했어요', 'err');
+      renderVol();
+    }
   }
 
   /* ============================================================
@@ -1005,12 +1102,69 @@ window.Community = (function () {
       (ME.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
       '<div class="mut" style="font-size:12px;margin-top:2px">' +
       esc(genLabel()) + '</div></div></div></div>' +
-      '<div id="act">' + loading() + '</div>' +
+      '<div id="news"></div>' +
+      '<div id="act">' + loading(1) + '</div>' +
       (AM_ADMIN ? '<a class="btn soft block" href="admin.html">운영진 화면으로</a>' : '') +
       '<div class="linkline"><a href="guide.html">사용법 보기 →</a></div>' +
       '<button class="btn ghost block sm" id="out">로그아웃</button>');
     $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
+    loadNews();
     await loadActivity();
+  }
+
+  /* ---------- 새 소식 ----------
+     안 읽은 것은 이 기기에 마지막으로 본 시각을 적어 두고 비교한다 */
+  const NEWS_KEY = 'baljaguk.newsSeen';
+  const newsSeen = () => { try { return localStorage.getItem(NEWS_KEY) || ''; } catch (e) { return ''; } };
+  const markNewsSeen = at => { try { localStorage.setItem(NEWS_KEY, at); } catch (e) { } };
+
+  async function unreadCount() {
+    let list = [];
+    try { list = await DB.community.news(); } catch (e) { return 0; }
+    const seen = newsSeen();
+    return list.filter(n => String(n.at) > seen).length;
+  }
+
+  /* 안 읽은 게 있으면 「나」 탭에 점 */
+  async function paintTabDot() {
+    const n = await unreadCount();
+    const btn = $('#tabbar [data-tab="me"]');
+    if (!btn) return;
+    btn.classList.toggle('dotted', n > 0);
+  }
+
+  async function loadNews() {
+    const box = $('#news');
+    if (!box) return;
+    let list = [];
+    try { list = await DB.community.news(); } catch (e) { return; }
+    if (!list.length) { box.innerHTML = ''; return; }
+
+    const seen = newsSeen();
+    const fresh = list.filter(n => String(n.at) > seen).length;
+    const line = n => n.kind === 'comment'
+      ? '<b>' + esc(n.who || '?') + '</b>님이 댓글을 남겼어요 — ' + esc(cut(n.detail, 28))
+      : '<b>' + esc(n.who || '?') + '</b>님이 ' + (EMOJI[n.react] || '') + ' 반응을 달았어요';
+
+    box.innerHTML =
+      '<div class="card"><div class="row between" style="align-items:center">' +
+      '<h3 style="margin:0">새 소식' +
+      (fresh ? ' <span class="badge approved">' + fresh + '</span>' : '') + '</h3>' +
+      (fresh ? '<button class="linkbtn" type="button" id="newsRead">모두 읽음</button>' : '') +
+      '</div><div class="sp"></div>' +
+      list.slice(0, 8).map(n =>
+        '<button class="kv" type="button" data-open="' + esc(n.post_id) + '" ' +
+        'style="width:100%;border:none;background:none;text-align:left;font-family:inherit;cursor:pointer' +
+        (String(n.at) > seen ? ';font-weight:600' : '') + '">' +
+        '<span class="k" style="flex:1;min-width:0">' + line(n) + '</span>' +
+        '<span class="v mut" style="font-size:11px">' + relTime(n.at) + '</span></button>').join('') +
+      '</div>';
+
+    const rb = $('#newsRead');
+    if (rb) rb.onclick = () => {
+      markNewsSeen(list[0].at);
+      loadNews(); paintTabDot();
+    };
   }
 
   /* 기수는 동아리 설정에 있다. 가입일은 G단계에서 me() 를 넓히면 같이 보여준다 */
