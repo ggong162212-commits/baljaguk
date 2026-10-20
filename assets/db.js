@@ -984,6 +984,68 @@
     }
   };
 
+  /* ---------- 의견 보내기 ---------- */
+  DB.feedback = {
+    async send(body) {
+      const t = String(body || '').trim();
+      if (!t) throw new Error('내용을 적어주세요');
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.feedback = d.feedback || [];
+        d.feedback.push({
+          id: uid(), created_at: new Date().toISOString(),
+          member_id: myDemoId(), body: t, done_at: null
+        });
+        demoWrite(d); return true;
+      }
+      return await rest('rpc/feedback_send', { method: 'POST', body: { p_body: t } });
+    },
+
+    async open() {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.feedback || []).filter(f => !f.done_at).map(f => ({
+          id: f.id, created_at: f.created_at, body: f.body,
+          who: (demoMember(f.member_id) || {}).name
+        })).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      }
+      return await rest('rpc/feedback_open', { method: 'POST', body: {} });
+    },
+
+    async done(id) {
+      if (!HAS_SB) {
+        const d = cdemo(), f = (d.feedback || []).find(x => x.id === id);
+        if (f) { f.done_at = new Date().toISOString(); demoWrite(d); }
+        return true;
+      }
+      return await rest('rpc/feedback_done', { method: 'POST', body: { p_id: id } });
+    }
+  };
+
+  /* ---------- 사용 현황 (운영진만) ---------- */
+  DB.usageStats = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      const wk = Date.now() - 7 * 86400000;
+      const fresh = a => Date.parse(a.created_at || 0) > wk;
+      return {
+        members: (d.members || []).filter(m => m.status !== 'left').length,
+        linked: (d.members || []).filter(m => m.status !== 'left' && m.auth_user_id).length,
+        joined_week: (d.members || []).filter(m => m.linked_at && Date.parse(m.linked_at) > wk).length,
+        posts_week: (d.posts || []).filter(fresh).length,
+        reviews_week: (d.posts || []).filter(p => p.type === 'review' && fresh(p)).length,
+        comments_week: (d.comments || []).filter(fresh).length,
+        push_on: localStorage.getItem('baljaguk.pushDemo') ? 1 : 0,
+        photos: (d.post_photos || []).length,
+        /* 체험 모드는 글자로 담겨 있어 길이로 어림잡는다 */
+        bytes: (d.post_photos || []).reduce((t, f) => t + (String(f.path || '').length * 0.75), 0),
+        rows: (d.posts || []).length + (d.comments || []).length +
+          (d.reactions || []).length + (d.poll_votes || []).length
+      };
+    }
+    return await rest('rpc/usage_stats', { method: 'POST', body: {} });
+  };
+
   DB.adminTodo = async function () {
     if (!HAS_SB) {
       const d = cdemo();
@@ -991,7 +1053,8 @@
       return {
         unconfirmed: (d.events || []).filter(e => String(e.date) < today && !e.confirmed_at).length,
         applications: (d.applications || []).filter(a => (a.status || 'pending') === 'pending').length,
-        reports: (d.reports || []).filter(r => !r.done_at).length
+        reports: (d.reports || []).filter(r => !r.done_at).length,
+        feedback: (d.feedback || []).filter(f => !f.done_at).length
       };
     }
     return await rest('rpc/admin_todo', { method: 'POST', body: {} });

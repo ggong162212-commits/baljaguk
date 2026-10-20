@@ -1374,7 +1374,8 @@ select case when not is_admin() then null else
                      where e.date < current_date and e.confirmed_at is null),
     'applications', (select count(*)::int from applications a
                       where coalesce(a.status, 'pending') = 'pending'),
-    'reports',     (select count(*)::int from reports r where r.done_at is null)
+    'reports',     (select count(*)::int from reports r where r.done_at is null),
+    'feedback',    (select count(*)::int from feedback f where f.done_at is null)
   )
 end;
 $$;
@@ -1957,3 +1958,114 @@ $$;
 drop trigger if exists reports_close_c_trg on comments;
 create trigger reports_close_c_trg before delete on comments
   for each row execute function reports_close_on_comment_delete();
+
+
+-- ============================================================
+--  I. 운영·안전 — 의견 보내기 · 사용 현황 · 저장 공간
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- I1) 의견 보내기 — 「불편한 점 알려 주기」
+--     신고와 같은 곳(reports)에 쌓지 않는다. 성격이 다르다.
+-- ------------------------------------------------------------
+create table if not exists feedback (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  member_id  uuid references members(id) on delete set null,
+  body       text not null,
+  done_at    timestamptz,
+  done_by    uuid references members(id) on delete set null
+);
+alter table feedback enable row level security;
+create index if not exists feedback_open_idx on feedback (done_at, created_at desc);
+
+drop policy if exists "feedback write" on feedback;
+drop policy if exists "feedback admin" on feedback;
+create policy "feedback write" on feedback for insert to authenticated
+  with check (is_member() and member_id = my_member_id());
+create policy "feedback admin" on feedback for all to authenticated
+  using (is_admin()) with check (is_admin());
+
+create or replace function feedback_send(p_body text)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_member() then return false; end if;
+  if coalesce(btrim(p_body), '') = '' then return false; end if;
+  insert into feedback (member_id, body) values (my_member_id(), btrim(p_body));
+  return true;
+end;
+$$;
+
+create or replace function feedback_open()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_admin() then null else
+  (select coalesce(json_agg(json_build_object(
+            'id', f.id, 'created_at', f.created_at, 'body', f.body,
+            'who', (select m.name from members m where m.id = f.member_id))
+            order by f.created_at desc), '[]'::json)
+     from feedback f where f.done_at is null)
+end;
+$$;
+
+create or replace function feedback_done(p_id uuid)
+returns boolean
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if not is_admin() then return false; end if;
+  update feedback set done_at = now(), done_by = my_member_id()
+   where id = p_id and done_at is null;
+  return true;
+end;
+$$;
+
+revoke all on function feedback_send(text) from public, anon;
+revoke all on function feedback_open() from public, anon;
+revoke all on function feedback_done(uuid) from public, anon;
+grant execute on function feedback_send(text) to authenticated;
+grant execute on function feedback_open() to authenticated;
+grant execute on function feedback_done(uuid) to authenticated;
+
+-- ------------------------------------------------------------
+-- I2) 사용 현황 (운영진만)
+--     ★ 개인별 열람 기록은 남기지 않는다. 숫자만 센다.
+-- ------------------------------------------------------------
+create or replace function usage_stats()
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+select case when not is_admin() then null else
+  json_build_object(
+    'members',     (select count(*)::int from members where status <> 'left'),
+    'linked',      (select count(*)::int from members
+                     where status <> 'left' and auth_user_id is not null),
+    'joined_week', (select count(*)::int from members
+                     where status <> 'left' and linked_at > now() - interval '7 days'),
+    'posts_week',  (select count(*)::int from posts
+                     where created_at > now() - interval '7 days' and not hidden),
+    'reviews_week',(select count(*)::int from posts
+                     where type = 'review' and created_at > now() - interval '7 days'
+                       and not hidden),
+    'comments_week',(select count(*)::int from comments
+                     where created_at > now() - interval '7 days' and not hidden),
+    'push_on',     (select count(distinct member_id)::int from push_subscriptions),
+    /* 저장 공간 — 사진이 거의 다다 */
+    'photos',      (select count(*)::int from post_photos),
+    'bytes',       (select coalesce(sum((o.metadata->>'size')::bigint), 0)
+                      from storage.objects o where o.bucket_id in ('community', 'avatars')),
+    'rows',        (select (select count(*) from posts) + (select count(*) from comments)
+                         + (select count(*) from reactions) + (select count(*) from poll_votes))
+  )
+end;
+$$;
+
+revoke all on function usage_stats() from public, anon;
+grant execute on function usage_stats() to authenticated;

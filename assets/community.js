@@ -124,6 +124,40 @@ window.Community = (function () {
   }
 
   /* ---------- 내 프로필 ---------- */
+  /* ---------- 불편한 점 알려 주기 ----------
+     운영진 할 일에 쌓인다. 신고와 섞지 않는다 — 성격이 다르다. */
+  function ideaSheet() {
+    const ov = sheet({
+      title: '불편한 점 알려 주기',
+      body:
+        '<p class="mut sm" style="margin-bottom:12px;line-height:1.65">' +
+        '쓰면서 불편했던 것, 있었으면 하는 것을 적어주세요.<br>' +
+        '운영진이 보고 하나씩 고쳐갈게요.</p>' +
+        '<label class="field"><textarea class="input" id="ideaBody" rows="5" ' +
+        'placeholder="예: 봉사 신청할 때 준비물이 안 보여요"></textarea></label>' +
+        '<p class="mut" style="font-size:11.5px;line-height:1.6">' +
+        '누가 보냈는지 운영진에게 보여요. 익명으로 보내고 싶으면 ' +
+        '「건의함」을 써주세요.</p>' +
+        '<div class="sheet-foot">' +
+        '<button class="btn primary lg block" type="button" id="ideaGo">보내기</button></div>'
+    });
+
+    ov.querySelector('#ideaGo').onclick = async () => {
+      const btn = ov.querySelector('#ideaGo');
+      const t = ov.querySelector('#ideaBody').value.trim();
+      if (!t) return toast('내용을 적어주세요', 'err');
+      btn.disabled = true; btn.textContent = '보내는 중…';
+      try {
+        await DB.feedback.send(t);
+        closeSheet();
+        toast('고마워요. 운영진이 볼게요', 'ok');
+      } catch (e) {
+        toast(e.message || '보내지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '보내기';
+      }
+    };
+  }
+
   /* ---------- 알림 설정 ----------
      켜고 끄기, 종류별 고르기, 나에게만 보내 보기.
      카톡 안 브라우저와 아이폰(홈 추가 전)은 받을 수 없어서 안내를 대신 보인다. */
@@ -351,6 +385,8 @@ window.Community = (function () {
         '<button class="btn ghost block" type="button" id="pfTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
+        '<button class="btn ghost block" type="button" id="pfIdea">' +
+        ic('mail') + '<span>불편한 점 알려 주기</span></button>' +
         '<a class="btn ghost block" href="privacy.html?from=app">' + ic('lock') + '<span>개인정보 처리방침</span></a>' +
         '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
         '</div>'
@@ -360,6 +396,9 @@ window.Community = (function () {
 
     const bell = ov.querySelector('#pfBell');
     if (bell) bell.onclick = () => { closeSheet(); setTimeout(notifySheet, 180); };
+
+    const idea = ov.querySelector('#pfIdea');
+    if (idea) idea.onclick = () => { closeSheet(); setTimeout(ideaSheet, 180); };
 
     /* 봉사 횟수·적립을 한 줄로 */
     DB.myActivity().then(a => {

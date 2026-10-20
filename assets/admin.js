@@ -459,7 +459,8 @@
     const items = [
       ['vol', 'calendar', '확정 안 한 봉사', t.unconfirmed],
       ['apply', 'mail', '가입 대기', t.applications],
-      ['reports', 'alert', '신고', t.reports]
+      ['reports', 'alert', '신고', t.reports],
+      ['feedback', 'heart', '받은 의견', t.feedback]
     ].filter(x => Number(x[3]) > 0);
 
     if (!items.length) { box.innerHTML = ''; return; }
@@ -473,7 +474,32 @@
     box.querySelectorAll('[data-todo]').forEach(b => b.onclick = () => {
       const k = b.dataset.todo;
       if (k === 'reports') return reportsSheet();
+      if (k === 'feedback') return feedbackSheet();
       go(k);
+    });
+  }
+
+  /* 받은 의견 — 구성원이 「불편한 점 알려 주기」로 보낸 것 */
+  async function feedbackSheet() {
+    const ov = sheet({ title: '받은 의견', body: '<div id="fbList" class="mut sm">불러오는 중…</div>' });
+    let list = [];
+    try { list = await DB.feedback.open(); } catch (e) { }
+    const box = ov.querySelector('#fbList');
+    if (!box) return;
+    if (!list.length) { box.innerHTML = '<div class="mut sm">아직 받은 의견이 없어요</div>'; return; }
+
+    box.innerHTML = list.map(f =>
+      '<div class="card" style="margin-bottom:10px">' +
+      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) +
+      ' · ' + esc(f.who || '(알 수 없음)') + '</div>' +
+      '<div style="margin-top:7px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
+      esc(f.body) + '</div>' +
+      '<button class="btn soft sm block" type="button" style="margin-top:11px" ' +
+      'data-fdone="' + esc(f.id) + '">확인했어요</button></div>').join('');
+
+    box.querySelectorAll('[data-fdone]').forEach(b => b.onclick = async () => {
+      try { await DB.feedback.done(b.dataset.fdone); toast('확인했어요', 'ok'); closeSheet(); render(); }
+      catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
     });
   }
 
@@ -2997,9 +3023,118 @@
   /* ============================================================
      7. 설정
      ============================================================ */
+  /* ---------- 사용 현황 · 저장 공간 · 백업 ----------
+     무료 플랜 한도에 가까워지면 미리 알아야 한다.
+     개인별로 누가 무엇을 봤는지는 세지 않는다 — 숫자만 본다. */
+
+  /* Supabase 무료 플랜 (2026-10 기준) */
+  const FREE = { db: 500 * 1024 * 1024, storage: 1024 * 1024 * 1024 };
+
+  const mb = b => {
+    const n = Number(b) || 0;
+    if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(1) + 'GB';
+    if (n >= 1024 * 1024) return Math.round(n / 1024 / 1024) + 'MB';
+    return Math.round(n / 1024) + 'KB';
+  };
+
+  async function paintUsage() {
+    const box = $('#usageBox');
+    if (!box) return;
+    let u = null;
+    try { u = await DB.usageStats(); } catch (e) { }
+    if (!u) { box.innerHTML = '<div class="mut sm">불러오지 못했어요</div>'; return; }
+
+    const pct = Math.min(100, Math.round((Number(u.bytes) || 0) / FREE.storage * 100));
+    const avg = u.photos ? (Number(u.bytes) || 0) / u.photos : 0;
+    const warn = pct >= 80;
+
+    box.innerHTML =
+      '<div class="statcard" style="margin-bottom:12px">' +
+      stat('green', 'users', '이번 주 들어옴', num(u.joined_week) + '명') +
+      stat('gold', 'edit', '이번 주 글', num(u.posts_week) + '개') +
+      stat('sky', 'alert', '알림 켬', num(u.push_on) + '명') + '</div>' +
+
+      '<div class="kv"><span class="k">구성원</span><span class="v">' +
+      num(u.linked) + ' / ' + num(u.members) + '명 연결</span></div>' +
+      '<div class="kv"><span class="k">이번 주 후기</span><span class="v">' +
+      num(u.reviews_week) + '개</span></div>' +
+      '<div class="kv"><span class="k">이번 주 댓글</span><span class="v">' +
+      num(u.comments_week) + '개</span></div>' +
+
+      '<div class="divider"></div>' +
+      '<div class="lb" style="margin-bottom:8px">저장 공간 (사진)</div>' +
+      '<div class="bar' + (warn ? ' warn' : '') + '">' +
+      '<span style="width:' + Math.max(2, pct) + '%"></span></div>' +
+      '<div class="row between" style="margin-top:7px">' +
+      '<span class="mut" style="font-size:12px">' + mb(u.bytes) + ' / ' + mb(FREE.storage) + '</span>' +
+      '<span class="mut" style="font-size:12px">' + pct + '%</span></div>' +
+
+      '<div class="kv"><span class="k">사진</span><span class="v">' +
+      num(u.photos) + '장 · 평균 ' + mb(avg) + '</span></div>' +
+      '<div class="kv"><span class="k">글·댓글·반응 줄</span><span class="v">' +
+      num(u.rows) + '줄</span></div>' +
+
+      (warn
+        ? '<p class="pill-note warn" style="margin-top:12px">' +
+          '<b>저장 공간이 ' + pct + '% 찼어요.</b><br>' +
+          '오래된 봉사 사진을 내려받아 보관한 뒤 글을 지우거나, ' +
+          '유료 플랜으로 올리는 걸 생각해 보세요.</p>'
+        : '') +
+
+      '<p class="mut" style="font-size:11.5px;margin-top:12px;line-height:1.65">' +
+      '누가 무엇을 봤는지는 세지 않아요. 숫자만 봐요.</p>';
+  }
+
+  /* 전체 백업 — 표마다 JSON 하나씩, 한 파일로 묶어 내려받는다.
+     사진은 파일이 커서 목록(주소)만 담는다. */
+  async function backupAll() {
+    const btn = $('#bkGo');
+    if (btn) { btn.disabled = true; btn.textContent = '모으는 중…'; }
+    try {
+      const out = {
+        만든날: new Date().toISOString(),
+        동아리: S.settings,
+        구성원: S.members,
+        봉사: S.events,
+        참석: S.att,
+        재정: S.fin,
+        후원: { 캠페인: S.camps, 후원금: S.dons },
+        설문: S.srv,
+        '1365': S.ids,
+        보호소전달: S.pays
+      };
+      /* 커뮤니티 쪽은 따로 받아 온다 */
+      try {
+        const f = await DB.community.feed({ limit: 500 });
+        out.글 = (f && f.rows) || [];
+        out.사진목록 = out.글.reduce((a, p) => a.concat(p.photos || []), []);
+      } catch (e) { out.글 = '못 받았어요'; }
+
+      const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '발자국_백업_' + DB.today() + '.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast('백업을 내려받았어요', 'ok');
+    } catch (e) {
+      toast(e.message || '백업하지 못했어요', 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '전체 백업 받기'; }
+    }
+  }
+
   function renderSettings() {
     const s = S.settings;
     $('#settingsPanel').innerHTML =
+      '<div class="card"><h3>사용 현황</h3>' +
+      '<div class="sub">이번 주 움직임과 남은 저장 공간이에요.</div><div class="sp"></div>' +
+      '<div id="usageBox" class="mut sm">불러오는 중…</div>' +
+      '<div class="divider"></div>' +
+      '<button class="btn ghost block" type="button" id="bkGo">전체 백업 받기</button>' +
+      '<span class="hint">표를 모두 담은 파일 하나를 내려받아요. ' +
+      '사진은 파일이 커서 목록(주소)만 담아요.</span></div>' +
+
       '<div class="card"><h3>동아리 정보</h3>' +
       '<div class="sub">신청 폼·설문·구성원 등록에 두루 쓰여요.</div><div class="sp"></div>' +
       '<div class="grid2">' +
@@ -3165,5 +3300,9 @@
       if (!await confirmSheet('로그아웃할까요?', '', '로그아웃')) return;
       DB.logout(); location.reload();
     };
+
+    paintUsage();
+    const bk = $('#bkGo');
+    if (bk) bk.onclick = backupAll;
   }
 })();
