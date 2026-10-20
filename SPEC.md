@@ -869,17 +869,31 @@ QR은 찍는 쪽 카메라 권한과 밝기 문제가 있고,
 4. 끈 사람은 빼고 보낸다. 같은 것은 `dedupe_key` 로 두 번 안 간다
 5. 기기가 사라지면(410·404) 그 등록을 치운다
 
-### 선고은님이 해야 할 것 (배포 때)
+### 키는 이미 만들어 두었다 (2026-10-20)
 
-1. `npx web-push generate-vapid-keys` — 한 번만
-2. **Public Key** → `assets/config.js` 의 `VAPID_PUBLIC_KEY`
-3. Supabase → Edge Functions → Secrets 에
-   `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` · `VAPID_SUBJECT` · `PUSH_SECRET`
-4. `supabase functions deploy push --no-verify-jwt`
-5. `supabase/cron.sql` 의 `<PROJECT-REF>` · `<PUSH-SECRET>` 를 채워 SQL Editor 에서 실행
+| | 어디 |
+|---|---|
+| **공개 키** | `assets/config.js` 에 **넣어 둠**. 누가 봐도 괜찮은 값이다 |
+| **비밀 키 · PUSH_SECRET** | `Documents\발자국_비밀값.txt` — **저장소 밖** |
 
-> **Private Key 는 어디에도 적지 않는다.** `config.js` 는 누구나 열어볼 수 있다.
-> `VAPID_PUBLIC_KEY` 가 비어 있으면 알림 자리가 아예 안 보이고, 나머지는 그대로 돈다.
+그 파일에 Supabase 에 넣을 값, 붙여넣을 예약 SQL(칸을 다 채운 것),
+CLI 로 할 때의 명령이 순서대로 적혀 있다.
+**저장소에 비밀값이 들어갔는지 전수 확인했다 — 0건.**
+
+> 비밀 키가 새어 나가면 남이 우리 구성원에게 알림을 보낼 수 있다.
+> 그래서 저장소·커밋·보고 어디에도 값을 적지 않는다.
+> `VAPID_PUBLIC_KEY` 가 비어 있으면 알림 자리가 아예 안 보이고 나머지는 그대로 돈다.
+
+### 선고은님 몫 — 계정으로만 되는 것 3가지
+
+1. **`supabase login`** 한 번 (브라우저에서 허용 누르기).
+   CLI 가 이 PC 에 아직 없어서 Claude 가 설치한 뒤 이 한 번만 필요하다.
+   대시보드에서 직접 넣어도 된다 (그 경우 이것도 필요 없다)
+2. **배포 승인** 한 줄 (이 창에)
+3. **폰으로 알림 시험** (아래 「실제 폰 시험」)
+
+나머지(키 만들기 · 공개 키 넣기 · Secrets 넣기 · 함수 올리기 · 예약 SQL 채우기)는 Claude 가 한다.
+**Secrets 넣기와 함수 올리기, 예약 SQL 실행은 배포 승인 뒤에 한다.**
 
 ### 못 받는 경우를 화면에서 알려준다
 
