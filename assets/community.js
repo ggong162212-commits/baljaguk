@@ -6,7 +6,7 @@
 window.Community = (function () {
   const {
     $, $$, esc, toast, sheet, closeSheet, confirmSheet,
-    won, num, fmtDate, relTime, avatar, resizeImage, cheer
+    won, num, credit, fmtDate, relTime, avatar, resizeImage, cheer
   } = UI;
 
   const TABS = [
@@ -771,7 +771,7 @@ window.Community = (function () {
       '<div class="card center" style="padding:32px 22px">' +
       '<div style="font-size:28px">🐾</div>' +
       '<h3 style="margin-top:10px;font-size:17px">아직 투표가 없어요</h3>' +
-      '<p class="mut sm" style="margin-top:8px">누구나 만들 수 있어요.</p></div>');
+      '<p class="mut sm" style="margin-top:8px">투표는 운영진이 올려요.</p></div>');
     paint(rows.map(postCard).join(''));
     bindOnce();
     loadPhotos($('#view'));
@@ -794,7 +794,7 @@ window.Community = (function () {
       ? '<div class="card"><h3>내가 다녀온 봉사</h3><div class="sp"></div>' +
       recs.map(r => '<div class="kv"><span class="k">' + fmtDate(r.date) +
         (r.place ? ' · ' + esc(r.place) : '') + '</span>' +
-        '<span class="v">' + (Number(r.per) > 0 ? '+' + won(r.per) : '<span class="mut">적립 없음</span>') +
+        '<span class="v">' + (Number(r.per) > 0 ? '+' + credit(r.per, r.unit) : '<span class="mut">적립 없음</span>') +
         '</span></div>').join('') + '</div>'
       : '<div class="card center" style="padding:26px"><div class="mut sm">아직 다녀온 봉사가 없어요</div></div>';
   }
@@ -848,7 +848,8 @@ window.Community = (function () {
 
     const places = Array.isArray(a.places) ? a.places : [];
     const records = Array.isArray(a.records) ? a.records : [];
-    const credit = Number(a.credit_total) || 0;
+    const money = Number(a.credit_total) || 0;
+    const kg = Number(a.credit_total_kg) || 0;
 
     box.innerHTML =
       '<div class="card">' +
@@ -858,8 +859,13 @@ window.Community = (function () {
       '<div class="mut" style="font-size:12px;margin-top:2px">봉사 횟수</div></div>' +
       '<div style="width:1px;align-self:stretch;background:var(--line-2)"></div>' +
       '<div style="flex:1;text-align:center">' +
-      '<div class="money" style="font-size:26px;color:var(--brand-deep)">' + won(credit) + '</div>' +
-      '<div class="mut" style="font-size:12px;margin-top:2px">내가 쌓은 적립금</div></div></div>' +
+      '<div class="money" style="font-size:26px;color:var(--brand-deep)">' +
+      (kg && !money ? credit(kg, 'kg') : won(money)) + '</div>' +
+      '<div class="mut" style="font-size:12px;margin-top:2px">내가 쌓은 적립</div></div></div>' +
+      (kg && money
+        ? '<div class="divider"></div><div class="kv"><span class="k">사료</span>' +
+          '<span class="v">' + credit(kg, 'kg') + '</span></div>'
+        : '') +
       (a.last_date
         ? '<div class="divider"></div><div class="kv"><span class="k">마지막 참여</span>' +
         '<span class="v">' + fmtDate(a.last_date) + '</span></div>' : '') +
@@ -873,7 +879,7 @@ window.Community = (function () {
         places.map(p =>
           '<div class="kv"><span class="k">' + esc(p.place || '-') +
           ' <span class="mut" style="font-size:12px">' + num(p.times) + '회</span></span>' +
-          '<span class="v">' + won(p.credit) + '</span></div>').join('') + '</div>'
+          '<span class="v">' + credit(p.credit, p.unit) + '</span></div>').join('') + '</div>'
         : '') +
 
       '<div class="card"><h3>내 봉사 기록</h3>' +
@@ -881,7 +887,7 @@ window.Community = (function () {
       records.map(r =>
         '<div class="kv"><span class="k">' + fmtDate(r.date) +
         (r.place ? ' · ' + esc(r.place) : '') + '</span>' +
-        '<span class="v">' + (Number(r.per) > 0 ? '+' + won(r.per) : '<span class="mut">적립 없음</span>') +
+        '<span class="v">' + (Number(r.per) > 0 ? '+' + credit(r.per, r.unit) : '<span class="mut">적립 없음</span>') +
         '</span></div>').join('') + '</div>';
   }
 

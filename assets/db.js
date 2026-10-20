@@ -65,7 +65,11 @@
     ];
     return {
       campaigns: [camp], donations: dons, survey_responses: survey,
-      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: ['천보금 보호소'], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
+      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: [
+        { name: '천사들의 보금자리', area: '', address: '', credit: 2, unit: 'kg' },
+        { name: '금파하우스', area: '', address: '', credit: 2000, unit: 'won' },
+        { name: '땅코볼별', area: '', address: '', credit: 2000, unit: 'won' }
+      ], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
       applications: apps, members, events, attendance: att, finance: fin
     };
   }
@@ -349,18 +353,21 @@
           .filter(e => e && e.confirmed_at)
           .map(e => ({
             event_id: e.id, date: e.date, title: e.title, place: e.place,
+            unit: e.credit_unit === 'kg' ? 'kg' : 'won',
             per: Number(e.credit_per_person) || 0
           }))
           .sort((a, b) => String(b.date).localeCompare(String(a.date)));
         const byplace = {};
         mine.filter(r => r.per > 0).forEach(r => {
-          const k = byplace[r.place] = byplace[r.place] || { place: r.place, times: 0, credit: 0 };
-          k.times += 1; k.credit += r.per;
+          const k = r.place + '|' + r.unit;
+          const g = byplace[k] = byplace[k] || { place: r.place, unit: r.unit, times: 0, credit: 0 };
+          g.times += 1; g.credit += r.per;
         });
         return {
           times: mine.length,
           last_date: mine.length ? mine[0].date : null,
-          credit_total: mine.reduce((t, r) => t + r.per, 0),
+          credit_total: mine.filter(r => r.unit !== 'kg').reduce((t, r) => t + r.per, 0),
+          credit_total_kg: mine.filter(r => r.unit === 'kg').reduce((t, r) => t + r.per, 0),
           places: Object.keys(byplace).map(k => byplace[k]).sort((a, b) => b.credit - a.credit),
           records: mine
         };
@@ -411,15 +418,20 @@
             const nameOf = id => ((d.members || []).find(m => m.id === id) || {}).name;
             const names = att.map(a => nameOf(a.member_id)).filter(Boolean).sort();
             const per = Number(e.credit_per_person);
-            return { date: e.date, place: e.place, people: att.length, per, amount: att.length * per, names };
+            const unit = e.credit_unit === 'kg' ? 'kg' : 'won';
+            return { date: e.date, place: e.place, unit, people: att.length, per, amount: att.length * per, names };
           })
           .filter(r => r.people > 0)
           .sort((a, b) => String(b.date).localeCompare(String(a.date)));
         const pays = d.shelter_payouts || [];
+        /* 돈과 사료는 섞지 않는다 — 봉사지 × 단위로 따로 센다 */
         const map = {};
-        const get = k => (map[k] = map[k] || { place: k, saved: 0, paid: 0, remain: 0 });
-        rows.forEach(r => { get(r.place).saved += r.amount; });
-        pays.forEach(p => { get(p.place).paid += Number(p.amount) || 0; });
+        const get = (pl, u) => {
+          const k = pl + '|' + u;
+          return (map[k] = map[k] || { place: pl, unit: u, saved: 0, paid: 0, remain: 0 });
+        };
+        rows.forEach(r => { get(r.place, r.unit).saved += r.amount; });
+        pays.forEach(p => { get(p.place, p.unit === 'kg' ? 'kg' : 'won').paid += Number(p.amount) || 0; });
         const places = Object.keys(map).map(k => {
           map[k].remain = map[k].saved - map[k].paid;
           return map[k];
@@ -435,14 +447,17 @@
           .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name, 'ko'));
         return {
           generated_at: new Date().toISOString(),
-          total_saved: places.reduce((t, p) => t + p.saved, 0),
-          total_paid: places.reduce((t, p) => t + p.paid, 0),
+          total_saved: places.filter(p => p.unit !== 'kg').reduce((t, p) => t + p.saved, 0),
+          total_paid: places.filter(p => p.unit !== 'kg').reduce((t, p) => t + p.paid, 0),
+          total_saved_kg: places.filter(p => p.unit === 'kg').reduce((t, p) => t + p.saved, 0),
+          total_paid_kg: places.filter(p => p.unit === 'kg').reduce((t, p) => t + p.paid, 0),
           total_helpers: helpers.length,
           total_visits: helpers.reduce((t, h) => t + h.times, 0),
           helpers,
           places, entries: rows,
           payouts: pays.map(p => ({
             id: p.id, date: p.date, place: p.place, amount: p.amount,
+            unit: p.unit === 'kg' ? 'kg' : 'won',
             memo: p.memo, has_photo: !!p.photo
           })),
           campaigns: (d.campaigns || []).map(c => Object.assign({}, c, {

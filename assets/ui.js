@@ -119,6 +119,11 @@
   /* ---------- 포맷 ---------- */
   const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
   const num = n => (Number(n) || 0).toLocaleString('ko-KR');
+  /* 적립은 봉사지마다 단위가 다르다 — 돈이면 원, 천보금처럼 사료면 kg */
+  const credit = (n, unit) => (unit === 'kg')
+    ? (Number(n) || 0).toLocaleString('ko-KR') + 'kg'
+    : won(n);
+  const unitLabel = unit => (unit === 'kg' ? '사료' : '후원금');
   function fmtDate(v) {
     if (!v) return '-';
     const d = new Date(v.length === 10 ? v + 'T00:00:00' : v);
@@ -241,7 +246,7 @@
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
-    copy, won, num, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
+    copy, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
     resizeImage, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
   };
 })();

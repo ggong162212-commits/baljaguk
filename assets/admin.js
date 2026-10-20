@@ -1022,12 +1022,17 @@
     let list = s.places;
     if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
     if (!Array.isArray(list) || !list.length) list = [s.place || '천보금 보호소'];
-    return list.map(x => (typeof x === 'string' ? { name: x, area: '', address: '', credit: 0 } : {
-      name: String((x && x.name) || ''), area: String((x && x.area) || ''),
-      address: String((x && x.address) || ''),
-      credit: Math.max(0, Number((x && x.credit) || 0) || 0)
-    })).filter(x => x.name);
+    return list.map(x => (typeof x === 'string'
+      ? { name: x, area: '', address: '', credit: 0, unit: 'won' }
+      : {
+        name: String((x && x.name) || ''), area: String((x && x.area) || ''),
+        address: String((x && x.address) || ''),
+        credit: Math.max(0, Number((x && x.credit) || 0) || 0),
+        /* 천보금처럼 돈 대신 사료로 쌓는 곳은 kg */
+        unit: ((x && x.unit) === 'kg') ? 'kg' : 'won'
+      })).filter(x => x.name);
   }
+  const unitOf = name => ((volPlaces().find(x => x.name === name) || {}).unit || 'won');
   const volPlaceNames = () => volPlaces().map(x => x.name);
   const volPlace = () => (volPlaces()[0] || {}).name || '천보금 보호소';
   const areaOf = (name) => ((volPlaces().find(x => x.name === name) || {}).area || '');
@@ -1247,6 +1252,8 @@
         note: ov.querySelector('#eNote').value.trim(),
         capacity: cap,
         credit_per_person: Math.max(0, Number(ov.querySelector('#eCredit').value) || 0),
+        /* 돈으로 쌓는 곳인지 사료로 쌓는 곳인지 — 그때의 설정을 같이 남긴다 */
+        credit_unit: unitOf(place),
         signup_open_at: readDt('evOpen', '00:00')
       }, extra || {});
       closeSheet();
@@ -2126,7 +2133,7 @@
         miss.length + '건에 지금 봉사지에 적힌 1인당 금액을 넣어요. 모두 합쳐 ' + won(total) + ' 이 쌓여요.',
         '적립하기')) return;
       try {
-        for (const e of miss) await DB.events.update(e.id, { credit_per_person: creditOf(e.place) });
+        for (const e of miss) await DB.events.update(e.id, { credit_per_person: creditOf(e.place), credit_unit: unitOf(e.place) });
         await reload();
         toast(won(total) + ' 적립했어요', 'ok');
       } catch (err) { toast(err.message || '적립하지 못했어요', 'err'); }
@@ -2715,7 +2722,7 @@
         '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
         '<div><span class="sm"><b>' + esc(pl.name) + '</b>' + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
         '<div class="mut" style="font-size:11.5px">' + (pl.area ? esc(pl.area) + ' · ' : '') +
-        (pl.credit ? '1인당 ' + num(pl.credit) + '원 적립' : '적립 없음') +
+        (pl.credit ? '1인당 ' + UI.credit(pl.credit, pl.unit) + ' 적립' : '적립 없음') +
         (pl.address ? '<br>' + esc(pl.address) : '') + '</div></div>' +
         '<div class="row" style="gap:6px">' +
         '<button class="iconbtn" data-edpl="' + i + '" aria-label="소재지 고치기" ' +
@@ -2738,10 +2745,16 @@
             '<input class="input" id="plArea" value="' + esc(cur.area) + '" placeholder="경기 광주"></label>' +
             '<label class="field"><span class="lb">상세 주소</span>' +
             '<input class="input" id="plAddr" value="' + esc(cur.address) + '" placeholder="서울 동대문구 제기로21길 59-6, 2층"></label>' +
-            '<label class="field"><span class="lb">1인당 적립금</span>' +
-            '<input class="input" type="number" min="0" step="500" id="plCredit" value="' +
-            (cur.credit || '') + '" placeholder="예: 2000">' +
-            '<span class="hint">봉사를 확정하면 참여 인원 × 이 금액이 쌓여요. 비워두면 적립하지 않아요.</span></label>' +
+            '<div class="grid2">' +
+            '<label class="field"><span class="lb">1인당 적립</span>' +
+            '<input class="input" type="number" min="0" step="1" id="plCredit" value="' +
+            (cur.credit || '') + '" placeholder="예: 2000"></label>' +
+            '<label class="field"><span class="lb">무엇으로</span>' +
+            '<select class="input" id="plUnit">' +
+            '<option value="won"' + (cur.unit !== 'kg' ? ' selected' : '') + '>후원금 (원)</option>' +
+            '<option value="kg"' + (cur.unit === 'kg' ? ' selected' : '') + '>사료 (kg)</option>' +
+            '</select></label></div>' +
+            '<span class="hint" style="display:block;margin:-6px 0 12px">봉사를 확정하면 참여 인원 × 이 값이 쌓여요. 비워두면 적립하지 않아요.</span>' +
             '<button class="btn primary block" data-save>저장하기</button>'
         });
         ov.querySelector('[data-save]').onclick = async () => {
@@ -2752,7 +2765,8 @@
           next[i] = {
             name, area,
             address: ov.querySelector('#plAddr').value.trim(),
-            credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0)
+            credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0),
+            unit: ov.querySelector('#plUnit').value === 'kg' ? 'kg' : 'won'
           };
           closeSheet();
           await save({ places: next, place: next[0].name });
