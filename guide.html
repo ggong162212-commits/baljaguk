@@ -7,7 +7,7 @@
 <title>발자국 · 사용법</title>
 <meta name="description" content="발자국 구성원 사용법 안내">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=202610200949">
+<link rel="stylesheet" href="assets/style.css?v=202610201650">
 <style>
   /* 목차 — 누르면 그 자리로 */
   .toc a{
@@ -20,6 +20,14 @@
     background:var(--brand-soft);color:var(--brand-deep);font-size:12px;font-weight:700
   }
   /* 단계 — 번호와 설명 */
+  /* 3분 요약 — 길어진 매뉴얼의 맨 앞 */
+  .quick{background:var(--brand-soft);border:1px solid var(--brand-line,var(--line))}
+  .qline{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:13px;
+    line-height:1.6;color:var(--ink-2)}
+  .qline .n{flex:none;width:19px;height:19px;border-radius:50%;background:var(--brand);
+    color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;margin-top:2px}
+  /* 목차는 따라다닌다 — 11장이라 위로 올라가기 번거롭다 */
+  .toc-wrap{position:sticky;top:60px;z-index:20}
   .step{display:flex;gap:12px;padding:14px 0;border-bottom:1px dashed var(--line-2)}
   .step:last-child{border-bottom:none}
   .step .no{
@@ -27,7 +35,8 @@
     background:var(--brand);color:#fff;font-size:13px;font-weight:700
   }
   .step .tx{flex:1;min-width:0}
-  .step .tx b{display:block;font-size:14.5px;margin-bottom:4px}
+  /* 제목만 줄을 차지한다 — 문장 안 <b> 는 그대로 */
+  .step .tx > b{display:block;font-size:14.5px;margin-bottom:4px}
   .step .tx p{margin:0;font-size:13px;color:var(--ink-3);line-height:1.65}
   /* 화면 흉내 — 캡처 대신 쓰는 작은 그림 */
   .shot{
@@ -52,9 +61,9 @@
 
 <header class="topbar">
   <div class="in">
-    <div class="brandmark grow">
-      <span class="dot" id="brandIcon"></span>
-      <span class="wordmark">발자국</span>
+    <button class="iconbtn" id="backBtn" type="button" aria-label="돌아가기"></button>
+    <div class="brandmark grow" style="margin-left:4px">
+      <span class="wordmark">사용법</span>
     </div>
     <button class="iconbtn" data-theme-btn type="button"></button>
   </div>
@@ -66,14 +75,37 @@
     <p>처음 오셨다면 1번부터 보시면 돼요.</p>
   </div>
 
-  <div class="card">
+  <div class="card quick">
+    <h3 style="font-size:15px;margin:0 0 4px">3분 요약</h3>
+    <div class="sub" style="margin-bottom:12px">이것만 알면 바로 쓸 수 있어요.</div>
+    <div class="qline"><span class="n">1</span>
+      <span><b>들어가기</b> — 카카오 로그인 → 이름 + 휴대폰 뒤 4자리. 한 번만 해요.</span></div>
+    <div class="qline"><span class="n">2</span>
+      <span><b>봉사 신청</b> — 아래 <b>봉사</b> 탭 → <b>신청하기</b>. 못 가면 <b>신청 취소</b>.</span></div>
+    <div class="qline"><span class="n">3</span>
+      <span><b>후기</b> — 다녀오면 홈 맨 위에 물어봐요. <b>후기 남기기</b>를 누르면 돼요.</span></div>
+    <div class="qline"><span class="n">4</span>
+      <span><b>알림</b> — 오른쪽 위 동그라미 → <b>알림 설정</b>.
+        <b>카카오톡 안에서는 안 켜져요</b> — 크롬·사파리로 열어주세요.</span></div>
+  </div>
+
+  <details class="card" id="tocCard" open>
+    <summary style="font-weight:800;font-size:14px;cursor:pointer;margin-bottom:10px">
+      목차 · 11장</summary>
     <div class="toc">
       <a href="#s1"><span class="no">1</span>처음 들어가기 — 본인 확인</a>
       <a href="#s2"><span class="no">2</span>홈 화면에 추가하기</a>
-      <a href="#s3"><span class="no">3</span>내 활동 보기</a>
-      <a href="#s4"><span class="no">4</span>자주 묻는 질문</a>
+      <a href="#s3"><span class="no">3</span>알림 켜기</a>
+      <a href="#s4"><span class="no">4</span>봉사 신청하기</a>
+      <a href="#s5"><span class="no">5</span>후기 올리기</a>
+      <a href="#s6"><span class="no">6</span>오늘 만난 친구</a>
+      <a href="#s7"><span class="no">7</span>설문과 퀴즈</a>
+      <a href="#s8"><span class="no">8</span>댓글과 반응</a>
+      <a href="#s9"><span class="no">9</span>내 활동과 프로필</a>
+      <a href="#s10"><span class="no">10</span>자주 묻는 질문</a>
+      <a href="#s11"><span class="no">🔑</span>운영진용</a>
     </div>
-  </div>
+  </details>
 
   <!-- 1 -->
   <div class="card" id="s1">
@@ -152,20 +184,184 @@
 
   <!-- 3 -->
   <div class="card" id="s3">
-    <h3>3. 내 활동 보기</h3>
-    <div class="sub">봉사 횟수와 쌓인 적립금을 볼 수 있어요.</div>
+    <h3>3. 알림 켜기</h3>
+    <div class="sub">봉사 안내와 공지를 바로 받아볼 수 있어요. 종류별로 끄고 켤 수 있어요.</div>
+    <div class="sp"></div>
+
+    <p class="pill-note"><b>단톡방 링크를 바로 누르면 카카오톡 안 브라우저로 열려요.</b>
+      거기서는 알림도 홈 화면 추가도 안 돼요.<br>
+      오른쪽 아래 <b>···</b> → <b>다른 브라우저로 열기</b>(아이폰은 <b>Safari로 열기</b>)를 먼저 눌러주세요.</p>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">i</span>
+      <div class="tx">
+        <b>아이폰</b>
+        <p><b>홈 화면에 추가를 먼저</b> 해야 해요 (위 2번).
+           그 다음 <b>홈 화면의 발바닥 아이콘</b>으로 들어와서
+           프로필(오른쪽 위 동그라미) → <b>알림 설정</b> → <b>알림 켜기</b>.</p>
+        <p class="mut sm">아이폰은 iOS 16.4 이상이어야 해요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">A</span>
+      <div class="tx">
+        <b>안드로이드</b>
+        <p>프로필(오른쪽 위 동그라미) → <b>알림 설정</b> → <b>알림 켜기</b>.
+           홈 화면 추가를 안 해도 받을 수 있어요.</p>
+      </div>
+    </div>
+
+    <div class="sp"></div>
+    <div class="kv"><span class="k">받을 수 있는 알림</span><span class="v">11가지</span></div>
+    <p class="mut sm" style="margin-top:8px;line-height:1.65">
+      새 글 · 댓글 · 답글 · 반응 · 봉사 열림 · 대기→신청 ·
+      공지 · 설문 마감 · 퀴즈 결과 · 봉사 전날 · 봉사 감사</p>
+    <p class="pill-note" style="margin-top:10px">
+      종류마다 <b>보내 보기</b>를 누르면 나에게만 보내서 어떻게 보이는지 확인할 수 있어요.</p>
+  </div>
+
+  <!-- 4 -->
+  <div class="card" id="s4">
+    <h3>4. 봉사 신청하기</h3>
+    <div class="sub">아래 <b>봉사</b> 탭에서 신청해요.</div>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">1</span>
+      <div class="tx">
+        <b>신청하기</b>
+        <p>다가오는 봉사 카드에서 <b>신청하기</b>를 누르면 끝이에요.
+           못 가게 되면 <b>신청 취소</b>를 눌러주세요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">2</span>
+      <div class="tx">
+        <b>자리가 찼으면 — 대기 신청</b>
+        <p>정원이 차면 <b>대기 신청하기</b>가 보여요.
+           누가 취소하면 <b>먼저 신청한 대기자부터</b> 자동으로 올라가고 알림이 가요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">3</span>
+      <div class="tx">
+        <b>봉사 당일 — 현장 출석</b>
+        <p>그날 봉사 카드에 <b>현장 출석 체크</b>가 생겨요.
+           운영진이 알려주는 <b>여섯 자리 번호</b>를 넣어주세요.</p>
+        <div class="shot">
+          <span class="mut">현장 출석 체크</span>
+          <div class="fake-in">0 0 0 0 0 0</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="pill-note">찍어도 <b>봉사 실적은 운영진이 확정해야</b> 쌓여요.</p>
+  </div>
+
+  <!-- 5 -->
+  <div class="card" id="s5">
+    <h3>5. 후기 올리기</h3>
+    <div class="sub">세 단계면 끝나요. 짧아도 좋아요.</div>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">1</span>
+      <div class="tx">
+        <b>어느 봉사였나요?</b>
+        <p>다녀온 봉사에서 고르면 날짜와 보호소가 같이 들어가요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">2</span>
+      <div class="tx">
+        <b>사진 (없어도 돼요)</b>
+        <p><b>열 장까지</b> 넣을 수 있어요. 길게 눌러 끌면 순서가 바뀌고, ✕ 로 뺄 수 있어요.
+           사진에서 <b>찍은 장소 정보는 지우고</b> 올라가요.</p>
+        <p class="mut sm">「발자국 인스타그램에 올려도 괜찮아요」를 고르면 피드에 쓸 수 있어요.
+           다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">3</span>
+      <div class="tx">
+        <b>글 쓰고 올리기</b>
+        <p>글 아래 <b>더하기 칩</b> 두 개가 있어요. 안 눌러도 그냥 올라가요.</p>
+        <div class="kv"><span class="k">🐾 만난 친구</span><span class="v">오늘 만난 아이 이름</span></div>
+        <div class="kv"><span class="k">설문 · 퀴즈</span><span class="v">글 안에서 물어보기</span></div>
+      </div>
+    </div>
+
+    <p class="pill-note">봉사를 다녀오면 홈 맨 위에
+      <b>「어제 ○○ 봉사 어땠어요?」</b> 카드가 떠요. 거기서 바로 쓰면 더 빨라요.</p>
+  </div>
+
+  <!-- 6 -->
+  <div class="card" id="s6">
+    <h3>6. 오늘 만난 친구</h3>
+    <div class="sub">후기에 보호소 아이 이름을 붙일 수 있어요.</div>
+    <div class="sp"></div>
+    <p>후기 쓸 때 <b>🐾 만난 친구</b>를 누르면 그 보호소 아이들이 나와요.
+       목록에 없으면 이름을 적어 더하면 돼요.</p>
+    <div class="sp"></div>
+    <p>카드에 발바닥 이름표로 붙고, <b>누르면 그 아이가 나온 후기만</b> 모여서 보여요.
+       입양 간 아이는 <b>입양</b> 표시가 붙어요.</p>
+  </div>
+
+  <!-- 7 -->
+  <div class="card" id="s7">
+    <h3>7. 설문과 퀴즈</h3>
+    <div class="sub">아래 <b>설문</b> 탭에서 봐요.</div>
+    <div class="sp"></div>
+
+    <div class="kv"><span class="k">설문</span><span class="v">고르면 바로 반영, 바꿀 수 있어요</span></div>
+    <div class="kv"><span class="k">퀴즈</span><span class="v">정답 발표 전까지 답을 바꿀 수 있어요</span></div>
+    <div class="kv"><span class="k">내 응답</span><span class="v">지난 설문과 1365 정보</span></div>
+    <div class="sp"></div>
+
+    <p class="pill-note"><b>퀴즈는 발표 전까지 아무에게도 정답이 안 보여요.</b>
+      몇 명이 뭘 골랐는지도 안 보여요 — 그게 힌트가 되니까요.<br>
+      발표 시각이 되면 정답과 「몇 명 중 몇 명 정답」이 뜨고 알림이 가요.</p>
+  </div>
+
+  <!-- 8 -->
+  <div class="card" id="s8">
+    <h3>8. 댓글과 반응</h3>
+    <div class="sp"></div>
+    <div class="kv"><span class="k">반응 달기</span><span class="v">글 아래 + 버튼</span></div>
+    <div class="kv"><span class="k">누가 달았는지</span><span class="v">반응을 길게 누르기</span></div>
+    <div class="kv"><span class="k">댓글</span><span class="v">글 아래 「댓글 남기기」</span></div>
+    <div class="sp"></div>
+    <p class="mut sm" style="line-height:1.65">
+      내 글에 달린 댓글·반응은 알림이 와요. 남의 글에 달린 건 안 와요.<br>
+      내가 쓴 댓글에 답글이 달리면 알림이 와요.</p>
+    <div class="sp"></div>
+    <p class="pill-note">불편한 글이나 댓글은 <b>···</b> → <b>신고하기</b>.
+      운영진만 보고, 글쓴이에게는 <b>누가 신고했는지 보이지 않아요.</b></p>
+  </div>
+
+  <!-- 9 -->
+  <div class="card" id="s9">
+    <h3>9. 내 활동과 프로필</h3>
+    <div class="sub">오른쪽 위 동그라미를 누르면 열려요.</div>
     <div class="sp"></div>
     <div class="kv"><span class="k">봉사 횟수</span><span class="v">다녀온 횟수</span></div>
-    <div class="kv"><span class="k">내가 쌓은 적립금</span><span class="v">보호소에 전달될 금액</span></div>
-    <div class="kv"><span class="k">보호소별 적립</span><span class="v">어디서 얼마나</span></div>
+    <div class="kv"><span class="k">쌓은 적립</span><span class="v">보호소에 전달될 금액이나 사료</span></div>
+    <div class="kv"><span class="k">프로필 사진</span><span class="v">「사진 바꾸기」</span></div>
+    <div class="kv"><span class="k">알림 설정</span><span class="v">종류별 끄고 켜기</span></div>
     <div class="sp"></div>
     <p class="pill-note">숫자는 <b>운영진이 확정한 봉사</b>만 세요.
       다녀온 날 바로 안 올라가도 걱정하지 마세요. 확정되면 반영돼요.</p>
   </div>
 
-  <!-- 4 -->
-  <div class="card" id="s4">
-    <h3>4. 자주 묻는 질문</h3>
+  <!-- 10 -->
+  <div class="card" id="s10">
+    <h3>10. 자주 묻는 질문</h3>
     <div class="sp"></div>
 
     <div class="qa">
@@ -181,8 +377,25 @@
     </div>
 
     <div class="qa">
+      <b>알림이 안 와요</b>
+      <p>차례대로 봐주세요.<br>
+         ① <b>카카오톡 안에서 열지 않았나요?</b> 크롬이나 사파리로 열어주세요<br>
+         ② 아이폰이면 <b>홈 화면 아이콘</b>으로 들어왔나요? (사파리 탭에서는 안 와요)<br>
+         ③ 폰이 <b>방해금지 모드</b>는 아닌가요?<br>
+         ④ 브라우저 설정에서 이 사이트 알림이 <b>허용</b>인가요?<br>
+         ⑤ 아이폰은 <b>iOS 16.4 이상</b>이어야 해요</p>
+    </div>
+
+    <div class="qa">
       <b>봉사 횟수가 안 올라가요</b>
-      <p>운영진이 그 봉사를 <b>확정</b>해야 올라가요. 보통 봉사 다음에 정리해요.</p>
+      <p>운영진이 그 봉사를 <b>확정</b>해야 올라가요. 보통 봉사 다음에 정리해요.
+         현장 출석을 찍어도 확정 전까지는 안 올라가요.</p>
+    </div>
+
+    <div class="qa">
+      <b>봉사 신청 링크가 따로 있지 않았나요?</b>
+      <p>이제 커뮤니티 <b>봉사</b> 탭에서 해요. 설문과 1365도 여기로 옮겼어요.
+         옛 링크로 들어가도 안내가 나와요.</p>
     </div>
 
     <div class="qa">
@@ -191,19 +404,132 @@
     </div>
   </div>
 
-  <div class="linkline"><a href="index.html">발자국 홈으로 →</a></div>
+  <!-- 운영진용 -->
+  <details class="card" id="s11" style="padding:18px">
+    <summary style="font-weight:800;font-size:15px;cursor:pointer">운영진용</summary>
+    <div class="sp"></div>
+
+    <div class="kv"><span class="k">운영진 화면 들어가기</span>
+      <span class="v">위 「발자국 | 운영진」 스위치</span></div>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">1</span>
+      <div class="tx">
+        <b>봉사모임 만들기</b>
+        <p>봉사 탭 → <b>+</b> → 네 단계(날짜 · 보호소 · 정원 · 신청 열기).
+           만들면 전체에게 <b>봉사 열림</b> 알림이 가요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">2</span>
+      <div class="tx">
+        <b>봉사 확정하기 — 가장 중요해요</b>
+        <p>다녀온 뒤 명단을 고치고 <b>봉사 확정하기</b>를 눌러야
+           <b>실적과 적립이 쌓여요.</b> 확정 전에는 아무 숫자도 안 올라가요.</p>
+        <p class="mut sm"><b>확정한 뒤</b> 명단에서 사람을 빼도
+          대기자는 자동으로 안 올라가요. 안 간 사람이 실적에 잡히면 안 되니까요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">3</span>
+      <div class="tx">
+        <b>공지 올리기·내리기</b>
+        <p>홈 <b>+</b> → <b>공지</b>. 「맨 위에 고정」을 고르면 모두의 홈 맨 위에 붙어요
+           (<b>세 개까지</b>). 내릴 때는 글 <b>···</b> → <b>고정 풀기</b>.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">4</span>
+      <div class="tx">
+        <b>할 일 챙기기</b>
+        <p>운영진 화면 맨 위에 <b>확정 안 한 봉사 · 가입 대기 · 신고</b> 개수가 떠요.
+           챙길 게 없으면 안 보여요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">5</span>
+      <div class="tx">
+        <b>누가 아직 안 들어왔는지</b>
+        <p>구성원 탭 → <b>연결 안 함</b> 칩.
+           <b>안내 문구 복사</b>를 누르면 보낼 문구가 복사돼요 (이름 목록은 안 들어가요).</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">6</span>
+      <div class="tx">
+        <b>글·댓글 삭제</b>
+        <p>글이나 댓글 <b>···</b> → <b>삭제</b>.
+           지우면 댓글·사진·반응도 같이 사라져요.
+           <b>지운 뒤 5초 동안 「되돌리기」</b>가 떠요.
+           신고가 들어오면 할 일에 떠요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">7</span>
+      <div class="tx">
+        <b>현장 출석 번호 열기</b>
+        <p>그날 봉사모임을 열고 <b>출석 번호 열기</b>.
+           여섯 자리를 부원들에게 불러주세요. 그날만 써요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">8</span>
+      <div class="tx">
+        <b>운영진 지정·해제</b>
+        <p>구성원 탭 → 그 사람 → <b>역할</b>을 운영진으로.
+           <b>마지막 운영진은 해제할 수 없어요</b> (아무도 못 들어가게 되니까요).</p>
+      </div>
+    </div>
+  </details>
+
+
+  <div class="linkline"><a href="me.html" id="homeLink">발자국 홈으로 →</a></div>
+  <a class="btn primary lg block" id="backFoot" href="me.html"
+     style="margin-top:4px">커뮤니티로 돌아가기</a>
   <div style="height:40px"></div>
 </main>
 
-<script src="assets/config.js?v=202610200949"></script>
-<script src="assets/icons.js?v=202610200949"></script>
-<script src="assets/ui.js?v=202610200949"></script>
+<script src="assets/config.js?v=202610201650"></script>
+<script src="assets/icons.js?v=202610201650"></script>
+<script src="assets/ui.js?v=202610201650"></script>
 <script>
   UI.initTheme();
   document.addEventListener('DOMContentLoaded', function () {
-    document.getElementById('brandIcon').innerHTML = ic('paw');
     document.querySelector('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
     UI.paintThemeButtons();
+
+    /* 어디서 왔는지에 따라 돌아갈 곳이 다르다.
+       앱 안에서 열었으면 보던 화면으로, 아니면 커뮤니티로. */
+    var from = '';
+    try { from = new URLSearchParams(location.search).get('from') || ''; } catch (e) { }
+    var home = from === 'admin' ? 'admin.html' : 'me.html';
+    var isLogin = from === 'login';
+    var foot = document.getElementById('backFoot');
+    if (foot) {
+      foot.href = home;
+      foot.textContent = from === 'admin' ? '운영진 화면으로 돌아가기'
+        : (isLogin ? '로그인 화면으로 돌아가기' : '커뮤니티로 돌아가기');
+    }
+
+    var hl = document.getElementById('homeLink');
+    if (hl) hl.href = home;
+
+    var back = document.getElementById('backBtn');
+    back.innerHTML = ic('chevron');
+    back.style.transform = 'rotate(180deg)';
+    back.addEventListener('click', function () {
+      /* 기록이 있으면 보던 화면으로, 없으면(주소를 바로 친 경우) 커뮤니티로 */
+      if (history.length > 1) history.back();
+      else location.href = home;
+    });
   });
 </script>
 </body>

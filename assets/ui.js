@@ -40,7 +40,8 @@
   /* ---------- 바텀시트 / 모달 ---------- */
   let lastFocus = null;
   function sheet(opts) {
-    closeSheet();
+    /* 시트를 바꿔 여는 것이라 기록은 건드리지 않는다 */
+    closeSheet(true);
     lastFocus = document.activeElement;
     const ov = document.createElement('div');
     ov.className = 'overlay';
@@ -48,10 +49,20 @@
       '<div class="sheet" role="dialog" aria-modal="true">' +
       '<div class="hd"><h3>' + (opts.title || '') + '</h3>' +
       '<button class="iconbtn" data-close aria-label="닫기">' + window.ic('x') + '</button></div>' +
-      '<div class="sheet-body"></div></div>';
+      '<div class="sheet-body"></div>' +
+      /* 주 버튼은 아래에 고정한다. 키보드가 올라와도 바로 위에 남는다 */
+      (opts.foot ? '<div class="sheet-foot"></div>' : '') + '</div>';
     $('.sheet-body', ov).innerHTML = opts.body || '';
+    if (opts.foot) $('.sheet-foot', ov).innerHTML = opts.foot;
     document.body.appendChild(ov);
     document.body.style.overflow = 'hidden';
+    /* 안드로이드 뒤로 버튼으로도 닫힌다.
+       시트를 연달아 열어도 기록은 한 칸만 쓴다 */
+    try {
+      if (!(history.state && history.state.sheet)) history.pushState({ sheet: 1 }, '');
+      window.removeEventListener('popstate', onPop);
+      window.addEventListener('popstate', onPop);
+    } catch (e) { }
     ov.addEventListener('click', e => { if (e.target === ov) closeSheet(); });
     $('[data-close]', ov).addEventListener('click', closeSheet);
     document.addEventListener('keydown', escClose);
@@ -62,11 +73,24 @@
     return ov;
   }
   function escClose(e) { if (e.key === 'Escape') closeSheet(); }
-  function closeSheet() {
+  /* 우리가 부른 history.back() 이 돌아오는 것은 무시한다.
+     안 그러면 바로 뒤에 연 시트가 그 신호에 닫혀 버린다. */
+  let popGuard = 0;
+  function onPop() {
+    if (popGuard > 0) { popGuard--; return; }
+    closeSheet(true);
+  }
+  function closeSheet(fromBack) {
     const ov = $('.overlay');
     if (ov) ov.remove();
     document.body.style.overflow = '';
     document.removeEventListener('keydown', escClose);
+    window.removeEventListener('popstate', onPop);
+    /* 버튼으로 닫았으면 눌러 둔 기록을 되돌린다 */
+    if (!fromBack && history.state && history.state.sheet) {
+      popGuard++;
+      try { history.back(); } catch (e) { popGuard--; }
+    }
     if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) { } lastFocus = null; }
   }
   function confirmSheet(title, desc, okLabel, danger) {
@@ -116,9 +140,150 @@
     } catch (e) { toast('복사하지 못했어요. 길게 눌러 복사해주세요', 'err'); return false; }
   }
 
+  /* ---------- 단계형 입력 ----------
+     질문이 여러 개면 한 번에 하나씩 묻는다. 고른 값은 위에 요약으로 남는다.
+     steps: [{ q, hint, body, read(root), valid(v), sum(v), skip(vals) }]
+     done(values) 로 끝난다. */
+  function wizard(opts) {
+    const steps = (opts.steps || []).slice();
+    const vals = {};
+    let i = 0;
+
+    const live = () => steps.filter(st => !(st.skip && st.skip(vals)));
+    const ov = sheet({
+      title: opts.title || '',
+      body: '<div class="wiz-prog"><div class="wiz-dots" id="wzDots"></div>' +
+        '<span class="wiz-step" id="wzStep"></span></div>' +
+        '<div class="wiz-sum" id="wzSum"></div>' +
+        '<h3 class="wiz-q" id="wzQ"></h3>' +
+        '<p class="wiz-hint" id="wzHint"></p>' +
+        '<div id="wzBody"></div>',
+      foot: '<div class="row" style="gap:8px">' +
+        '<button class="btn ghost" type="button" id="wzBack" hidden>이전</button>' +
+        '<button class="btn primary lg grow" type="button" id="wzNext">다음</button></div>'
+    });
+
+    const $$$ = sel => ov.querySelector(sel);
+
+    function paint() {
+      const list = live();
+      const st = list[i];
+      if (!st) return;
+      $$$('#wzDots').innerHTML = list.map((x, n) =>
+        '<i class="' + (n === i ? 'on' : (n < i ? 'done' : '')) + '"></i>').join('');
+      $$$('#wzStep').textContent = (i + 1) + '/' + list.length;
+      /* 요약 줄을 누르면 그 단계로 돌아가 고칠 수 있다 */
+      $$$('#wzSum').innerHTML = list.slice(0, i).map((x, n) =>
+        (x.sum && vals[x.key] !== undefined && String(vals[x.key]).trim())
+          ? '<button class="it" type="button" data-go="' + n + '">' +
+            '<span class="k">' + esc(x.short || '') + '</span>' +
+            '<span class="v">' + esc(x.sum(vals[x.key])) + '</span></button>'
+          : '').join('');
+      $$$('#wzSum').querySelectorAll('[data-go]').forEach(b =>
+        b.onclick = () => { i = Number(b.dataset.go); paint(); });
+      $$$('#wzQ').textContent = st.q || '';
+      $$$('#wzHint').textContent = st.hint || '';
+      $$$('#wzHint').hidden = !st.hint;
+      $$$('#wzBody').innerHTML = typeof st.body === 'function' ? st.body(vals) : (st.body || '');
+      if (st.after) st.after($$$('#wzBody'), vals);
+      /* 되돌아왔을 때 쓰던 값을 다시 채운다 */
+      if (st.fill && vals[st.key] !== undefined) st.fill($$$('#wzBody'), vals[st.key]);
+      /* 단계를 넘기면 질문이 맨 위에 보이게 */
+      const bodyEl = ov.querySelector('.sheet-body');
+      if (bodyEl) bodyEl.scrollTop = 0;
+      $$$('#wzBack').hidden = i === 0;
+      $$$('#wzNext').textContent = i === list.length - 1 ? (opts.doneLabel || '올리기') : '다음';
+      /* 입력칸에서 엔터는 「다음」. 마지막 단계는 실수로 올라가지 않게 제외한다 */
+      const last = i === list.length - 1;
+      $$$('#wzBody').querySelectorAll('input').forEach(el => {
+        el.addEventListener('keydown', e => {
+          if (e.key !== 'Enter' || last) return;
+          e.preventDefault();
+          $$$('#wzNext').click();
+        });
+      });
+      const first = $$$('#wzBody').querySelector('input,textarea,select');
+      if (first && !first.type.match(/file|date/)) setTimeout(() => first.focus(), 60);
+    }
+
+    function wire() {
+      $$$('#wzBack').onclick = () => { if (i > 0) { i -= 1; paint(); } };
+      $$$('#wzNext').onclick = onNext;
+      paint();
+    }
+
+    const onNext = async () => {
+      const list = live();
+      const st = list[i];
+      const v = st.read ? st.read($$$('#wzBody')) : null;
+      if (st.valid) {
+        const bad = st.valid(v);
+        if (bad) return toast(bad, 'err');
+      }
+      vals[st.key] = v;
+      if (i < list.length - 1) { i += 1; return paint(); }
+      const btn = $$$('#wzNext');
+      btn.disabled = true; btn.textContent = '올리는 중…';
+      try { await opts.done(vals); }
+      catch (e) {
+        toast((e && e.message) || '올리지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = opts.doneLabel || '올리기';
+      }
+    };
+
+    /* 쓰던 게 있으면 닫기 전에 한 번 묻는다 */
+    const dirty = () => {
+      if (Object.keys(vals).length) return true;
+      const body = ov.querySelector('#wzBody');
+      if (!body) return false;
+      return Array.prototype.slice.call(body.querySelectorAll('input,textarea'))
+        .some(el => el.type !== 'checkbox' && String(el.value || '').trim());
+    };
+    const closeBtn = ov.querySelector('[data-close]');
+    if (closeBtn) {
+      const fresh = closeBtn.cloneNode(true);
+      closeBtn.replaceWith(fresh);
+      fresh.addEventListener('click', () => {
+        if (!dirty()) return closeSheet();
+
+        /* 키보드가 올라와 있으면 아래 확인이 가려진다 — 먼저 내린다 */
+        try { if (document.activeElement) document.activeElement.blur(); } catch (e) { }
+
+        /* 확인을 새 시트로 띄우면 쓰던 시트가 닫혀버린다. 같은 시트 안에서 묻는다 */
+        const foot = ov.querySelector('.sheet-foot');
+        if (!foot) return closeSheet();
+        if (foot.dataset.asking) return;    /* 두 번 눌러도 한 번만 */
+        const keep = foot.innerHTML;
+        foot.dataset.asking = '1';
+        foot.innerHTML =
+          '<p class="sm" style="margin:0 0 10px;font-weight:700">' +
+          '그만두면 쓰던 내용이 사라져요. 그만둘까요?</p>' +
+          '<div class="row" style="gap:8px">' +
+          '<button class="btn ghost grow" type="button" data-keep>계속 쓰기</button>' +
+          '<button class="btn danger grow" type="button" data-quit>그만두기</button></div>';
+        /* 긴 시트에서는 아래가 화면 밖일 수 있다 */
+        try { foot.scrollIntoView({ block: 'end', behavior: 'smooth' }); } catch (e) { }
+        foot.querySelector('[data-keep]').onclick = () => {
+          delete foot.dataset.asking;
+          foot.innerHTML = keep;
+          wire();
+        };
+        foot.querySelector('[data-quit]').onclick = closeSheet;
+      });
+    }
+
+    wire();
+    return ov;
+  }
+
   /* ---------- 포맷 ---------- */
   const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
   const num = n => (Number(n) || 0).toLocaleString('ko-KR');
+  /* 적립은 봉사지마다 단위가 다르다 — 돈이면 원, 천보금처럼 사료면 kg */
+  const credit = (n, unit) => (unit === 'kg')
+    ? (Number(n) || 0).toLocaleString('ko-KR') + 'kg'
+    : won(n);
+  const unitLabel = unit => (unit === 'kg' ? '사료' : '후원금');
   function fmtDate(v) {
     if (!v) return '-';
     const d = new Date(v.length === 10 ? v + 'T00:00:00' : v);
@@ -170,17 +335,43 @@
   const fromLocalInput = v => v ? new Date(v).toISOString() : null;
 
   /* ---------- 아바타 (이니셜 + 파스텔) ---------- */
-  const AV = [
-    ['#E7F2DC', '#4E8C36'], ['#FBF0D8', '#9A701A'], ['#E3EFFA', '#2F6494'],
-    ['#FCE6E9', '#B24A59'], ['#EFE8F8', '#6B4C9A'], ['#DFF1EE', '#256F63']
-  ];
+  /* 강조는 그린 하나로. 사람 구분은 같은 계열 4단계로만 한다.
+     색을 인라인으로 박으면 다크 모드에서 못 바꾸니 클래스로 준다. */
   function avatar(m, cls) {
     const name = (m && m.name) || '?';
     let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
-    const [bg, fg] = AV[h % AV.length];
+    const tone = 'av' + (h % 4);
     /* 운영진 왕관 같은 그림 없이 모두 이름 첫 글자로. 구분은 이름 옆 배지로 한다 */
     const face = name.slice(0, 1);
-    return '<div class="avatar' + (cls ? ' ' + cls : '') + '" style="background:' + bg + ';color:' + fg + '" aria-hidden="true">' + esc(face) + '</div>';
+    /* 사진은 비공개 보관함에 있어 주소를 따로 받아야 한다.
+       자리만 만들어 두고 community.js 가 채운다. 공개 페이지는 사진을 안 쓴다. */
+    const photo = (m && m.photo) ? ' data-avatar="' + esc(m.photo) + '"' : '';
+    return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '"' + photo +
+      ' aria-hidden="true">' + esc(face) + '</div>';
+  }
+
+  /* 정사각형으로 잘라서 줄인다 (프로필 사진용).
+     캔버스를 거치면 위치정보(EXIF)도 함께 떨어진다 */
+  function cropSquare(file, size, quality) {
+    return new Promise((res, rej) => {
+      if (!file || !/^image\//.test(file.type)) return rej(new Error('이미지 파일만 올릴 수 있어요'));
+      const fr = new FileReader();
+      fr.onerror = () => rej(new Error('파일을 읽지 못했어요'));
+      fr.onload = () => {
+        const img = new Image();
+        img.onerror = () => rej(new Error('이미지를 열지 못했어요'));
+        img.onload = () => {
+          const n = size || 400;
+          const side = Math.min(img.width, img.height);
+          const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+          const c = document.createElement('canvas'); c.width = n; c.height = n;
+          c.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, n, n);
+          res(c.toDataURL('image/jpeg', quality || .86));
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
   }
 
   /* ---------- 이미지 축소 ---------- */
@@ -241,7 +432,7 @@
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
-    copy, won, num, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
-    resizeImage, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
+    copy, wizard, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
+    resizeImage, cropSquare, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
   };
 })();

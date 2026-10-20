@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F6F5EC">
 <title>발자국 · 운영진</title>
+<link rel="manifest" href="manifest.webmanifest">
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=202610200829">
+<link rel="stylesheet" href="assets/style.css?v=202610201650">
 </head>
 <body>
 
@@ -23,25 +24,34 @@
   </div>
 </header>
 
-<!-- 로그인 -->
+<!-- 입구 — 카카오 로그인한 운영진만 들어온다 -->
 <main class="app" id="login">
   <div style="height:8vh"></div>
-  <div class="card center" style="padding:30px 22px">
-    <div style="display:flex;justify-content:center">
-      <span style="width:60px;height:60px;border-radius:22px;background:var(--brand-soft);color:var(--brand-deep);display:grid;place-items:center" id="lockIcon"></span>
-    </div>
-    <h2 style="margin-top:14px;font-size:22px">운영진 전용</h2>
-    <p class="mut sm" style="margin-top:6px">비밀번호를 입력하면 관리 화면이 열려요.</p>
-    <form id="loginForm" style="margin-top:18px;text-align:left">
-      <label class="field" style="margin-bottom:10px">
-        <span class="lb">운영진 비밀번호</span>
-        <input class="input" id="pw" type="password" inputmode="numeric" autocomplete="current-password" placeholder="••••••" required>
-      </label>
-      <button class="btn primary lg block" type="submit" id="loginBtn">들어가기</button>
-    </form>
-    <p class="sm mut" style="margin-top:14px" id="loginHint"></p>
+  <div class="card center" style="padding:30px 22px" id="gateCard">
+    <div class="mut sm">확인 중…</div>
   </div>
-  <div class="linkline"><a href="index.html">← 신청 폼으로</a></div>
+
+  <!-- 비상 로그인 — 카카오가 막혔을 때만. 아무것도 저장하지 않는다 -->
+  <div class="linkline" style="margin-top:18px">
+    <button type="button" class="linkbtn" id="sosOpen">비상 로그인</button>
+  </div>
+  <form id="loginForm" class="card" style="margin-top:10px;text-align:left" hidden>
+    <h3 style="font-size:15px">비상 로그인</h3>
+    <div class="sub">카카오 로그인이 안 될 때만 쓰는 공유 계정이에요. 이 기기에 저장하지 않아요.</div>
+    <div class="sp"></div>
+    <label class="field" style="margin-bottom:10px">
+      <span class="lb">이메일</span>
+      <input class="input" id="em" type="email" autocomplete="off" placeholder="운영진 공유 계정" required>
+    </label>
+    <label class="field" style="margin-bottom:10px">
+      <span class="lb">비밀번호</span>
+      <input class="input" id="pw" type="password" autocomplete="off" placeholder="••••••" required>
+    </label>
+    <button class="btn primary lg block" type="submit" id="loginBtn">들어가기</button>
+    <p class="sm mut" style="margin-top:12px" id="loginHint"></p>
+  </form>
+
+  <div class="linkline"><a href="me.html">← 발자국 커뮤니티로</a></div>
 </main>
 
 <!-- 관리 화면 -->
@@ -111,6 +121,7 @@
       <input id="memberSearch" placeholder="이름, 학번으로 검색하세요" aria-label="구성원 검색">
     </div>
     <div class="chips" id="memberChips"></div>
+    <div id="memberInvite" style="margin-top:10px"></div>
     <div class="row between" style="margin:2px 0 10px">
       <div class="seg" id="memberSort" style="flex:1"></div>
     </div>
@@ -176,10 +187,11 @@
 
 <nav class="tabbar" id="tabbar" hidden aria-label="관리 메뉴"></nav>
 
-<script src="assets/config.js?v=202610200829"></script>
-<script src="assets/icons.js?v=202610200829"></script>
-<script src="assets/ui.js?v=202610200829"></script>
-<script src="assets/db.js?v=202610200829"></script>
-<script src="assets/admin.js?v=202610200829"></script>
+<script src="assets/config.js?v=202610201650"></script>
+<script src="assets/icons.js?v=202610201650"></script>
+<script src="assets/ui.js?v=202610201650"></script>
+<script src="assets/db.js?v=202610201650"></script>
+<script src="assets/push.js?v=202610201650"></script>
+<script src="assets/admin.js?v=202610201650"></script>
 </body>
 </html>

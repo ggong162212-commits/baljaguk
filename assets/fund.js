@@ -5,7 +5,7 @@
    · 이름은 적립이 쌓이는 봉사지(1인당 금액 > 0)에 다녀온 사람만
    ============================================================ */
 (function () {
-  const { $, $$, esc, won, num, fmtDate, fmtDateTime, toast, copy, debounce } = UI;
+  const { $, $$, esc, won, credit, num, fmtDate, fmtDateTime, toast, copy, debounce, sheet } = UI;
 
   const OPEN = 'baljaguk.fund.entriesOpen';
   const NEW_DAYS = 14;                       // 최근 며칠까지 NEW 로 볼지
@@ -14,6 +14,7 @@
   let entriesOpen = false;
   let groupByPlace = false;                  // 칩 묶어 보기
   let me = '';                               // 내 이름 찾기
+  let settings = null;
   let counted = false;                       // 숫자 올라가는 효과는 한 번만
 
   try { entriesOpen = localStorage.getItem(OPEN) === '1'; } catch (e) { }
@@ -35,6 +36,7 @@
 
     try {
       const s = await DB.settings.get();
+      settings = s || null;
       if (s && s.club_name) {
         $('#brandName').textContent = s.club_name;
         document.title = s.club_name + ' · 후원금 현황';
@@ -95,8 +97,7 @@
     const helpers = tally();
     const meetings = (data.entries || []).length;   // 적립이 쌓인 봉사 건수
 
-    paintTotal(saved, paid, remain, helpers.length, meetings);
-    paintHow();
+    paintSummary(saved, paid, helpers.length, meetings);
     paintPeople(helpers, meetings);
     paintPlaces();
     paintCampaigns();
@@ -111,40 +112,79 @@
   /* ============================================================
      ① 합계
      ============================================================ */
-  function paintTotal(saved, paid, remain, people, meetings) {
+  function paintSummary(saved, paid, people, meetings) {
+    const savedKg = int(data.total_saved_kg);
+    const paidKg = int(data.total_paid_kg);
+    const hasKg = savedKg > 0 || paidKg > 0;
     const ym = dayKey(new Date()).slice(0, 7);
     const thisMonth = (data.entries || [])
-      .filter(r => String(r.date).slice(0, 7) === ym)
+      .filter(r => String(r.date).slice(0, 7) === ym && (r.unit || 'won') !== 'kg')
       .reduce((t, r) => t + int(r.amount), 0);
-    const pct = saved > 0 ? Math.round(paid / saved * 100) : 0;
+
+    const badges = [];
+    if (thisMonth) badges.push('<span class="badge approved">이번 달 +' + won(thisMonth) + '</span>');
+    if (paid) badges.push('<span class="badge">' + won(paid) + ' 전달</span>');
+    if (paidKg) badges.push('<span class="badge">' + credit(paidKg, 'kg') + ' 전달</span>');
 
     $('#totalCard').innerHTML =
-      '<div class="card">' +
-      '<div class="center" style="padding:6px 0 2px">' +
-      '<div class="sm mut">지금까지 모인 후원금</div>' +
-      '<div class="money" style="font-size:34px;color:var(--brand-deep);margin-top:4px" id="bigSum">' +
-      won(saved) + '</div>' +
-      (people
-        ? '<div class="sm mut" style="margin-top:6px">' + people + '명이 ' + meetings + '번의 봉사로 모았어요' +
-          (paid ? ' · ' + won(paid) + ' 전달 완료' : '') + '</div>'
-        : '') +
-      (thisMonth
-        ? '<div style="margin-top:9px"><span class="badge approved">이번 달 +' + won(thisMonth) + '</span></div>'
+      '<div class="card" style="padding:15px 16px">' +
+      '<div class="row between" style="align-items:center">' +
+      '<span class="sm mut">지금까지 모인 것</span>' +
+      '<button class="iconbtn" type="button" id="howBtn" aria-label="적립 안내 보기" ' +
+      'style="width:28px;height:28px;border-radius:9px">' + ic('info') + '</button></div>' +
+
+      '<div class="stat3" style="margin-top:9px">' +
+      '<div><div class="v"><span id="bigSum">' + num(saved) + '</span><span class="u">원</span></div>' +
+      '<div class="k">후원금</div></div>' +
+      (hasKg
+        ? '<div><div class="v">' + num(savedKg) + '<span class="u">kg</span></div>' +
+          '<div class="k">사료</div></div>'
         : '') +
       '</div>' +
-      (saved > 0
-        ? '<div class="divider"></div>' +
-          '<div class="bar"><i style="width:' + Math.max(2, Math.min(100, pct)) + '%"></i></div>' +
-          '<div class="sm mut center" style="margin-top:8px;line-height:1.6">' +
-          (paid
-            ? '<b style="color:var(--ink)">' + won(paid) + '</b>은 보호소에 전달했고,<br>' +
-              '<b style="color:var(--ink)">' + won(remain) + '</b>은 모으는 중이에요.'
-            : '<b style="color:var(--ink)">' + won(remain) + '</b>을 모아 보호소에 전달할 예정이에요.') +
-          '</div>'
+
+      (people
+        ? '<div class="sm mut center" style="margin-top:10px">' +
+          people + '명이 ' + meetings + '번의 봉사로 모았어요</div>'
+        : '') +
+      (badges.length
+        ? '<div class="row center" style="gap:6px;flex-wrap:wrap;margin-top:9px">' +
+          badges.join('') + '</div>'
         : '') +
       '</div>';
 
+
+    const hb = $('#howBtn');
+    if (hb) hb.onclick = howSheet;
+
     if (!counted && saved > 0) { counted = true; countUp($('#bigSum'), saved); }
+  }
+
+  /* 설명은 평소엔 접어두고 ⓘ 를 누르면 보여준다 */
+  function howSheet() {
+    const entries = data.entries || [];
+    const perWon = entries.filter(r => (r.unit || 'won') !== 'kg')
+      .reduce((t, r) => Math.max(t, int(r.per)), 0);
+    const perKg = entries.filter(r => r.unit === 'kg')
+      .reduce((t, r) => Math.max(t, int(r.per)), 0);
+    const spots = spotsByUnit();
+    const line = (label, names, per, unit) =>
+      '<div class="kv"><span class="k">' + label +
+      '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+      esc(names.join(', ')) + '</span></span>' +
+      '<span class="v">1인당 ' + (per ? credit(per, unit) : '—') + '</span></div>';
+
+    sheet({
+      title: '어떻게 쌓이나요',
+      body:
+        '<p class="sm" style="margin:0 0 12px;line-height:1.7;color:var(--ink-3)">' +
+        '봉사를 다녀오면 <b style="color:var(--ink)">참여한 인원수 × 정해진 양</b>만큼 ' +
+        '그 보호소 앞으로 쌓여요.</p>' +
+        (spots.won.length ? line('후원금', spots.won, perWon, 'won') : '') +
+        (spots.kg.length ? line('사료', spots.kg, perKg, 'kg') : '') +
+        '<p class="sm mut" style="margin:14px 0 0;line-height:1.7">' +
+        '모인 후원금은 사료·배변패드처럼 보호소에 필요한 물품으로 바꿔 전달하고, ' +
+        '전달한 내역은 아래에 모두 적어둬요.</p>'
+    });
   }
 
   /* 0에서 올라가는 짧은 효과 — 동작 줄이기가 켜져 있으면 건너뛴다 */
@@ -152,28 +192,42 @@
     if (!el || reduceMotion() || document.hidden) return;
     const dur = 800, t0 = performance.now();
     // 탭이 가려져 있으면 rAF 가 안 돌 수 있어 끝값은 따로 한 번 더 박아둔다
-    setTimeout(() => { el.textContent = won(to); }, dur + 300);
+    setTimeout(() => { el.textContent = num(to); }, dur + 300);
     const tick = now => {
       const p = Math.min(1, (now - t0) / dur);
       const eased = 1 - Math.pow(1 - p, 3);
-      el.textContent = won(Math.round(to * eased));
+      el.textContent = num(Math.round(to * eased));
       if (p < 1) requestAnimationFrame(tick);
     };
-    el.textContent = won(0);
+    el.textContent = num(0);
     requestAnimationFrame(tick);
   }
 
   /* ============================================================
      ② 적립 방식
      ============================================================ */
-  function paintHow() {
-    const per = (data.entries || []).reduce((t, r) => Math.max(t, int(r.per)), 0);
-    $('#howCard').innerHTML =
-      '<div class="pill-note">' +
-      '봉사를 다녀오면 <b>참여한 인원수 × ' + (per ? num(per) + '원' : '정해진 금액') + '</b> 만큼 ' +
-      '그 보호소 앞으로 적립돼요.<br>' +
-      '모인 돈은 사료·배변패드처럼 보호소에 필요한 물품으로 전달합니다.' +
-      '</div>';
+  /* 설정에 적힌 봉사지를 단위별로 갈라서 이름을 뽑는다.
+     아직 기록이 없는 보호소도 안내에는 나와야 해서 설정을 먼저 본다. */
+  function spotsByUnit() {
+    let list = settings && settings.places;
+    if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
+    const won = [], kg = [];
+    if (Array.isArray(list) && list.length) {
+      list.forEach(x => {
+        if (typeof x === 'string') return;
+        const nm = String((x && x.name) || '').trim();
+        if (!nm || !Number((x && x.credit) || 0)) return;
+        (x.unit === 'kg' ? kg : won).push(nm);
+      });
+    }
+    /* 설정이 비어 있으면 실제 기록에서라도 뽑는다 */
+    if (!won.length && !kg.length) {
+      (data.places || []).forEach(p => {
+        if (!p.place) return;
+        (p.unit === 'kg' ? kg : won).push(p.place);
+      });
+    }
+    return { won, kg };
   }
 
   /* ============================================================
@@ -317,9 +371,9 @@
           '<span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' +
           ic('heart') + '</span>' +
           '<div class="grow"><div class="nm">' + esc(p.place) + '</div>' +
-          '<div class="sub"><span>모인 돈 ' + won(p.saved) + '</span>' +
-          '<span>전달 ' + won(p.paid) + '</span></div></div>' +
-          '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + won(p.remain) + '</div>' +
+          '<div class="sub"><span>' + ((p.unit === 'kg' ? '모인 사료 ' : '모인 돈 ')) + credit(p.saved, p.unit) + '</span>' +
+          '<span>전달 ' + credit(p.paid, p.unit) + '</span></div></div>' +
+          '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + credit(p.remain, p.unit) + '</div>' +
           '<div class="mut sm">전달 예정</div></div></div>').join('') + '</div>'
       : '';
   }
@@ -367,8 +421,8 @@
           '<div class="card" style="padding:4px 16px">' + shown.map((r, i) =>
             '<div style="padding:12px 0' + (i < shown.length - 1 ? ';border-bottom:1px solid var(--line-2)' : '') + '">' +
             '<div class="row between"><b class="sm">' + fmtDate(r.date) + ' · ' + esc(r.place) + '</b>' +
-            '<span class="money" style="color:var(--brand-deep)">' + won(r.amount) + '</span></div>' +
-            '<div class="sm mut" style="margin-top:3px">' + r.people + '명 × ' + num(r.per) + '원</div>' +
+            '<span class="money" style="color:var(--brand-deep)">' + credit(r.amount, r.unit) + '</span></div>' +
+            '<div class="sm mut" style="margin-top:3px">' + r.people + '명 × ' + credit(r.per, r.unit) + '</div>' +
             (nameList(r).length
               ? '<div class="sm" style="margin-top:5px;line-height:1.6">' +
                 nameList(r).map(n => me && n === me
@@ -415,11 +469,11 @@
             return '<div style="padding:12px 0' +
               (i < payouts.length - 1 ? ';border-bottom:1px solid var(--line-2)' : '') + '">' +
               '<div class="row between"><b class="sm">' + fmtDate(p.date) + ' · ' + esc(p.place) + '</b>' +
-              '<span class="money" style="color:var(--brand-deep)">' + won(p.amount) + '</span></div>' +
+              '<span class="money" style="color:var(--brand-deep)">' + credit(p.amount, p.unit) + '</span></div>' +
               (p.memo ? '<div class="sm mut" style="margin-top:3px">' + esc(p.memo) + '</div>' : '') +
               (who.length
                 ? '<div class="sm" style="margin-top:4px">' + esc(who[0]) + ' 님' +
-                  (who.length > 1 ? ' 외 ' + (who.length - 1) + '명' : '') + '의 봉사로 모은 돈이에요</div>'
+                  (who.length > 1 ? ' 외 ' + (who.length - 1) + '명' : '') + '의 봉사로 모은 ' + (p.unit === 'kg' ? '사료' : '돈') + '이에요</div>'
                 : '') +
               (p.has_photo && p.id
                 ? '<img class="thumb" data-photo="' + esc(p.id) + '" alt="' + esc(p.place) + ' 전달 사진" hidden>'

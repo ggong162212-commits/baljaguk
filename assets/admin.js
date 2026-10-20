@@ -6,6 +6,12 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
+  /* 긴 글을 줄여 보여 준다 */
+  const cut = (t, n) => {
+    const x = String(t || '').replace(/\s+/g, ' ').trim();
+    return x.length > n ? x.slice(0, n) + '…' : x;
+  };
+
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [], pays: [] };
   const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'survey', q4: '', idSeg: 'done', rankAll: false };
   let cur = 'form';
@@ -131,7 +137,6 @@
   function boot() {
     $('#brandIcon').innerHTML = ic('paw');
     $('#gearBtn').innerHTML = ic('settings');
-    $('#lockIcon').innerHTML = ic('lock');
     $('#applySearchIcon').innerHTML = ic('search');
     $('#memberSearchIcon').innerHTML = ic('search');
     $('#surveySearchIcon').innerHTML = ic('search');
@@ -141,7 +146,7 @@
     $('#modeBadge').textContent = DB.isDemo() ? '체험 모드' : '연결됨';
     $('#modeBadge').className = 'badge ' + (DB.isDemo() ? 'pending' : 'approved');
     $('#loginHint').textContent = DB.isDemo()
-      ? '아직 데이터베이스에 연결하지 않아 체험 모드예요. 기본 비밀번호는 260324.'
+      ? '체험 모드예요. 아무 값이나 넣으면 운영진으로 들어갑니다.'
       : '';
 
     $('#tabbar').innerHTML = TABS.map(t =>
@@ -149,52 +154,105 @@
     $$('#tabbar [data-tab]').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 
     $('#loginForm').addEventListener('submit', login);
+    $('#sosOpen').addEventListener('click', () => {
+      const f = $('#loginForm');
+      f.hidden = !f.hidden;
+      if (!f.hidden) $('#em').focus();
+    });
     start();
   }
 
-  // 잠금이 꺼져 있으면(기본) 주소만으로 바로 들어간다
-  const locked = () => {
-    const v = localStorage.getItem('baljaguk.lock');
-    return v === null ? !!(window.CONFIG || {}).ADMIN_LOCK : v === '1';
-  };
+  /* ---------- 입구 ----------
+     운영진인 것이 확인되기 전에는 데이터를 한 줄도 불러오지 않는다.
+     주소를 안다고 들어와지던 예전 방식은 없앴다. */
+  const backHere = () => location.origin + location.pathname;
+
   async function start() {
-    /* 구성원이 카카오로 로그인한 상태로 이 주소에 들어올 수 있다.
-       그 열쇠로는 아무것도 못 보지만, 빈 운영진 화면을 보여줄 이유도 없다. */
-    if (DB.isAuthed()) {
-      if (await DB.isAdmin()) return enter();
-      return denied();
-    }
-    if (!locked()) {
-      try { await DB.login((window.CONFIG || {}).ADMIN_PASSWORD || (window.CONFIG || {}).DEMO_PASSWORD || '260324'); return enter(); }
-      catch (e) { toast('자동 입장에 실패했어요. 비밀번호로 들어와주세요', 'err'); }
-    }
-    $('#pw').focus();
+    const why = DB.authError && DB.authError();
+    if (why) return gate('login', why);
+    if (!DB.isAuthed()) return gate('login', '');
+
+    let me = null;
+    try { me = await DB.me(); }
+    catch (e) { return gate('login', '지금은 연결이 잘 안 돼요. 잠시 뒤 다시 해주세요.'); }
+
+    if (!me || !me.login) return gate('login', '');
+
+    /* 비상 로그인(공유 계정)은 명부에 없지만 운영진이다 */
+    if (!me.linked) return (await DB.isAdmin()) ? enter() : gate('claim', '');
+    if (me.status === 'left') return gate('left', me.name);
+    return (await DB.isAdmin()) ? enter() : gate('denied', me.name);
   }
 
-  /* 구성원 계정으로 운영진 주소에 들어온 경우 */
-  function denied() {
+  /* 못 들어온 사람에게 보여줄 화면들 */
+  function gate(kind, arg) {
     $('#login').hidden = false;
-    $('#loginForm').hidden = true;
-    $('#loginHint').textContent = '';
-    const box = $('#login').querySelector('.card');
-    box.innerHTML =
+    const box = $('#gateCard');
+    const icon = (bg, fg, name) =>
       '<div style="display:flex;justify-content:center">' +
-      '<span style="width:60px;height:60px;border-radius:22px;background:var(--surface-2);color:var(--ink-3);display:grid;place-items:center">' +
-      ic('lock') + '</span></div>' +
+      '<span style="width:60px;height:60px;border-radius:22px;background:var(' + bg + ');color:var(' + fg +
+      ');display:grid;place-items:center">' + ic(name) + '</span></div>';
+
+    if (kind === 'login') {
+      box.innerHTML =
+        (arg ? '<div class="pill-note" style="text-align:left">' + esc(arg) + '</div>' : '') +
+        icon('--brand-soft', '--brand-deep', 'lock') +
+        '<h2 style="margin-top:14px;font-size:22px">운영진 전용</h2>' +
+        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+        '카카오로 로그인하면 운영진인지 확인하고 열어드려요.</p>' +
+        '<div style="margin-top:18px"><button class="btn primary lg block" type="button" id="kko">' +
+        '카카오로 로그인</button></div>';
+      $('#kko').onclick = () => DB.kakaoLogin(backHere());
+      return;
+    }
+    if (kind === 'claim') {
+      box.innerHTML =
+        icon('--brand-soft', '--brand-deep', 'paw') +
+        '<h2 style="margin-top:14px;font-size:22px">본인 확인이 먼저예요</h2>' +
+        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+        '이름과 휴대폰 뒤 4자리로 명부와 한 번만 이어주세요.<br>' +
+        '그 다음 다시 들어오시면 돼요.</p>' +
+        '<div style="margin-top:18px;display:grid;gap:8px">' +
+        '<a class="btn primary lg block" href="me.html">본인 확인하러 가기</a>' +
+        '<button class="btn ghost block sm" type="button" id="out">다른 카카오 계정으로</button></div>';
+      $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
+      return;
+    }
+    if (kind === 'left') {
+      box.innerHTML =
+        icon('--surface-2', '--ink-3', 'lock') +
+        '<h2 style="margin-top:14px;font-size:22px">' + esc(arg || '') + '님</h2>' +
+        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+        '지금은 활동 중인 구성원이 아니라서 들어올 수 없어요.<br>' +
+        '다시 함께하시려면 다른 운영진에게 말씀해주세요.</p>' +
+        '<div style="margin-top:18px"><button class="btn ghost block sm" type="button" id="out">로그아웃</button></div>';
+      $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
+      return;
+    }
+    /* denied — 로그인은 했지만 운영진이 아닌 구성원 */
+    box.innerHTML =
+      icon('--surface-2', '--ink-3', 'lock') +
       '<h2 style="margin-top:14px;font-size:22px">운영진만 들어올 수 있어요</h2>' +
       '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
-      '여기는 신청자 연락처와 재정을 다루는 곳이에요.<br>내 봉사 기록은 아래에서 볼 수 있어요.</p>' +
+      '여기는 신청자 연락처와 재정을 다루는 곳이에요.<br>내 활동은 아래에서 볼 수 있어요.</p>' +
       '<div style="margin-top:18px;display:grid;gap:8px">' +
       '<a class="btn primary lg block" href="me.html">내 활동으로 가기</a>' +
-      '<button class="btn ghost block sm" type="button" id="relog">운영진 비밀번호로 들어가기</button></div>';
-    $('#relog').onclick = () => { DB.memberLogout(); location.reload(); };
+      '<button class="btn ghost block sm" type="button" id="out">다른 카카오 계정으로</button></div>';
+    $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
   }
 
+  /* 비상 로그인 — 입력값은 쓰고 바로 버린다 */
   async function login(e) {
     e.preventDefault();
     const btn = $('#loginBtn'); btn.disabled = true; btn.textContent = '확인 중…';
-    try { await DB.login($('#pw').value.trim()); await enter(); toast('어서오세요!', 'ok'); }
-    catch (err) { toast(err.message || '비밀번호가 맞지 않아요', 'err'); $('#pw').select(); }
+    const em = $('#em'), pw = $('#pw');
+    try {
+      await DB.login(pw.value.trim(), em.value.trim());
+      em.value = ''; pw.value = '';
+      if (!(await DB.isAdmin())) { DB.logout(); throw new Error('그 계정은 운영진이 아니에요'); }
+      await enter(); toast('어서오세요!', 'ok');
+    }
+    catch (err) { toast(err.message || '로그인하지 못했어요', 'err'); pw.select(); }
     finally { btn.disabled = false; btn.textContent = '들어가기'; }
   }
 
@@ -204,6 +262,103 @@
     await load();
     go(cur);
     startLive();
+    paintProfile();
+  }
+
+  /* ---------- 상단바 프로필 동그라미 ----------
+     커뮤니티와 같은 모양. 톱니는 그대로 두고 그 오른쪽에 둔다 */
+  let MEINFO = null;
+  async function paintProfile() {
+    try { MEINFO = await DB.me(); } catch (e) { MEINFO = null; }
+    if (!MEINFO || !MEINFO.linked) return;
+    const tb = document.querySelector('#topbar .in');
+    if (!tb || tb.querySelector('#profBtn')) return;
+
+    /* 로고를 누르면 운영진 첫 화면으로 — 막다른 곳이 없게 */
+    const logo = tb.querySelector('.brandmark');
+    if (logo && !logo.dataset.home) {
+      logo.dataset.home = '1';
+      logo.style.cursor = 'pointer';
+      logo.setAttribute('role', 'button');
+      logo.setAttribute('tabindex', '0');
+      logo.setAttribute('aria-label', '운영진 첫 화면으로');
+      const goHome = () => { closeSheet(); go(TABS[0].id); };
+      logo.addEventListener('click', goHome);
+      logo.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goHome(); }
+      });
+    }
+
+    /* 커뮤니티와 같은 자리에 같은 전환 스위치 */
+    const bm = tb.querySelector('.brandmark');
+    if (bm && !tb.querySelector('.sidesw')) {
+      bm.classList.remove('grow');
+      /* 전환 스위치가 들어오면 상단바가 좁아진다. 글자는 줄이고 발바닥만 남긴다 */
+      const wm = bm.querySelector('.wordmark'); if (wm) wm.hidden = true;
+      const mb = tb.querySelector('#modeBadge'); if (mb) mb.hidden = true;
+      bm.insertAdjacentHTML('afterend',
+        '<div class="sidesw grow" style="justify-content:center;flex:1">' +
+        '<button type="button" data-goapp>발자국</button>' +
+        '<button type="button" class="on">운영진</button></div>');
+      tb.querySelector('[data-goapp]').onclick = () => {
+        try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
+        location.href = 'me.html';
+      };
+    }
+    try { localStorage.setItem('baljaguk.side', 'admin'); } catch (e) { }
+    /* 다크 버튼은 프로필 시트 안으로 */
+    const th = tb.querySelector('[data-theme-btn]');
+    if (th) th.hidden = true;
+    tb.insertAdjacentHTML('beforeend',
+      '<button id="profBtn" type="button" aria-label="내 프로필" ' +
+      'style="border:none;background:none;padding:0;cursor:pointer;margin-left:2px">' +
+      UI.avatar(MEINFO, 'tiny') + '</button>');
+    tb.querySelector('#profBtn').onclick = profileSheet;
+    fillAvatars(tb);
+  }
+
+  async function fillAvatars(root) {
+    const els = Array.prototype.slice.call((root || document).querySelectorAll('[data-avatar]'));
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i], path = el.getAttribute('data-avatar');
+      el.removeAttribute('data-avatar');
+      try {
+        const url = await DB.community.avatarUrl(path);
+        if (url) {
+          el.style.backgroundImage = 'url("' + url + '")';
+          el.classList.add('has-photo');
+          el.textContent = '';
+        }
+      } catch (e) { }
+    }
+  }
+
+  function profileSheet() {
+    const m = MEINFO || {};
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const ov = sheet({
+      title: '내 프로필',
+      body:
+        '<div class="center">' +
+        '<div class="prof-big"' + (m.photo ? ' data-avatar="' + esc(m.photo) + '"' : '') + '>' +
+        esc(String(m.name || '?').slice(0, 1)) + '</div></div>' +
+        '<div class="divider"></div>' +
+        '<div class="kv"><span class="k">이름</span><span class="v">' + esc(m.name || '') +
+        ' <span class="badge admin">운영진</span></span></div>' +
+        (m.joined_on
+          ? '<div class="kv"><span class="k">가입일</span><span class="v">' + fmtDate(m.joined_on) + '</span></div>'
+          : '') +
+        '<div class="divider"></div>' +
+        '<div style="display:grid;gap:8px">' +
+        '<button class="btn ghost block" type="button" id="apTheme">' +
+        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
+        '<a class="btn ghost block" href="guide.html?from=admin">' + ic('clipboard') + '<span>사용법</span></a>' +
+        '<button class="btn ghost block" type="button" id="apOut">로그아웃</button>' +
+        '</div>'
+    });
+    fillAvatars(ov);
+    ov.querySelector('#apTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
+    ov.querySelector('#apOut').onclick = () => { DB.memberLogout(); DB.logout(); location.reload(); };
   }
 
   /* ---------- 다른 운영진의 변경을 자동으로 받아오기 ---------- */
@@ -276,6 +431,142 @@
       vol: renderVol, fin: renderFin, donate: renderDonate, settings: renderSettings
     }[cur] || (() => { }))();
     UI.initGrow();
+    paintTodo();
+  }
+
+  /* ---------- 운영진 할 일 ----------
+     확정 안 한 봉사 · 가입 대기 · 신고. 누르면 그 자리로 간다.
+     챙길 게 없으면 아무것도 안 보인다. */
+  async function paintTodo() {
+    /* 지금 보고 있는 화면의 제목 아래에 붙인다.
+       화면마다 제목이 따로 있어서 보이는 것을 찾아야 한다. */
+    const view = document.querySelector('#v-' + cur);
+    if (!view) return;
+    let box = view.querySelector('.todobox');
+    if (!box) {
+      const head = view.querySelector('.pagehead');
+      if (!head) return;
+      head.insertAdjacentHTML('afterend', '<div class="todobox"></div>');
+      box = view.querySelector('.todobox');
+    }
+    /* 다른 화면에 남아 있던 것은 지운다 */
+    document.querySelectorAll('.todobox').forEach(x => { if (x !== box) x.innerHTML = ''; });
+
+    let t = null;
+    try { t = await DB.adminTodo(); } catch (e) { }
+    if (!t) { box.innerHTML = ''; return; }
+
+    const items = [
+      ['vol', 'calendar', '확정 안 한 봉사', t.unconfirmed],
+      ['apply', 'mail', '가입 대기', t.applications],
+      ['reports', 'alert', '신고', t.reports],
+      ['feedback', 'heart', '받은 의견', t.feedback]
+    ].filter(x => Number(x[3]) > 0);
+
+    if (!items.length) { box.innerHTML = ''; return; }
+
+    box.innerHTML = '<div class="todo">' + items.map(([k, i, label, n]) =>
+      '<button type="button" class="todoit" data-todo="' + k + '">' +
+      '<span class="ic">' + ic(i) + '</span>' +
+      '<span class="tx">' + label + '</span>' +
+      '<span class="n">' + num(n) + '</span></button>').join('') + '</div>';
+
+    box.querySelectorAll('[data-todo]').forEach(b => b.onclick = () => {
+      const k = b.dataset.todo;
+      if (k === 'reports') return reportsSheet();
+      if (k === 'feedback') return feedbackSheet();
+      go(k);
+    });
+  }
+
+  /* 받은 의견 — 구성원이 「불편한 점 알려 주기」로 보낸 것 */
+  async function feedbackSheet() {
+    const ov = sheet({ title: '받은 의견', body: '<div id="fbList" class="mut sm">불러오는 중…</div>' });
+    let list = [];
+    try { list = await DB.feedback.open(); } catch (e) { }
+    const box = ov.querySelector('#fbList');
+    if (!box) return;
+    if (!list.length) { box.innerHTML = '<div class="mut sm">아직 받은 의견이 없어요</div>'; return; }
+
+    box.innerHTML = list.map(f =>
+      '<div class="card" style="margin-bottom:10px">' +
+      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) + ' · ' +
+      (f.anon ? '<span class="badge">익명</span>' : esc(f.who || '(알 수 없음)')) + '</div>' +
+      '<div style="margin-top:7px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
+      esc(f.body) + '</div>' +
+      (f.anon
+        ? '<p class="mut" style="font-size:11.5px;margin-top:9px;line-height:1.55">' +
+          '이름 없이 온 의견이라 답장할 수 없어요. 답할 내용이면 공지로 알려주세요.</p>'
+        : (f.replied
+          ? '<p class="mut" style="font-size:11.5px;margin-top:9px">답장했어요</p>'
+          : '<button class="btn ghost sm block" type="button" style="margin-top:10px" ' +
+            'data-freply="' + esc(f.id) + '">답장하기</button>')) +
+      '<button class="btn soft sm block" type="button" style="margin-top:8px" ' +
+      'data-fdone="' + esc(f.id) + '">확인했어요</button></div>').join('');
+
+    box.querySelectorAll('[data-fdone]').forEach(b => b.onclick = async () => {
+      try { await DB.feedback.done(b.dataset.fdone); toast('확인했어요', 'ok'); closeSheet(); render(); }
+      catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
+    });
+
+    /* 이름 있는 의견에만 답장 — 익명에는 답장할 길이 없다 */
+    box.querySelectorAll('[data-freply]').forEach(b => b.onclick = () => {
+      const id = b.dataset.freply;
+      const ov2 = sheet({
+        title: '답장하기',
+        body: '<p class="mut sm" style="margin-bottom:10px">보낸 분에게 새 소식으로 가요.</p>' +
+          '<label class="field"><textarea class="input" id="frText" rows="4"></textarea></label>' +
+          '<div class="sheet-foot">' +
+          '<button class="btn primary lg block" type="button" id="frGo">보내기</button></div>'
+      });
+      ov2.querySelector('#frGo').onclick = async () => {
+        const t = ov2.querySelector('#frText').value.trim();
+        if (!t) return toast('내용을 적어주세요', 'err');
+        try {
+          const r = await DB.feedback.reply(id, t);
+          if (r && r.ok === false) return toast('답장할 수 없어요', 'err');
+          closeSheet(); toast('답장했어요', 'ok'); render();
+        } catch (e) { toast(e.message || '보내지 못했어요', 'err'); }
+      };
+    });
+  }
+
+  /* 신고 목록 — 운영진만 본다 */
+  async function reportsSheet() {
+    const ov = sheet({ title: '신고', body: '<div id="rpList" class="mut sm">불러오는 중…</div>' });
+    let list = [];
+    try { list = await DB.reportsOpen(); } catch (e) { }
+    const box = ov.querySelector('#rpList');
+    if (!box) return;
+    if (!list.length) {
+      box.innerHTML = '<div class="mut sm">처리할 신고가 없어요</div>';
+      return;
+    }
+    box.innerHTML = list.map(r =>
+      '<div class="card" style="margin-bottom:10px">' +
+      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(r.created_at) + '</div>' +
+      '<div style="margin-top:6px;font-size:13.5px;font-weight:600">' + esc(r.reason) + '</div>' +
+      (r.body
+        ? '<div class="pill-note" style="margin-top:9px">' + esc(cut(r.body, 90)) + '</div>'
+        : '') +
+      '<div class="mut" style="font-size:11.5px;margin-top:7px">신고한 사람: ' +
+      esc(r.reporter || '(알 수 없음)') + '</div>' +
+      '<div class="row" style="gap:7px;margin-top:11px">' +
+      (r.post_id
+        ? '<button class="btn ghost sm grow" type="button" data-rhide="' + esc(r.post_id) + '">' +
+          '글 숨기기</button>'
+        : '') +
+      '<button class="btn soft sm grow" type="button" data-rdone="' + esc(r.id) + '">' +
+      '처리했어요</button></div></div>').join('');
+
+    box.querySelectorAll('[data-rdone]').forEach(b => b.onclick = async () => {
+      try { await DB.reportDone(b.dataset.rdone); toast('처리했어요', 'ok'); closeSheet(); render(); }
+      catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
+    });
+    box.querySelectorAll('[data-rhide]').forEach(b => b.onclick = async () => {
+      try { await DB.community.setHidden(b.dataset.rhide, true); toast('숨겼어요', 'ok'); }
+      catch (e) { toast(e.message || '숨기지 못했어요', 'err'); }
+    });
   }
 
   /* ============================================================
@@ -639,16 +930,36 @@
     const all = S.members;
     const admins = all.filter(m => m.role === 'admin').length;
 
+    /* 누가 커뮤니티에 들어왔는지 — 명부와 카카오가 이어졌는지로 본다 */
+    const linked = m => !!m.auth_user_id;
+    const nLinked = all.filter(linked).length;
+
     $('#memberStats').innerHTML =
       '<div class="statcard">' +
       stat('green', 'users', '전체', all.length + '명') +
-      stat('gold', 'star', '운영진', admins + '명') + '</div>';
+      stat('gold', 'star', '운영진', admins + '명') +
+      stat('sky', 'link', '연결', nLinked + ' / ' + all.length) + '</div>';
 
-    const counts = { all: all.length, admin: admins };
-    const chips = [['all', '전체'], ['admin', '운영진']];
+    const counts = { all: all.length, admin: admins, nolink: all.length - nLinked };
+    const chips = [['all', '전체'], ['admin', '운영진'], ['nolink', '연결 안 함']];
     $('#memberChips').innerHTML = chips.map(([k, l]) =>
       '<button class="chip' + (F.member === k ? ' on' : '') + '" data-m="' + k + '">' + l + '<span class="n">' + counts[k] + '</span></button>').join('');
     $$('#memberChips [data-m]').forEach(b => b.addEventListener('click', () => { F.member = b.dataset.m; renderMembers(); }));
+
+    /* 아직 안 들어온 사람에게 보낼 안내 — 이름 목록은 넣지 않는다 */
+    const inviteBox = $('#memberInvite');
+    if (inviteBox) {
+      inviteBox.innerHTML = (all.length - nLinked)
+        ? '<button class="btn ghost sm block" type="button" id="copyInvite">' +
+          ic('clipboard') + '<span>연결 안 한 ' + (all.length - nLinked) +
+          '명에게 보낼 안내 문구 복사</span></button>'
+        : '';
+      const ci = $('#copyInvite');
+      if (ci) ci.onclick = () => copy(
+        [new URL('me.html', location.href).href,
+         '카카오로 들어와서 이름과 휴대폰 뒤 4자리로 확인해 주세요'].join(String.fromCharCode(10)),
+        '안내 문구를 복사했어요');
+    }
 
     const sorts = [['name', '이름순'], ['vol', '봉사 많은 순']];
     $('#memberSort').innerHTML = sorts.map(([k, l]) =>
@@ -657,6 +968,7 @@
 
     let list = all.slice();
     if (F.member === 'admin') list = list.filter(m => m.role === 'admin');
+    if (F.member === 'nolink') list = list.filter(m => !linked(m));
     const q = F.q2.trim();
     if (q) list = list.filter(m => (m.name + (m.department || '') + (m.student_id || '')).includes(q));
     if (F.sort === 'name') list.sort((a, b) =>
@@ -674,12 +986,15 @@
 
     $('#memberList').innerHTML = kingHTML + (list.length ? '<div class="list">' + list.map(m =>
       '<div class="item" data-m2="' + m.id + '" tabindex="0" role="button">' + avatar(m) +
+      /* 두 줄로 — 1줄 이름, 2줄 학번·봉사·연결. 가입일은 상세에 있다 */
       '<div class="grow"><div class="nm">' + esc(m.name) +
       (m.role === 'admin' ? '<span class="badge admin">운영진</span>' : '') + '</div>' +
-      '<div class="meta">' + esc(m.student_id || '') + '학번</div>' +
-      '<div class="sub"><span>가입 ' + fmtDate(m.joined_on || m.created_at) + '</span>' +
-      '<span>누적 봉사 ' + volCount(m.id) + '회</span>' +
-      (volSoon(m.id) ? '<span style="color:var(--brand-deep)">확정 전 ' + volSoon(m.id) + '</span>' : '') +
+      '<div class="sub">' +
+      (m.student_id ? '<span>' + esc(m.student_id) + '학번</span>' : '') +
+      '<span>봉사 ' + volCount(m.id) + '회</span>' +
+      (linked(m)
+        ? '<span class="linkdot on">연결됨</span>'
+        : '<span class="linkdot">아직</span>') +
       '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('users', '해당하는 구성원이 없어요'));
@@ -763,6 +1078,13 @@
       '<div class="grid2">' +
       '<label class="field"><span class="lb">가입일</span><input class="input" type="date" id="mJoin" value="' + esc((m.joined_on || '').slice(0, 10)) + '"></label></div>' +
 
+      /* 커뮤니티에 들어왔는지 — 운영진이 안내할 사람을 가려낼 때 쓴다 */
+      (isNew ? '' :
+        '<div class="kv"><span class="k">카카오 연결</span><span class="v">' +
+        (m.auth_user_id
+          ? '연결됨' + (m.linked_at ? ' · ' + fmtDate(m.linked_at) : '')
+          : '아직') + '</span></div>') +
+
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
         '<div class="divider"></div><div class="row between" style="margin-bottom:8px">' +
@@ -800,6 +1122,9 @@
         memo: m.memo || ''
       };
       if (!patch.name) return toast('이름을 입력해주세요', 'err');
+      /* 마지막 운영진까지 일반회원으로 내리면 아무도 못 들어온다 */
+      if (!isNew && m.role === 'admin' && patch.role !== 'admin' && lastAdmin(m.id))
+        return toast('마지막 운영진이에요. 다른 사람을 먼저 운영진으로 올려주세요', 'err');
       closeSheet();
       try {
         if (isNew) await DB.members.create(patch); else await DB.members.update(m.id, patch);
@@ -809,9 +1134,17 @@
     const del = ov.querySelector('[data-del]');
     if (del) del.onclick = async () => {
       closeSheet();
+      if (m.role === 'admin' && lastAdmin(m.id))
+        return toast('마지막 운영진이에요. 다른 사람을 먼저 운영진으로 올려주세요', 'err');
       if (!await confirmSheet(m.name + '님을 명단에서 지울까요?', '봉사 참여 기록도 함께 사라져요.', '삭제', true)) return;
       await DB.members.remove(m.id); await reload(); toast('삭제했어요');
     };
+  }
+
+  /* 이 사람 말고 활동 중인 운영진이 더 있는가 */
+  function lastAdmin(id) {
+    return (S.members || []).filter(x =>
+      x.role === 'admin' && x.status !== 'left' && x.id !== id).length === 0;
   }
 
   /* ============================================================
@@ -883,7 +1216,7 @@
       renderVol();
     }));
     $$('#calendar [data-ev]').forEach(el => el.addEventListener('click', () => eventSheet(byId(S.events, el.dataset.ev))));
-    $('#newEv').addEventListener('click', () => eventSheet(null));
+    $('#newEv').addEventListener('click', newEventWizard);
 
     paintRank();
   }
@@ -959,12 +1292,19 @@
     let list = s.places;
     if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = null; } }
     if (!Array.isArray(list) || !list.length) list = [s.place || '천보금 보호소'];
-    return list.map(x => (typeof x === 'string' ? { name: x, area: '', address: '', credit: 0 } : {
-      name: String((x && x.name) || ''), area: String((x && x.area) || ''),
-      address: String((x && x.address) || ''),
-      credit: Math.max(0, Number((x && x.credit) || 0) || 0)
-    })).filter(x => x.name);
+    return list.map(x => (typeof x === 'string'
+      ? { name: x, area: '', address: '', credit: 0, unit: 'won' }
+      : {
+        name: String((x && x.name) || ''), area: String((x && x.area) || ''),
+        address: String((x && x.address) || ''),
+        credit: Math.max(0, Number((x && x.credit) || 0) || 0),
+        /* 천보금처럼 돈 대신 사료로 쌓는 곳은 kg */
+        unit: ((x && x.unit) === 'kg') ? 'kg' : 'won',
+        bring: String((x && x.bring) || ''),
+        note: String((x && x.note) || '')
+      })).filter(x => x.name);
   }
+  const unitOf = name => ((volPlaces().find(x => x.name === name) || {}).unit || 'won');
   const volPlaceNames = () => volPlaces().map(x => x.name);
   const volPlace = () => (volPlaces()[0] || {}).name || '천보금 보호소';
   const areaOf = (name) => ((volPlaces().find(x => x.name === name) || {}).area || '');
@@ -1010,6 +1350,103 @@
     const base = place || volPlace();
     const same = S.events.filter(e => e.date === date && e.place === place && e.id !== skipId).length;
     return same ? base + ' ' + (same + 1) : base;
+  }
+
+  /* ---------- 봉사모임 만들기 (단계형) ----------
+     새로 만들 때는 묻는 게 많아 한 번에 하나씩 묻는다.
+     수정은 한눈에 봐야 해서 기존 한 화면을 그대로 쓴다. */
+  function newEventWizard() {
+    const places = volPlaces();
+    const names = places.map(p => p.name);
+
+    UI.wizard({
+      title: '봉사모임 만들기',
+      doneLabel: '만들기',
+      steps: [
+        {
+          key: 'date', short: '날짜',
+          q: '언제 가나요?',
+          hint: '날짜를 고르면 제목은 알아서 붙여요.',
+          body: '<label class="field"><input class="input lgin" type="date" id="nDate" ' +
+            'value="' + esc(F.day || DB.today()) + '"></label>' +
+            '<label class="field"><span class="lb">모이는 시간 <span class="mut">(선택)</span></span>' +
+            '<input class="input" type="time" id="nTime" value="10:00"></label>',
+          read: r => ({ date: r.querySelector('#nDate').value, time: r.querySelector('#nTime').value }),
+          fill: (r, v) => {
+            r.querySelector('#nDate').value = v.date || '';
+            r.querySelector('#nTime').value = v.time || '';
+          },
+          valid: v => v.date ? '' : '날짜를 골라주세요',
+          sum: v => fmtDate(v.date) + (v.time ? ' ' + v.time : '')
+        },
+        {
+          key: 'place', short: '보호소',
+          q: '어느 보호소인가요?',
+          hint: '적립은 보호소 설정을 그대로 따라가요.',
+          body: '<div style="display:grid;gap:8px">' + names.map((n, i) =>
+            '<button type="button" class="check" data-p="' + esc(n) + '"' +
+            (i === 0 ? ' class="check on"' : '') + ' style="width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">' + esc(n) + '</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+            (places[i].credit
+              ? '1인당 ' + UI.credit(places[i].credit, places[i].unit)
+              : '적립 없음') + '</span></span></button>').join('') + '</div>',
+          after: (r, vals) => {
+            const pick = nm => r.querySelectorAll('[data-p]').forEach(b =>
+              b.classList.toggle('on', b.dataset.p === nm));
+            r.querySelectorAll('[data-p]').forEach(b =>
+              b.addEventListener('click', () => pick(b.dataset.p)));
+            pick((vals.place && vals.place.name) || names[0]);
+          },
+          read: r => {
+            const on = r.querySelector('[data-p].on') || r.querySelector('[data-p]');
+            const nm = on ? on.dataset.p : names[0];
+            return { name: nm, credit: creditOf(nm), unit: unitOf(nm) };
+          },
+          sum: v => v.name
+        },
+        {
+          key: 'cap', short: '정원',
+          q: '몇 명까지 받을까요?',
+          hint: '비워두면 인원 제한 없이 받아요. 정원이 차면 대기로 받습니다.',
+          body: '<label class="field"><input class="input lgin" type="number" min="1" ' +
+            'id="nCap" placeholder="예: 8"></label>',
+          read: r => r.querySelector('#nCap').value,
+          fill: (r, v) => { r.querySelector('#nCap').value = v || ''; },
+          sum: v => v ? v + '명' : '제한 없음'
+        },
+        {
+          key: 'open', short: '신청 열기',
+          q: '신청은 언제부터 받을까요?',
+          hint: '비워두면 지금부터 바로 받아요.',
+          body: '<label class="field"><input class="input" type="datetime-local" id="nOpen"></label>',
+          read: r => r.querySelector('#nOpen').value,
+          fill: (r, v) => { r.querySelector('#nOpen').value = v || ''; },
+          sum: v => v ? fmtDateTime(v) + '부터' : '지금부터'
+        }
+      ],
+      done: async v => {
+        const row = await DB.events.create({
+          title: autoTitle(v.date.date, v.place.name, null),
+          date: v.date.date,
+          start_time: v.date.time || null,
+          place: v.place.name,
+          note: '',
+          capacity: Number(v.cap) || null,
+          credit_per_person: v.place.credit,
+          credit_unit: v.place.unit,
+          signup_open_at: v.open ? new Date(v.open).toISOString() : null
+        });
+        closeSheet();
+        F.day = v.date.date;
+        await reload();
+        toast('봉사모임을 만들었어요', 'ok');
+        /* 참석자는 만들고 나서 고른다 */
+        const made = byId(S.events, row.id);
+        if (made) eventSheet(made);
+      }
+    });
   }
 
   function eventSheet(ev) {
@@ -1068,6 +1505,15 @@
       '<input id="pickSearch" placeholder="이름으로 찾아서 추가"></div>' +
       '<div id="pickResults"></div>' +
       '<div class="picker" id="picker"></div>' +
+      /* 오늘 가는 봉사면 현장 출석 번호를 열 수 있다 */
+      (!isNew && ev.date === DB.today()
+        ? '<div class="divider"></div>' +
+          '<div class="lb" style="margin-bottom:7px">현장 출석</div>' +
+          '<div id="ciBox"><button class="btn soft block" type="button" data-ciopen>' +
+          ic('unlock') + '<span>출석 번호 열기</span></button></div>' +
+          '<span class="hint">부원이 번호를 넣으면 「현장 참석」이 남아요. ' +
+          '실적은 아래 확정하기로 쌓여요.</span>'
+        : '') +
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>봉사모임 만들기</button>'
         : (confirmed
@@ -1085,6 +1531,28 @@
             ic('check') + '<span>봉사 확정하기</span></button>'));
 
     const ov = sheet({ title: isNew ? fmtDate(F.day) + ' 봉사모임' : '봉사모임 수정', body, noFocus: true });
+
+    /* 출석 번호 — 한 번 열면 그날 내내 같은 번호를 쓴다 */
+    const ci = ov.querySelector('[data-ciopen]');
+    if (ci) ci.onclick = async () => {
+      ci.disabled = true;
+      try {
+        const code = await DB.community.checkinOpen(ev.id);
+        const box = ov.querySelector('#ciBox');
+        const n = (S.checkins || []).filter(c => c.event_id === ev.id).length;
+        box.innerHTML =
+          '<div class="card flat" style="text-align:center;padding:16px">' +
+          '<div class="mut sm">부원에게 알려줄 번호</div>' +
+          '<div style="font-size:30px;font-weight:800;letter-spacing:.16em;margin-top:6px">' +
+          esc(code) + '</div>' +
+          '<div class="mut" style="font-size:11.5px;margin-top:7px">지금까지 ' + n + '명 찍었어요</div>' +
+          '</div>';
+      } catch (e) {
+        toast(e.message || '열지 못했어요', 'err');
+        ci.disabled = false;
+      }
+    };
+
     const cp = ov.querySelector('[data-copysignup]');
     if (cp) cp.onclick = () => copy(signupURL(ev.id), '신청 폼 주소를 복사했어요');
     const op = ov.querySelector('[data-opensignup]');
@@ -1184,6 +1652,8 @@
         note: ov.querySelector('#eNote').value.trim(),
         capacity: cap,
         credit_per_person: Math.max(0, Number(ov.querySelector('#eCredit').value) || 0),
+        /* 돈으로 쌓는 곳인지 사료로 쌓는 곳인지 — 그때의 설정을 같이 남긴다 */
+        credit_unit: unitOf(place),
         signup_open_at: readDt('evOpen', '00:00')
       }, extra || {});
       closeSheet();
@@ -2063,7 +2533,7 @@
         miss.length + '건에 지금 봉사지에 적힌 1인당 금액을 넣어요. 모두 합쳐 ' + won(total) + ' 이 쌓여요.',
         '적립하기')) return;
       try {
-        for (const e of miss) await DB.events.update(e.id, { credit_per_person: creditOf(e.place) });
+        for (const e of miss) await DB.events.update(e.id, { credit_per_person: creditOf(e.place), credit_unit: unitOf(e.place) });
         await reload();
         toast(won(total) + ' 적립했어요', 'ok');
       } catch (err) { toast(err.message || '적립하지 못했어요', 'err'); }
@@ -2581,9 +3051,118 @@
   /* ============================================================
      7. 설정
      ============================================================ */
+  /* ---------- 사용 현황 · 저장 공간 · 백업 ----------
+     무료 플랜 한도에 가까워지면 미리 알아야 한다.
+     개인별로 누가 무엇을 봤는지는 세지 않는다 — 숫자만 본다. */
+
+  /* Supabase 무료 플랜 (2026-10 기준) */
+  const FREE = { db: 500 * 1024 * 1024, storage: 1024 * 1024 * 1024 };
+
+  const mb = b => {
+    const n = Number(b) || 0;
+    if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(1) + 'GB';
+    if (n >= 1024 * 1024) return Math.round(n / 1024 / 1024) + 'MB';
+    return Math.round(n / 1024) + 'KB';
+  };
+
+  async function paintUsage() {
+    const box = $('#usageBox');
+    if (!box) return;
+    let u = null;
+    try { u = await DB.usageStats(); } catch (e) { }
+    if (!u) { box.innerHTML = '<div class="mut sm">불러오지 못했어요</div>'; return; }
+
+    const pct = Math.min(100, Math.round((Number(u.bytes) || 0) / FREE.storage * 100));
+    const avg = u.photos ? (Number(u.bytes) || 0) / u.photos : 0;
+    const warn = pct >= 80;
+
+    box.innerHTML =
+      '<div class="statcard" style="margin-bottom:12px">' +
+      stat('green', 'users', '이번 주 들어옴', num(u.joined_week) + '명') +
+      stat('gold', 'edit', '이번 주 글', num(u.posts_week) + '개') +
+      stat('sky', 'alert', '알림 켬', num(u.push_on) + '명') + '</div>' +
+
+      '<div class="kv"><span class="k">구성원</span><span class="v">' +
+      num(u.linked) + ' / ' + num(u.members) + '명 연결</span></div>' +
+      '<div class="kv"><span class="k">이번 주 후기</span><span class="v">' +
+      num(u.reviews_week) + '개</span></div>' +
+      '<div class="kv"><span class="k">이번 주 댓글</span><span class="v">' +
+      num(u.comments_week) + '개</span></div>' +
+
+      '<div class="divider"></div>' +
+      '<div class="lb" style="margin-bottom:8px">저장 공간 (사진)</div>' +
+      '<div class="bar' + (warn ? ' warn' : '') + '">' +
+      '<span style="width:' + Math.max(2, pct) + '%"></span></div>' +
+      '<div class="row between" style="margin-top:7px">' +
+      '<span class="mut" style="font-size:12px">' + mb(u.bytes) + ' / ' + mb(FREE.storage) + '</span>' +
+      '<span class="mut" style="font-size:12px">' + pct + '%</span></div>' +
+
+      '<div class="kv"><span class="k">사진</span><span class="v">' +
+      num(u.photos) + '장 · 평균 ' + mb(avg) + '</span></div>' +
+      '<div class="kv"><span class="k">글·댓글·반응 줄</span><span class="v">' +
+      num(u.rows) + '줄</span></div>' +
+
+      (warn
+        ? '<p class="pill-note warn" style="margin-top:12px">' +
+          '<b>저장 공간이 ' + pct + '% 찼어요.</b><br>' +
+          '오래된 봉사 사진을 내려받아 보관한 뒤 글을 지우거나, ' +
+          '유료 플랜으로 올리는 걸 생각해 보세요.</p>'
+        : '') +
+
+      '<p class="mut" style="font-size:11.5px;margin-top:12px;line-height:1.65">' +
+      '누가 무엇을 봤는지는 세지 않아요. 숫자만 봐요.</p>';
+  }
+
+  /* 전체 백업 — 표마다 JSON 하나씩, 한 파일로 묶어 내려받는다.
+     사진은 파일이 커서 목록(주소)만 담는다. */
+  async function backupAll() {
+    const btn = $('#bkGo');
+    if (btn) { btn.disabled = true; btn.textContent = '모으는 중…'; }
+    try {
+      const out = {
+        만든날: new Date().toISOString(),
+        동아리: S.settings,
+        구성원: S.members,
+        봉사: S.events,
+        참석: S.att,
+        재정: S.fin,
+        후원: { 캠페인: S.camps, 후원금: S.dons },
+        설문: S.srv,
+        '1365': S.ids,
+        보호소전달: S.pays
+      };
+      /* 커뮤니티 쪽은 따로 받아 온다 */
+      try {
+        const f = await DB.community.feed({ limit: 500 });
+        out.글 = (f && f.rows) || [];
+        out.사진목록 = out.글.reduce((a, p) => a.concat(p.photos || []), []);
+      } catch (e) { out.글 = '못 받았어요'; }
+
+      const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '발자국_백업_' + DB.today() + '.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast('백업을 내려받았어요', 'ok');
+    } catch (e) {
+      toast(e.message || '백업하지 못했어요', 'err');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '전체 백업 받기'; }
+    }
+  }
+
   function renderSettings() {
     const s = S.settings;
     $('#settingsPanel').innerHTML =
+      '<div class="card"><h3>사용 현황</h3>' +
+      '<div class="sub">이번 주 움직임과 남은 저장 공간이에요.</div><div class="sp"></div>' +
+      '<div id="usageBox" class="mut sm">불러오는 중…</div>' +
+      '<div class="divider"></div>' +
+      '<button class="btn ghost block" type="button" id="bkGo">전체 백업 받기</button>' +
+      '<span class="hint">표를 모두 담은 파일 하나를 내려받아요. ' +
+      '사진은 파일이 커서 목록(주소)만 담아요.</span></div>' +
+
       '<div class="card"><h3>동아리 정보</h3>' +
       '<div class="sub">신청 폼·설문·구성원 등록에 두루 쓰여요.</div><div class="sp"></div>' +
       '<div class="grid2">' +
@@ -2617,16 +3196,14 @@
       '<label class="switch" style="justify-content:space-between"><span class="sm">승인할 때 회비를 동아리비 수입에 더하기</span>' +
       '<span style="display:flex"><input type="checkbox" id="autoFee"' + (autoFee() ? ' checked' : '') + '><span class="track"></span></span></label></div>' +
 
-      '<div class="card"><h3>운영진 페이지 잠금</h3>' +
-      '<div class="sub">꺼두면 이 주소로 들어온 사람은 비밀번호 없이 바로 보게 돼요.</div><div class="sp"></div>' +
-      '<label class="switch" style="justify-content:space-between"><span class="sm">들어올 때 비밀번호 물어보기</span>' +
-      '<span style="display:flex"><input type="checkbox" id="lockSw"' + (locked() ? ' checked' : '') + '><span class="track"></span></span></label>' +
-      (locked() ? '' : '<p class="pill-note" style="margin-top:12px">지금은 잠금이 꺼져 있어요. 주소를 아는 사람은 신청자 연락처·입금증·재정을 볼 수 있으니 주소를 운영진끼리만 공유해주세요.</p>') +
+      '<div class="card"><h3>이 화면에 들어오는 방법</h3>' +
+      '<div class="sub">카카오로 로그인한 운영진만 들어올 수 있어요.</div><div class="sp"></div>' +
+      '<p class="sm mut" style="line-height:1.7;margin:0">' +
+      '운영진을 늘리거나 빼려면 <b>구성원</b> 탭에서 바꿔주세요.<br>' +
+      '명부에서 빠진 사람은 바로 못 들어와요.</p>' +
+      '<p class="pill-note" style="margin-top:12px">공유 계정 비밀번호는 비상용이에요. ' +
+      '이 화면에서는 바꿀 수 없고, Supabase에서 직접 바꿔주세요.</p>' +
       '</div>' +
-
-      '<div class="card"><h3>비밀번호</h3><div class="sub">잠금을 켰을 때 쓰는 비밀번호예요.</div><div class="sp"></div>' +
-      '<label class="field"><span class="lb">새 비밀번호</span><input class="input" id="pw1" type="password" inputmode="numeric" placeholder="6자 이상"></label>' +
-      '<button class="btn ghost block" id="savePw">비밀번호 바꾸기</button></div>' +
 
       '<div class="card"><h3>데이터</h3><div class="sp"></div>' +
       '<div class="row" style="gap:8px"><button class="btn ghost grow" id="backup">전체 백업 내려받기</button>' +
@@ -2648,18 +3225,13 @@
       toast('저장했어요', 'ok'); renderSettings();
     };
     $('#goFormSettings').onclick = () => go('apply');
-    $('#lockSw').onchange = e => {
-      localStorage.setItem('baljaguk.lock', e.target.checked ? '1' : '0');
-      toast(e.target.checked ? '이제 들어올 때 비밀번호를 물어봐요' : '잠금을 껐어요. 주소만 알면 바로 들어와요');
-      renderSettings();
-    };
     function paintPlaces() {
       const list = volPlaces();
       $('#placeList').innerHTML = list.map((pl, i) =>
         '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
         '<div><span class="sm"><b>' + esc(pl.name) + '</b>' + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
         '<div class="mut" style="font-size:11.5px">' + (pl.area ? esc(pl.area) + ' · ' : '') +
-        (pl.credit ? '1인당 ' + num(pl.credit) + '원 적립' : '적립 없음') +
+        (pl.credit ? '1인당 ' + UI.credit(pl.credit, pl.unit) + ' 적립' : '적립 없음') +
         (pl.address ? '<br>' + esc(pl.address) : '') + '</div></div>' +
         '<div class="row" style="gap:6px">' +
         '<button class="iconbtn" data-edpl="' + i + '" aria-label="소재지 고치기" ' +
@@ -2682,10 +3254,22 @@
             '<input class="input" id="plArea" value="' + esc(cur.area) + '" placeholder="경기 광주"></label>' +
             '<label class="field"><span class="lb">상세 주소</span>' +
             '<input class="input" id="plAddr" value="' + esc(cur.address) + '" placeholder="서울 동대문구 제기로21길 59-6, 2층"></label>' +
-            '<label class="field"><span class="lb">1인당 적립금</span>' +
-            '<input class="input" type="number" min="0" step="500" id="plCredit" value="' +
-            (cur.credit || '') + '" placeholder="예: 2000">' +
-            '<span class="hint">봉사를 확정하면 참여 인원 × 이 금액이 쌓여요. 비워두면 적립하지 않아요.</span></label>' +
+            '<div class="grid2">' +
+            '<label class="field"><span class="lb">1인당 적립</span>' +
+            '<input class="input" type="number" min="0" step="1" id="plCredit" value="' +
+            (cur.credit || '') + '" placeholder="예: 2000"></label>' +
+            '<label class="field"><span class="lb">무엇으로</span>' +
+            '<select class="input" id="plUnit">' +
+            '<option value="won"' + (cur.unit !== 'kg' ? ' selected' : '') + '>후원금 (원)</option>' +
+            '<option value="kg"' + (cur.unit === 'kg' ? ' selected' : '') + '>사료 (kg)</option>' +
+            '</select></label></div>' +
+            '<span class="hint" style="display:block;margin:-6px 0 12px">봉사를 확정하면 참여 인원 × 이 값이 쌓여요. 비워두면 적립하지 않아요.</span>' +
+            '<label class="field"><span class="lb">준비물</span>' +
+            '<input class="input" id="plBring" value="' + esc(cur.bring) + '" placeholder="편한 옷, 목장갑, 물">' +
+            '<span class="hint">커뮤니티 보호소 안내에 그대로 보여요.</span></label>' +
+            '<label class="field"><span class="lb">주의사항</span>' +
+            '<textarea class="input" id="plNote" rows="2" placeholder="강아지가 놀랄 수 있어 큰 소리는 삼가주세요">' +
+            esc(cur.note) + '</textarea></label>' +
             '<button class="btn primary block" data-save>저장하기</button>'
         });
         ov.querySelector('[data-save]').onclick = async () => {
@@ -2696,7 +3280,10 @@
           next[i] = {
             name, area,
             address: ov.querySelector('#plAddr').value.trim(),
-            credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0)
+            credit: Math.max(0, Number(ov.querySelector('#plCredit').value) || 0),
+            unit: ov.querySelector('#plUnit').value === 'kg' ? 'kg' : 'won',
+            bring: ov.querySelector('#plBring').value.trim(),
+            note: ov.querySelector('#plNote').value.trim()
           };
           closeSheet();
           await save({ places: next, place: next[0].name });
@@ -2725,12 +3312,6 @@
       localStorage.setItem('baljaguk.autoFee', e.target.checked ? '1' : '0');
       toast(e.target.checked ? '승인 시 회비를 자동 기록해요' : '자동 기록을 껐어요');
     };
-    $('#savePw').onclick = async () => {
-      const v = $('#pw1').value.trim();
-      if (v.length < 6) return toast('6자 이상으로 정해주세요', 'err');
-      try { await DB.changePassword(v); $('#pw1').value = ''; toast('비밀번호를 바꿨어요', 'ok'); }
-      catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
-    };
     $('#backup').onclick = () => {
       const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), ...S }, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -2747,5 +3328,9 @@
       if (!await confirmSheet('로그아웃할까요?', '', '로그아웃')) return;
       DB.logout(); location.reload();
     };
+
+    paintUsage();
+    const bk = $('#bkGo');
+    if (bk) bk.onclick = backupAll;
   }
 })();

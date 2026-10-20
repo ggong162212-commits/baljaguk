@@ -63,11 +63,94 @@
       sv('최민재', '수원역', '여러 보호소를 경험해볼 수 있어서 기대돼요.', 'maybe'),
       sv('정예린', '홍대입구역', '매번 같이 봉사하던 사람들과 못 만나게 될까 봐 아쉬워요.', 'yes')
     ];
+    /* ---------- 커뮤니티 예시 ----------
+       체험 모드로 처음 들어온 사람이 빈 화면을 보지 않게,
+       매뉴얼 캡처가 늘 같은 모습이게 — 네 가지만 담백하게 둔다. */
+    const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+    const me0 = members[0].id;
+    const m1 = (members[1] || members[0]).id;
+    const m2 = (members[2] || members[0]).id;
+
+    const cAnimals = [
+      { id: 'seed-an1', place: '금파하우스', name: '단비', adopted_at: null,
+        created_at: ago(9000) },
+      { id: 'seed-an2', place: '금파하우스', name: '보리', adopted_at: null,
+        created_at: ago(9000) },
+      { id: 'seed-an3', place: '천사들의 보금자리', name: '코코', adopted_at: null,
+        created_at: ago(9000) }
+    ];
+
+    const cPosts = [
+      { id: 'seed-notice', created_at: ago(180), author_id: me0, type: 'notice',
+        event_id: null, place: null, date: null,
+        body: '11월 정기모임은 11/8(토) 오후 2시, 학생회관 3층이에요. 다 같이 봐요!',
+        pinned: true, hidden: false, edited_at: null, insta_ok: false,
+        is_question: false, best_comment_id: null, solved_at: null },
+
+      { id: 'seed-q', created_at: ago(300), author_id: m1, type: 'free',
+        event_id: null, place: null, date: null,
+        body: '처음 봉사 가는데 뭐 입고 가야 하나요?',
+        pinned: false, hidden: false, edited_at: null, insta_ok: false,
+        is_question: true, best_comment_id: 'seed-a1', solved_at: ago(240) },
+
+      { id: 'seed-review', created_at: ago(600), author_id: m2, type: 'review',
+        event_id: null, place: '금파하우스', date: today(),
+        body: '단비가 오늘 산책을 잘 따라와줬어요. 다음에 또 보고 싶어요!',
+        pinned: false, hidden: false, edited_at: null, insta_ok: true,
+        is_question: false, best_comment_id: null, solved_at: null },
+
+      { id: 'seed-free', created_at: ago(900), author_id: me0, type: 'free',
+        event_id: null, place: null, date: null,
+        body: '다음 간식 사러 갈 건데 뭐가 좋을까요?',
+        pinned: false, hidden: false, edited_at: null, insta_ok: false,
+        is_question: false, best_comment_id: null, solved_at: null }
+    ];
+
+    const cComments = [
+      { id: 'seed-a1', created_at: ago(280), post_id: 'seed-q', parent_id: null,
+        author_id: m2, body: '편한 운동복이면 돼요. 목장갑은 보호소에 있어요!',
+        hidden: false, edited_at: null },
+      { id: 'seed-a2', created_at: ago(260), post_id: 'seed-q', parent_id: null,
+        author_id: me0, body: '신발은 더러워져도 되는 걸로 신으세요',
+        hidden: false, edited_at: null }
+    ];
+
+    const cOpts = [
+      { id: 'seed-o1', post_id: 'seed-free', label: '수제 육포', sort: 0 },
+      { id: 'seed-o2', post_id: 'seed-free', label: '치즈 스틱', sort: 1 },
+      { id: 'seed-o3', post_id: 'seed-free', label: '단호박 큐브', sort: 2 }
+    ];
+
     return {
+      posts: cPosts,
+      comments: cComments,
+      post_photos: [],
+      reactions: [
+        { id: 'seed-r1', post_id: 'seed-review', member_id: m1, kind: 'heart',
+          created_at: ago(500) }
+      ],
+      polls: [{
+        post_id: 'seed-free', question: '다음 간식 뭐가 좋을까요?',
+        multi: false, anonymous: false, closes_at: null, closed_at: null,
+        reveal_at: null, revealed_at: null, answer_option_id: null
+      }],
+      poll_options: cOpts,
+      poll_votes: [
+        { id: 'seed-v1', post_id: 'seed-free', option_id: 'seed-o2', member_id: m1,
+          created_at: ago(800) },
+        { id: 'seed-v2', post_id: 'seed-free', option_id: 'seed-o1', member_id: m2,
+          created_at: ago(700) }
+      ],
+      animals: cAnimals,
+      post_animals: [{ post_id: 'seed-review', animal_id: 'seed-an1' }],
       campaigns: [camp], donations: dons, survey_responses: survey,
-      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: ['천보금 보호소'], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
-      applications: apps, members, events, attendance: att, finance: fin,
-      password: C.DEMO_PASSWORD || '260324'
+      settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: [
+        { name: '천사들의 보금자리', area: '', address: '', credit: 2, unit: 'kg' },
+        { name: '금파하우스', area: '', address: '', credit: 2000, unit: 'won' },
+        { name: '동물보호센터 다솜', area: '', address: '', credit: 2000, unit: 'won' },
+        { name: '땅코볼별', area: '', address: '', credit: 2000, unit: 'won' }
+      ], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
+      applications: apps, members, events, attendance: att, finance: fin
     };
   }
   function demoRead() {
@@ -187,13 +270,22 @@
     isAuthed: () => HAS_SB ? !!(session && session.access_token)
       : (localStorage.getItem('baljaguk.demoAuth') === '1' || localStorage.getItem('baljaguk.demoLogin') === '1'),
 
-    async login(password) {
+    /* 비상 로그인 — 카카오가 막혔을 때만 쓰는 공유 계정.
+       이메일·비밀번호를 그때그때 받아서 쓰고, 어디에도 저장하지 않는다. */
+    async login(password, email) {
       if (!HAS_SB) {
+        /* 체험 모드에는 지킬 비밀이 없다. 명부의 운영진으로 들어간 것처럼 둔다 */
         const d = demoRead();
-        if (String(password) !== String(d.password)) throw new Error('비밀번호가 맞지 않아요');
-        localStorage.setItem('baljaguk.demoAuth', '1'); return true;
+        const admin = (d.members || []).find(m => m.role === 'admin' && m.status !== 'left');
+        if (!admin) throw new Error('체험 명부에 운영진이 없어요');
+        localStorage.setItem('baljaguk.demoAuth', '1');
+        localStorage.setItem('baljaguk.demoLogin', '1');
+        localStorage.setItem('baljaguk.demoMe', admin.id);
+        return true;
       }
-      const j = await auth('token?grant_type=password', { email: C.ADMIN_EMAIL, password: String(password) });
+      const j = await auth('token?grant_type=password', {
+        email: String(email || C.ADMIN_EMAIL), password: String(password)
+      });
       session = j; localStorage.setItem(SKEY, JSON.stringify(j)); return true;
     },
     logout() {
@@ -259,7 +351,16 @@
 
     /* 이 사람이 운영진인가 — 데이터베이스에 직접 물어본다 */
     async isAdmin() {
-      if (!HAS_SB) return localStorage.getItem('baljaguk.demoAuth') === '1';
+      if (!HAS_SB) {
+        /* 체험 모드도 실제와 똑같이 명부의 역할을 따른다.
+           비상 로그인(demoAuth)으로 들어온 경우만 예외로 통과시킨다. */
+        const id = localStorage.getItem('baljaguk.demoMe');
+        if (id) {
+          const m = (demoRead().members || []).find(x => x.id === id);
+          return !!(m && m.role === 'admin' && m.status !== 'left');
+        }
+        return localStorage.getItem('baljaguk.demoAuth') === '1';
+      }
       if (!session || !session.access_token) return false;
       try { return !!(await rest('rpc/is_admin', { method: 'POST', body: {} })); }
       catch (e) { return false; }
@@ -296,7 +397,10 @@
         const id = localStorage.getItem('baljaguk.demoMe');
         const m = id && (demoRead().members || []).find(x => x.id === id);
         return m
-          ? { login: true, linked: true, id: m.id, name: m.name, role: m.role, status: m.status }
+          ? {
+            login: true, linked: true, id: m.id, name: m.name, role: m.role,
+            status: m.status, photo: m.photo_path || null, joined_on: m.joined_on || null
+          }
           : { login: true, linked: false };
       }
       if (!session) return { login: false };
@@ -317,6 +421,41 @@
       return await rest('rpc/claim_member', {
         method: 'POST', body: { p_name: String(name || '').trim(), p_last4: String(last4 || '').trim() }
       });
+    },
+
+    /* ---------- 내 활동 (본인 것만) ---------- */
+    /* 확정된 봉사만 센다. 다른 사람 기록도, 내 연락처도 내려오지 않는다 */
+    async myActivity() {
+      if (!HAS_SB) {
+        const id = localStorage.getItem('baljaguk.demoMe');
+        if (!id) return null;
+        const d = demoRead();
+        const mine = (d.attendance || [])
+          .filter(a => a.member_id === id)
+          .map(a => (d.events || []).find(e => e.id === a.event_id))
+          .filter(e => e && e.confirmed_at)
+          .map(e => ({
+            event_id: e.id, date: e.date, title: e.title, place: e.place,
+            unit: e.credit_unit === 'kg' ? 'kg' : 'won',
+            per: Number(e.credit_per_person) || 0
+          }))
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const byplace = {};
+        mine.filter(r => r.per > 0).forEach(r => {
+          const k = r.place + '|' + r.unit;
+          const g = byplace[k] = byplace[k] || { place: r.place, unit: r.unit, times: 0, credit: 0 };
+          g.times += 1; g.credit += r.per;
+        });
+        return {
+          times: mine.length,
+          last_date: mine.length ? mine[0].date : null,
+          credit_total: mine.filter(r => r.unit !== 'kg').reduce((t, r) => t + r.per, 0),
+          credit_total_kg: mine.filter(r => r.unit === 'kg').reduce((t, r) => t + r.per, 0),
+          places: Object.keys(byplace).map(k => byplace[k]).sort((a, b) => b.credit - a.credit),
+          records: mine
+        };
+      }
+      return await rest('rpc/my_activity', { method: 'POST', body: {} });
     },
 
     /* 이번 학기 설문 회차 */
@@ -362,15 +501,20 @@
             const nameOf = id => ((d.members || []).find(m => m.id === id) || {}).name;
             const names = att.map(a => nameOf(a.member_id)).filter(Boolean).sort();
             const per = Number(e.credit_per_person);
-            return { date: e.date, place: e.place, people: att.length, per, amount: att.length * per, names };
+            const unit = e.credit_unit === 'kg' ? 'kg' : 'won';
+            return { date: e.date, place: e.place, unit, people: att.length, per, amount: att.length * per, names };
           })
           .filter(r => r.people > 0)
           .sort((a, b) => String(b.date).localeCompare(String(a.date)));
         const pays = d.shelter_payouts || [];
+        /* 돈과 사료는 섞지 않는다 — 봉사지 × 단위로 따로 센다 */
         const map = {};
-        const get = k => (map[k] = map[k] || { place: k, saved: 0, paid: 0, remain: 0 });
-        rows.forEach(r => { get(r.place).saved += r.amount; });
-        pays.forEach(p => { get(p.place).paid += Number(p.amount) || 0; });
+        const get = (pl, u) => {
+          const k = pl + '|' + u;
+          return (map[k] = map[k] || { place: pl, unit: u, saved: 0, paid: 0, remain: 0 });
+        };
+        rows.forEach(r => { get(r.place, r.unit).saved += r.amount; });
+        pays.forEach(p => { get(p.place, p.unit === 'kg' ? 'kg' : 'won').paid += Number(p.amount) || 0; });
         const places = Object.keys(map).map(k => {
           map[k].remain = map[k].saved - map[k].paid;
           return map[k];
@@ -386,14 +530,17 @@
           .sort((a, b) => b.times - a.times || a.name.localeCompare(b.name, 'ko'));
         return {
           generated_at: new Date().toISOString(),
-          total_saved: places.reduce((t, p) => t + p.saved, 0),
-          total_paid: places.reduce((t, p) => t + p.paid, 0),
+          total_saved: places.filter(p => p.unit !== 'kg').reduce((t, p) => t + p.saved, 0),
+          total_paid: places.filter(p => p.unit !== 'kg').reduce((t, p) => t + p.paid, 0),
+          total_saved_kg: places.filter(p => p.unit === 'kg').reduce((t, p) => t + p.saved, 0),
+          total_paid_kg: places.filter(p => p.unit === 'kg').reduce((t, p) => t + p.paid, 0),
           total_helpers: helpers.length,
           total_visits: helpers.reduce((t, h) => t + h.times, 0),
           helpers,
           places, entries: rows,
           payouts: pays.map(p => ({
             id: p.id, date: p.date, place: p.place, amount: p.amount,
+            unit: p.unit === 'kg' ? 'kg' : 'won',
             memo: p.memo, has_photo: !!p.photo
           })),
           campaigns: (d.campaigns || []).map(c => Object.assign({}, c, {
@@ -611,11 +758,20 @@
     async saveAttendance(eventId, rows) {
       const cur = (await DB.attendance.list()).filter(a => a.event_id === eventId);
       const keep = new Set(rows.map(r => r.member_id));
-      for (const a of cur) if (!keep.has(a.member_id)) await DB.attendance.remove(a.id);
+      let removed = 0;
+      for (const a of cur) if (!keep.has(a.member_id)) { await DB.attendance.remove(a.id); removed += 1; }
       for (const r of rows) {
         const ex = cur.find(a => a.member_id === r.member_id);
         if (ex) { if (Number(ex.hours) !== Number(r.hours)) await DB.attendance.update(ex.id, { hours: Number(r.hours) || 0 }); }
         else await DB.attendance.create({ event_id: eventId, member_id: r.member_id, hours: Number(r.hours) || 0 });
+      }
+      /* 체험 모드도 실서버 트리거와 같게 — 누가 빠지면 대기자가 올라간다.
+         (확정됐거나 지난 봉사는 promoteWait 안에서 막는다) */
+      if (!HAS_SB && removed) {
+        const d = cdemo();
+        let moved = false;
+        for (let i = 0; i < removed; i++) { if (promoteWait(d, eventId)) moved = true; else break; }
+        if (moved) demoWrite(d);
       }
     },
 
@@ -739,6 +895,1142 @@
     if (s.form_close_at && now >= Date.parse(s.form_close_at)) return { open: false, why: 'closed', at: s.form_close_at };
     if (s.capacity && approvedCount != null && approvedCount >= s.capacity) return { open: false, why: 'full' };
     return { open: true, until: s.form_close_at || null };
+  };
+
+  /* ============================================================
+     커뮤니티 — 피드·댓글·반응
+     실제 모드는 서버 함수가 모아서 내려준다 (연락처·학번은 안 실린다).
+     체험 모드는 같은 모양을 브라우저 안에서 만든다.
+     ============================================================ */
+
+  const REACTIONS = ['heart', 'paw', 'haha', 'moved', 'clap', 'best'];
+
+  /* 체험 모드 저장소 — 없으면 빈 칸을 만들어 둔다 */
+  function cdemo() {
+    const d = demoRead();
+    ['posts', 'post_photos', 'comments', 'reactions',
+      'polls', 'poll_options', 'poll_votes', 'event_waitlist', 'member_notices',
+      'animals', 'post_animals', 'reports', 'checkins',
+      'survey_responses', 'member_1365'].forEach(k => { if (!d[k]) d[k] = []; });
+    return d;
+  }
+  const myDemoId = () => localStorage.getItem('baljaguk.demoMe') || '';
+  /* 자리가 나면 먼저 신청한 대기자를 올린다 — 서버 트리거와 같은 규칙.
+     확정됐거나 지난 봉사에서는 올리지 않는다. 안 간 사람이 실적에 잡히면 안 된다. */
+  function promoteWait(d, eventId) {
+    const e = (d.events || []).find(x => x.id === eventId);
+    if (!e) return false;
+    const cap = Number(e.capacity) || 0;
+    if (!cap) return false;
+    if (e.confirmed_at) return false;
+    if (String(e.date) < today()) return false;
+
+    const taken = (d.attendance || []).filter(a => a.event_id === eventId).length;
+    if (taken >= cap) return false;
+    const wl = (d.event_waitlist || []).filter(w => w.event_id === eventId)
+      .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    if (!wl.length) return false;
+
+    d.attendance.push({ id: uid(), event_id: eventId, member_id: wl[0].member_id, hours: 0 });
+    d.event_waitlist = d.event_waitlist.filter(w => w.id !== wl[0].id);
+    d.member_notices = d.member_notices || [];
+    d.member_notices.push({
+      id: uid(), created_at: new Date().toISOString(), member_id: wl[0].member_id,
+      kind: 'promoted', detail: String(e.date).slice(5).replace('-', '월 ') + '일 ' + (e.place || '봉사'),
+      event_id: eventId
+    });
+    return true;
+  }
+
+  const pollClosed = q => !!(q && (q.closed_at ||
+    (q.closes_at && Date.parse(q.closes_at) < Date.now())));
+  function demoMember(id) {
+    const m = (demoRead().members || []).find(x => x.id === id);
+    return m ? { id: m.id, name: m.name, role: m.role, photo: m.photo_path || null } : null;
+  }
+
+  /* 체험 모드에서 글 한 줄을 실제 모드와 같은 모양으로 */
+  function demoPostRow(d, p, meId) {
+    const rs = d.reactions.filter(r => r.post_id === p.id);
+    const counts = {};
+    rs.forEach(r => { counts[r.kind] = (counts[r.kind] || 0) + 1; });
+    const poll = d.polls.find(q => q.post_id === p.id);
+    return {
+      id: p.id, created_at: p.created_at, type: p.type, event_id: p.event_id || null,
+      place: p.place || null, date: p.date || null,
+      body: (p.hidden && p.author_id !== meId) ? '' : p.body,
+      pinned: !!p.pinned, hidden: !!p.hidden, edited_at: p.edited_at || null,
+      insta_ok: !!p.insta_ok,
+      mine: p.author_id === meId,
+      author: demoMember(p.author_id),
+      question: !!p.is_question,
+      solved: !!p.solved_at,
+      answers: p.is_question
+        ? d.comments.filter(c => c.post_id === p.id && !c.hidden).length : null,
+      best: p.best_comment_id
+        ? String((d.comments.find(c => c.id === p.best_comment_id) || {}).body || '').slice(0, 60)
+        : null,
+      best_id: p.best_comment_id || null,
+      animals: (d.post_animals || []).filter(x => x.post_id === p.id)
+        .map(x => (d.animals || []).find(a => a.id === x.animal_id))
+        .filter(Boolean)
+        .map(a => ({ id: a.id, name: a.name, adopted: !!a.adopted_at }))
+        .sort((x, y) => x.name.localeCompare(y.name, 'ko')),
+      photos: d.post_photos.filter(f => f.post_id === p.id)
+        .sort((a, b) => a.sort - b.sort).map(f => f.path),
+      comment_count: d.comments.filter(c => c.post_id === p.id && !c.hidden).length,
+      recent_comments: d.comments
+        .filter(c => c.post_id === p.id && !c.hidden)
+        .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+        .slice(-2)
+        .map(c => ({
+          id: c.id, created_at: c.created_at, body: c.body,
+          mine: c.author_id === meId,
+          author: (demoMember(c.author_id) || {}).name || '?'
+        })),
+      reactions: counts,
+      my_reactions: rs.filter(r => r.member_id === meId).map(r => r.kind),
+      /* 퀴즈는 발표 전까지 정답도 분포도 내보내지 않는다 (실서버 feed() 와 같은 규칙) */
+      poll: poll ? (function () {
+        const quiz = !!poll.answer_option_id;
+        const shown = !quiz || !!poll.revealed_at;
+        const mine_ = d.poll_votes.filter(v => v.post_id === p.id);
+        return {
+          question: poll.question, multi: !!poll.multi, anonymous: !!poll.anonymous,
+          closes_at: poll.closes_at || null, closed_at: poll.closed_at || null,
+          quiz: quiz,
+          reveal_at: poll.reveal_at || null,
+          revealed: !!poll.revealed_at,
+          answer: poll.revealed_at ? poll.answer_option_id : null,
+          voters: shown ? new Set(mine_.map(v => v.member_id)).size : null,
+          correct: quiz && poll.revealed_at
+            ? mine_.filter(v => v.option_id === poll.answer_option_id).length : null,
+          options: d.poll_options.filter(o => o.post_id === p.id)
+            .sort((a, b) => a.sort - b.sort).map(o => ({
+              id: o.id, label: o.label,
+              votes: shown ? d.poll_votes.filter(v => v.option_id === o.id).length : null,
+              mine: d.poll_votes.some(v => v.option_id === o.id && v.member_id === meId)
+            }))
+        };
+      })() : null
+    };
+  }
+
+  /* ---------- 운영진 할 일 ---------- */
+  /* ---------- 알림 ---------- */
+  DB.push = {
+    async subscribe(endpoint, p256dh, auth) {
+      if (!HAS_SB) {
+        try { localStorage.setItem('baljaguk.pushDemo', endpoint); } catch (e) { }
+        return true;
+      }
+      return await rest('rpc/push_subscribe', {
+        method: 'POST',
+        body: { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth }
+      });
+    },
+
+    async unsubscribe(endpoint) {
+      if (!HAS_SB) {
+        try { localStorage.removeItem('baljaguk.pushDemo'); } catch (e) { }
+        return true;
+      }
+      return await rest('rpc/push_unsubscribe', {
+        method: 'POST', body: { p_endpoint: endpoint }
+      });
+    },
+
+    /* 종류별 끄고 켜기 — 이 기기 것만 */
+    async prefs(endpoint) {
+      if (!HAS_SB) {
+        try { return JSON.parse(localStorage.getItem('baljaguk.pushPrefs') || 'null'); }
+        catch (e) { return null; }
+      }
+      return await rest('rpc/push_prefs', { method: 'POST', body: { p_endpoint: endpoint } });
+    },
+
+    async setPref(endpoint, key, on) {
+      if (!HAS_SB) {
+        let v = {};
+        try { v = JSON.parse(localStorage.getItem('baljaguk.pushPrefs') || '{}'); } catch (e) { }
+        v[key] = !!on;
+        try { localStorage.setItem('baljaguk.pushPrefs', JSON.stringify(v)); } catch (e) { }
+        return true;
+      }
+      return await rest('rpc/push_prefs_set', {
+        method: 'POST', body: { p_endpoint: endpoint, p_key: key, p_on: !!on }
+      });
+    },
+
+    /* 나에게만 보내 보기 */
+    async test(kind, title, body) {
+      if (!HAS_SB) return { demo: true };
+      return await rest('rpc/push_test', {
+        method: 'POST', body: { p_kind: kind, p_title: title, p_body: body }
+      });
+    }
+  };
+
+  /* ---------- 의견 보내기 ---------- */
+  DB.feedback = {
+    async send(body, anon) {
+      const t = String(body || '').trim();
+      if (!t) throw new Error('내용을 적어주세요');
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.feedback = d.feedback || [];
+        /* 익명이면 누가 보냈는지 담지 않는다 — 실서버와 같게 */
+        if (anon) {
+          const today = DB.today();
+          const key = 'baljaguk.anonCount.' + today;
+          const n = Number(localStorage.getItem(key) || 0) + 1;
+          if (n > 3) return { ok: false, why: 'toomany' };
+          localStorage.setItem(key, String(n));
+          d.feedback.push({
+            id: uid(), created_at: new Date().toISOString(),
+            member_id: null, anon: true, body: t, done_at: null
+          });
+          demoWrite(d);
+          return { ok: true, anon: true, left: 3 - n };
+        }
+        d.feedback.push({
+          id: uid(), created_at: new Date().toISOString(),
+          member_id: myDemoId(), anon: false, body: t, done_at: null
+        });
+        demoWrite(d);
+        return { ok: true, anon: false };
+      }
+      return await rest('rpc/feedback_send', {
+        method: 'POST', body: { p_body: t, p_anon: !!anon }
+      });
+    },
+
+    async reply(id, text) {
+      if (!HAS_SB) {
+        const d = cdemo(), f = (d.feedback || []).find(x => x.id === id);
+        if (!f) return { ok: false, why: 'notfound' };
+        if (f.anon || !f.member_id) return { ok: false, why: 'anon' };
+        f.reply = String(text || '').trim();
+        f.replied_at = new Date().toISOString();
+        d.member_notices = d.member_notices || [];
+        d.member_notices.push({
+          id: uid(), member_id: f.member_id, kind: 'reply',
+          body: '보내 주신 의견에 운영진이 답했어요: ' + f.reply.slice(0, 40),
+          created_at: new Date().toISOString(), read_at: null
+        });
+        demoWrite(d);
+        return { ok: true };
+      }
+      return await rest('rpc/feedback_reply', {
+        method: 'POST', body: { p_id: id, p_text: String(text || '') }
+      });
+    },
+
+    async open() {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.feedback || []).filter(f => !f.done_at).map(f => ({
+          id: f.id, created_at: f.created_at, body: f.body,
+          anon: !!f.anon,
+          who: f.anon ? null : (demoMember(f.member_id) || {}).name,
+          can_reply: !f.anon && !!f.member_id,
+          replied: !!f.replied_at
+        })).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      }
+      return await rest('rpc/feedback_open', { method: 'POST', body: {} });
+    },
+
+    async done(id) {
+      if (!HAS_SB) {
+        const d = cdemo(), f = (d.feedback || []).find(x => x.id === id);
+        if (f) { f.done_at = new Date().toISOString(); demoWrite(d); }
+        return true;
+      }
+      return await rest('rpc/feedback_done', { method: 'POST', body: { p_id: id } });
+    }
+  };
+
+  /* ---------- 사용 현황 (운영진만) ---------- */
+  DB.usageStats = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      const wk = Date.now() - 7 * 86400000;
+      const fresh = a => Date.parse(a.created_at || 0) > wk;
+      return {
+        members: (d.members || []).filter(m => m.status !== 'left').length,
+        linked: (d.members || []).filter(m => m.status !== 'left' && m.auth_user_id).length,
+        joined_week: (d.members || []).filter(m => m.linked_at && Date.parse(m.linked_at) > wk).length,
+        posts_week: (d.posts || []).filter(fresh).length,
+        reviews_week: (d.posts || []).filter(p => p.type === 'review' && fresh(p)).length,
+        comments_week: (d.comments || []).filter(fresh).length,
+        push_on: localStorage.getItem('baljaguk.pushDemo') ? 1 : 0,
+        photos: (d.post_photos || []).length,
+        /* 체험 모드는 글자로 담겨 있어 길이로 어림잡는다 */
+        bytes: (d.post_photos || []).reduce((t, f) => t + (String(f.path || '').length * 0.75), 0),
+        rows: (d.posts || []).length + (d.comments || []).length +
+          (d.reactions || []).length + (d.poll_votes || []).length
+      };
+    }
+    return await rest('rpc/usage_stats', { method: 'POST', body: {} });
+  };
+
+  DB.adminTodo = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      const today = DB.today();
+      return {
+        unconfirmed: (d.events || []).filter(e => String(e.date) < today && !e.confirmed_at).length,
+        applications: (d.applications || []).filter(a => (a.status || 'pending') === 'pending').length,
+        reports: (d.reports || []).filter(r => !r.done_at).length,
+        feedback: (d.feedback || []).filter(f => !f.done_at).length
+      };
+    }
+    return await rest('rpc/admin_todo', { method: 'POST', body: {} });
+  };
+
+  DB.reportsOpen = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      return (d.reports || []).filter(r => !r.done_at).map(r => ({
+        id: r.id, created_at: r.created_at, reason: r.reason,
+        post_id: r.post_id, comment_id: r.comment_id,
+        reporter: (demoMember(r.reporter_id) || {}).name,
+        body: (d.posts || []).concat(d.comments || [])
+          .filter(x => x.id === (r.post_id || r.comment_id)).map(x => x.body)[0] || ''
+      })).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    }
+    return await rest('rpc/reports_open', { method: 'POST', body: {} });
+  };
+
+  DB.reportDone = async function (id) {
+    if (!HAS_SB) {
+      const d = cdemo(), r = (d.reports || []).find(x => x.id === id);
+      if (r) { r.done_at = new Date().toISOString(); demoWrite(d); }
+      return true;
+    }
+    return await rest('rpc/report_done', { method: 'POST', body: { p_id: id } });
+  };
+
+  DB.community = {
+    REACTIONS,
+
+    /* ---------- 피드 ---------- */
+    async feed(opt) {
+      const o = opt || {};
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        let list = d.posts.slice()
+          .filter(p => !p.hidden || p.author_id === meId)
+          .filter(p => !o.type || p.type === o.type)
+          /* 공식 설문은 설문 탭에만 */
+          .filter(p => o.type || p.type !== 'poll')
+          /* 맨 위에 고정된 공지는 목록에 또 넣지 않는다 */
+          .filter(p => !(p.type === 'notice' && p.pinned))
+          .filter(p => !o.place || p.place === o.place)
+          .filter(p => !o.cursor || String(p.created_at) < String(o.cursor))
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+          .slice(0, o.limit || 20);
+        const pins = o.cursor ? [] : d.posts
+          .filter(p => p.type === 'notice' && p.pinned && !p.hidden)
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+        return {
+          rows: list.map(p => demoPostRow(d, p, meId)),
+          cursor: list.length ? list[list.length - 1].created_at : null,
+          pinned: pins.slice(0, 3).map(p => ({
+            id: p.id, body: p.body, created_at: p.created_at,
+            author: (demoMember(p.author_id) || {}).name
+          })),
+          pinned_total: pins.length
+        };
+      }
+      return await rest('rpc/feed', {
+        method: 'POST', body: {
+          p_cursor: o.cursor || null, p_type: o.type || null,
+          p_place: o.place || null, p_limit: o.limit || 20
+        }
+      });
+    },
+
+    /* ---------- 글 ---------- */
+    /* 사진은 이미 줄여둔 dataURL 배열로 받는다 */
+    async createPost(v) {
+      const photos = (v.photos || []).slice(0, 10);
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        const p = {
+          id: uid(), created_at: new Date().toISOString(), author_id: meId,
+          type: v.type || 'review', event_id: v.event_id || null,
+          place: v.place || null, date: v.date || null,
+          body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null,
+          insta_ok: !!v.insta_ok, is_question: !!v.is_question,
+          best_comment_id: null, solved_at: null
+        };
+        d.posts.push(p);
+        photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
+        (v.animals || []).forEach(aid =>
+          d.post_animals.push({ post_id: p.id, animal_id: aid }));
+        if (v.poll) {
+          const made = (v.poll.options || []).map((lb, i) => {
+            const o = { id: uid(), post_id: p.id, label: lb, sort: i };
+            d.poll_options.push(o);
+            return o;
+          });
+          d.polls.push({
+            post_id: p.id, question: v.poll.question, multi: !!v.poll.multi,
+            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null, closed_at: null,
+            reveal_at: v.poll.reveal_at || null, revealed_at: null,
+            answer_option_id: v.poll.answer_index != null && made[v.poll.answer_index]
+              ? made[v.poll.answer_index].id : null
+          });
+        }
+        demoWrite(d);
+        return { id: p.id };
+      }
+      const rows = await rest('posts', {
+        method: 'POST', prefer: 'return=representation',
+        body: {
+          type: v.type || 'review', event_id: v.event_id || null,
+          place: v.place || null, date: v.date || null,
+          body: String(v.body || ''), pinned: !!v.pinned,
+          insta_ok: !!v.insta_ok, is_question: !!v.is_question,
+          author_id: await DB.community.myId()
+        }
+      });
+      const id = rows && rows[0] && rows[0].id;
+      if (!id) throw new Error('글을 올리지 못했어요');
+      if (photos.length) {
+        const paths = [];
+        for (let i = 0; i < photos.length; i++) paths.push(await DB.community.uploadPhoto(id, photos[i], i));
+        await rest('post_photos', {
+          method: 'POST', prefer: 'return=minimal',
+          body: paths.map((pth, i) => ({ post_id: id, path: pth, sort: i }))
+        });
+      }
+      if ((v.animals || []).length) {
+        await rest('post_animals', {
+          method: 'POST', prefer: 'return=minimal,resolution=ignore-duplicates',
+          body: v.animals.map(aid => ({ post_id: id, animal_id: aid }))
+        });
+      }
+      if (v.poll) {
+        await rest('polls', {
+          method: 'POST', prefer: 'return=minimal',
+          body: {
+            post_id: id, question: v.poll.question, multi: !!v.poll.multi,
+            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null,
+            reveal_at: v.poll.reveal_at || null
+          }
+        });
+        /* 선택지를 먼저 넣고, 그 중 몇 번째가 정답인지 뒤에 이어 붙인다.
+           정답 칸은 선택지 id 를 가리키기 때문이다. */
+        const opts = await rest('poll_options', {
+          method: 'POST', prefer: 'return=representation',
+          body: (v.poll.options || []).map((lb, i) => ({ post_id: id, label: lb, sort: i }))
+        });
+        if (v.poll.answer_index != null && opts && opts.length) {
+          const sorted = opts.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+          const ans = sorted[v.poll.answer_index];
+          if (ans) await rest('polls?post_id=eq.' + encodeURIComponent(id), {
+            method: 'PATCH', prefer: 'return=minimal',
+            body: { answer_option_id: ans.id }
+          });
+        }
+      }
+      return { id };
+    },
+
+    async updatePost(id, patch) {
+      if (!HAS_SB) {
+        const d = cdemo(), p = d.posts.find(x => x.id === id);
+        if (!p) throw new Error('글을 찾지 못했어요');
+        Object.assign(p, patch, { edited_at: new Date().toISOString() });
+        demoWrite(d); return true;
+      }
+      await rest('posts?id=eq.' + enc(id), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: Object.assign({}, patch, { edited_at: new Date().toISOString() })
+      });
+      return true;
+    },
+
+    /* 글을 지운다. 사진 파일까지 같이 치운다 —
+       표의 줄은 외래키가 알아서 따라 지워지지만, Storage 파일은 안 그렇다. */
+    async removePost(id, paths) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.posts = d.posts.filter(p => p.id !== id);
+        d.post_photos = d.post_photos.filter(f => f.post_id !== id);
+        d.comments = d.comments.filter(c => c.post_id !== id);
+        d.reactions = d.reactions.filter(r => r.post_id !== id);
+        d.post_animals = (d.post_animals || []).filter(a => a.post_id !== id);
+        d.polls = (d.polls || []).filter(q => q.post_id !== id);
+        d.poll_options = (d.poll_options || []).filter(o => o.post_id !== id);
+        d.poll_votes = (d.poll_votes || []).filter(v => v.post_id !== id);
+        (d.reports || []).forEach(r => { if (r.post_id === id) r.done_at = new Date().toISOString(); });
+        demoWrite(d); return true;
+      }
+
+      /* 사진 먼저 — 줄이 사라지면 어떤 파일이었는지 알 수 없다 */
+      const files = (paths || []).filter(Boolean);
+      if (files.length) {
+        try {
+          await fetch(C.SUPABASE_URL + '/storage/v1/object/community', {
+            method: 'DELETE',
+            headers: {
+              apikey: C.SUPABASE_ANON_KEY,
+              Authorization: 'Bearer ' + session.access_token,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ prefixes: files })
+          });
+        } catch (e) { /* 파일이 남아도 글은 지운다 */ }
+      }
+
+      await rest('posts?id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+      /* 이 글에 대한 신고는 처리된 것으로 */
+      try {
+        await rest('reports?post_id=eq.' + enc(id) + '&done_at=is.null', {
+          method: 'PATCH', prefer: 'return=minimal',
+          body: { done_at: new Date().toISOString() }
+        });
+      } catch (e) { }
+      return true;
+    },
+
+    setPinned: (id, on) => DB.community.updatePost(id, { pinned: !!on }),
+
+    /* ---------- 댓글 ---------- */
+    async comments(postId) {
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        return d.comments.filter(c => c.post_id === postId)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+          .map(c => ({
+            id: c.id, created_at: c.created_at, parent_id: c.parent_id || null,
+            body: c.hidden ? '' : c.body, hidden: !!c.hidden, edited_at: c.edited_at || null,
+            mine: c.author_id === meId, author: demoMember(c.author_id)
+          }));
+      }
+      return await rest('rpc/post_comments', { method: 'POST', body: { p_post: postId } }) || [];
+    },
+
+    async addComment(postId, body, parentId) {
+      const text = String(body || '').trim();
+      if (!text) throw new Error('내용을 적어주세요');
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        d.comments.push({
+          id: uid(), created_at: new Date().toISOString(), post_id: postId,
+          parent_id: parentId || null, author_id: meId, body: text, hidden: false, edited_at: null
+        });
+        demoWrite(d); return true;
+      }
+      await rest('comments', {
+        method: 'POST', prefer: 'return=minimal',
+        body: {
+          post_id: postId, parent_id: parentId || null,
+          body: text, author_id: await DB.community.myId()
+        }
+      });
+      return true;
+    },
+
+    async updateComment(id, body) {
+      const text = String(body || '').trim();
+      if (!text) throw new Error('내용을 적어주세요');
+      if (!HAS_SB) {
+        const d = cdemo(), c = d.comments.find(x => x.id === id);
+        if (c) { c.body = text; c.edited_at = new Date().toISOString(); demoWrite(d); }
+        return true;
+      }
+      await rest('comments?id=eq.' + enc(id), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { body: text, edited_at: new Date().toISOString() }
+      });
+      return true;
+    },
+
+    async removeComment(id) {
+      if (!HAS_SB) {
+        const d = cdemo(); d.comments = d.comments.filter(c => c.id !== id); demoWrite(d); return true;
+      }
+      await rest('comments?id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+      return true;
+    },
+
+
+    /* ---------- 반응 ---------- */
+    /* 같은 걸 다시 누르면 취소된다 */
+    async toggleReaction(postId, kind) {
+      if (REACTIONS.indexOf(kind) < 0) throw new Error('없는 반응이에요');
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        const i = d.reactions.findIndex(r =>
+          r.post_id === postId && r.member_id === meId && r.kind === kind);
+        if (i >= 0) d.reactions.splice(i, 1);
+        else d.reactions.push({ post_id: postId, member_id: meId, kind, created_at: new Date().toISOString() });
+        demoWrite(d);
+        return i < 0;
+      }
+      const meId = await DB.community.myId();
+      const q = 'reactions?post_id=eq.' + enc(postId) +
+        '&member_id=eq.' + enc(meId) + '&kind=eq.' + enc(kind);
+      const has = await rest(q + '&select=kind');
+      if (has && has.length) {
+        await rest(q, { method: 'DELETE', prefer: 'return=minimal' });
+        return false;
+      }
+      await rest('reactions', {
+        method: 'POST', prefer: 'return=minimal',
+        body: { post_id: postId, member_id: meId, kind }
+      });
+      return true;
+    },
+
+    /* 길게 누르면 누가 눌렀는지 — 이름만 */
+    async reactionWho(postId, kind) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return d.reactions.filter(r => r.post_id === postId && r.kind === kind)
+          .map(r => (demoMember(r.member_id) || {}).name).filter(Boolean).sort();
+      }
+      return await rest('rpc/reaction_who', {
+        method: 'POST', body: { p_post: postId, p_kind: kind }
+      }) || [];
+    },
+
+    /* ---------- 설문 ---------- */
+    /* 마감 전까지만 바꿀 수 있다. 하나만 고르는 설문이면 기존 답을 치우고 넣는다 */
+
+    async vote(postId, optionId, multi) {
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        const q = d.polls.find(x => x.post_id === postId);
+        if (pollClosed(q)) throw new Error('마감된 설문이에요');
+        const mine = d.poll_votes.filter(v => v.post_id === postId && v.member_id === meId);
+        const had = mine.some(v => v.option_id === optionId);
+        d.poll_votes = d.poll_votes.filter(v =>
+          !(v.post_id === postId && v.member_id === meId && (!multi || v.option_id === optionId)));
+        if (!had) d.poll_votes.push({
+          post_id: postId, option_id: optionId, member_id: meId,
+          created_at: new Date().toISOString()
+        });
+        demoWrite(d);
+        return !had;
+      }
+      const meId = await DB.community.myId();
+      const base = 'poll_votes?post_id=eq.' + enc(postId) + '&member_id=eq.' + enc(meId);
+      const mine = await rest(base + '&select=option_id');
+      const had = (mine || []).some(v => v.option_id === optionId);
+      /* 하나만 고르는 설문이면 내 답을 모두 치운다 */
+      await rest(base + (multi ? '&option_id=eq.' + enc(optionId) : ''),
+        { method: 'DELETE', prefer: 'return=minimal' });
+      if (!had) {
+        await rest('poll_votes', {
+          method: 'POST', prefer: 'return=minimal',
+          body: { post_id: postId, option_id: optionId, member_id: meId }
+        });
+      }
+      return !had;
+    },
+
+    /* 만든 사람이나 운영진이 일찍 마감 */
+    async closePoll(postId) {
+      if (!HAS_SB) {
+        const d = cdemo(), q = d.polls.find(x => x.post_id === postId);
+        if (q) { q.closed_at = new Date().toISOString(); demoWrite(d); }
+        return true;
+      }
+      await rest('polls?post_id=eq.' + enc(postId), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { closed_at: new Date().toISOString() }
+      });
+      return true;
+    },
+
+    /* 익명이 아닐 때만 — 누가 이 선택지를 골랐나 (이름만) */
+    async pollWho(optionId) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return d.poll_votes.filter(v => v.option_id === optionId)
+          .map(v => (demoMember(v.member_id) || {}).name).filter(Boolean).sort();
+      }
+      return await rest('rpc/poll_who', {
+        method: 'POST', body: { p_option: optionId }
+      }) || [];
+    },
+
+    /* ---------- 오늘 만난 친구 ---------- */
+    async animalsAt(place) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.animals || [])
+          .filter(a => !place || a.place === place)
+          .map(a => ({
+            id: a.id, place: a.place, name: a.name,
+            adopted: !!a.adopted_at, adopted_at: a.adopted_at,
+            posts: (d.post_animals || []).filter(x => x.animal_id === a.id).length
+          }))
+          .sort((x, y) => (x.adopted - y.adopted) || x.name.localeCompare(y.name, 'ko'));
+      }
+      return await rest('rpc/animals_at', { method: 'POST', body: { p_place: place || null } });
+    },
+
+    /* 없는 이름이면 새로 만든다. 후기를 쓰다 바로 더할 수 있게. */
+    async animalAdd(place, name) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.animals = d.animals || [];
+        let a = d.animals.find(x => x.place === place && x.name === name);
+        if (!a) {
+          a = { id: uid(), place: place, name: name, adopted_at: null,
+                created_at: new Date().toISOString() };
+          d.animals.push(a);
+          demoWrite(d);
+        }
+        return a;
+      }
+      const rows = await rest('animals', {
+        method: 'POST', prefer: 'return=representation,resolution=merge-duplicates',
+        body: { place: place, name: name }
+      });
+      return rows && rows[0];
+    },
+
+    async animalAdopted(id, yes) {
+      if (!HAS_SB) {
+        const d = cdemo(), a = (d.animals || []).find(x => x.id === id);
+        if (a) { a.adopted_at = yes ? DB.today() : null; demoWrite(d); }
+        return true;
+      }
+      await rest('animals?id=eq.' + encodeURIComponent(id), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { adopted_at: yes ? DB.today() : null }
+      });
+      return true;
+    },
+
+    /* ---------- 「도움 됐어요」 ---------- */
+    async markBest(postId, commentId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const p = (d.posts || []).find(x => x.id === postId);
+        if (!p) return { ok: false, why: 'notfound' };
+        if (p.author_id !== me) return { ok: false, why: 'notmine' };
+        if (p.best_comment_id === commentId) {
+          p.best_comment_id = null; p.solved_at = null;
+          demoWrite(d); return { ok: true, solved: false };
+        }
+        p.best_comment_id = commentId;
+        p.solved_at = new Date().toISOString();
+        demoWrite(d); return { ok: true, solved: true };
+      }
+      return await rest('rpc/mark_best', {
+        method: 'POST', body: { p_post: postId, p_comment: commentId }
+      });
+    },
+
+    /* ---------- 신고 ---------- */
+    async report(o) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.reports = d.reports || [];
+        const me = myDemoId();
+        const dup = d.reports.some(r => r.reporter_id === me && !r.done_at &&
+          r.post_id === (o.post || null) && r.comment_id === (o.comment || null));
+        if (!dup) {
+          d.reports.push({
+            id: uid(), created_at: new Date().toISOString(), reporter_id: me,
+            post_id: o.post || null, comment_id: o.comment || null,
+            reason: o.reason || '', done_at: null
+          });
+          demoWrite(d);
+        }
+        return true;
+      }
+      return await rest('rpc/report_send', {
+        method: 'POST',
+        body: { p_post: o.post || null, p_comment: o.comment || null, p_reason: o.reason || '' }
+      });
+    },
+
+    /* ---------- 현장 출석 ---------- */
+    async checkinOpen(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return null;
+        if (!e.checkin_code) {
+          e.checkin_code = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+          demoWrite(d);
+        }
+        return e.checkin_code;
+      }
+      return await rest('rpc/checkin_open', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    async checkinDo(eventId, code) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return { ok: false, why: 'noevent' };
+        if (String(e.date) !== DB.today()) return { ok: false, why: 'notToday' };
+        if (!e.checkin_code || e.checkin_code !== String(code).trim()) {
+          return { ok: false, why: 'wrong' };
+        }
+        d.checkins = d.checkins || [];
+        if (!d.checkins.some(c => c.event_id === eventId && c.member_id === me)) {
+          d.checkins.push({ event_id: eventId, member_id: me, created_at: new Date().toISOString() });
+          demoWrite(d);
+        }
+        return { ok: true, place: e.place, date: e.date };
+      }
+      return await rest('rpc/checkin_do', {
+        method: 'POST', body: { p_event: eventId, p_code: String(code).trim() }
+      });
+    },
+
+    /* ---------- 내 지난 설문 ----------
+       활동의견 설문과 1365 명부. 내 것만 돌려준다. */
+    async surveyHistory() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        return {
+          open: true,
+          survey: (d.survey_responses || []).filter(r => r.member_id === me)
+            .map(r => ({
+              id: r.id, at: r.created_at, topic: r.topic,
+              party: r.party, station: r.station, opinion: r.opinion
+            })),
+          id1365: (d.member_1365 || []).filter(t => t.member_id === me)
+            .map(t => ({
+              id: t.id, at: t.updated_at, portal_id: t.portal_id,
+              birth: t.birth, student_id: t.student_id
+            })),
+          ambiguous: false
+        };
+      }
+      return await rest('rpc/my_survey_history', { method: 'POST', body: {} });
+    },
+
+    async surveyUpdate(id, v) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const r = (d.survey_responses || []).find(x => x.id === id && x.member_id === me);
+        if (!r) throw new Error('응답을 찾지 못했어요');
+        if (v.party != null) r.party = v.party;
+        if (v.station != null) r.station = v.station;
+        if (v.opinion != null) r.opinion = v.opinion;
+        demoWrite(d); return true;
+      }
+      return await rest('rpc/my_survey_update', {
+        method: 'POST',
+        body: {
+          p_id: id, p_party: v.party || null,
+          p_station: v.station || null, p_opinion: v.opinion || null
+        }
+      });
+    },
+
+    /* ---------- 후기 남기기 권유 ----------
+       다녀왔는데 아직 안 쓴 봉사 하나. 7일까지만 권한다. */
+    async reviewPrompt() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return null;
+        const today = DB.today();
+        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const mine = (d.attendance || []).filter(a => a.member_id === me);
+        const cands = mine
+          .map(a => (d.events || []).find(e => e.id === a.event_id))
+          .filter(e => e && String(e.date) <= today && String(e.date) >= weekAgo)
+          .filter(e => !(d.posts || []).some(p =>
+            p.type === 'review' && p.event_id === e.id && p.author_id === me && !p.hidden))
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const e = cands[0];
+        return e ? {
+          event_id: e.id, date: e.date, place: e.place, title: e.title,
+          confirmed: !!e.confirmed_at
+        } : null;
+      }
+      return await rest('rpc/my_review_prompt', { method: 'POST', body: {} });
+    },
+
+    /* ---------- 퀴즈 정답 발표 ----------
+       예약 시각이 지났으면 누가 열어도, 아직이면 만든 사람만.
+       E단계에 pg_cron 이 들어오면 시간 맞춰 저절로 돈다. */
+    async revealQuiz(postId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const q = (d.polls || []).find(x => x.post_id === postId);
+        if (!q || !q.answer_option_id) return null;
+        if (q.revealed_at) return { ok: true, already: true };
+        const post = (d.posts || []).find(x => x.id === postId);
+        const early = q.reveal_at && Date.parse(q.reveal_at) > Date.now();
+        if (early && (!post || post.author_id !== me)) return { ok: false, why: 'early' };
+
+        q.revealed_at = new Date().toISOString();
+        const ansOpt = (d.poll_options || []).find(o => o.id === q.answer_option_id);
+        const ans = ansOpt ? ansOpt.label : '';
+        const seen = {};
+        (d.poll_votes || []).filter(v => v.post_id === postId).forEach(v => {
+          if (seen[v.member_id]) return;
+          seen[v.member_id] = true;
+          d.member_notices = d.member_notices || [];
+          d.member_notices.push({
+            id: uid(), member_id: v.member_id, kind: 'quiz', post_id: postId,
+            body: v.option_id === q.answer_option_id
+              ? '정답이에요! ' + ans + ' 였어요 🐾'
+              : '아쉬워요! 정답은 ' + ans + ' 였어요',
+            created_at: new Date().toISOString(), read_at: null
+          });
+        });
+        demoWrite(d);
+        return { ok: true, told: Object.keys(seen).length };
+      }
+      return await rest('rpc/reveal_quiz', { method: 'POST', body: { p_post: postId } });
+    },
+
+    /* ---------- 봉사 탭 한 번에 ----------
+       일정마다 따로 묻던 것을 하나로 모았다 */
+    async volBoard() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const today = DB.today();
+        const posts = d.posts || [];
+        const wl = d.event_waitlist || [];
+        const soon = (d.events || []).filter(e => String(e.date) >= today)
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .map(e => {
+            const mineW = wl.filter(w => w.event_id === e.id)
+              .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+            const idx = mineW.findIndex(w => w.member_id === me);
+            return {
+              id: e.id, date: e.date, title: e.title, place: e.place,
+              start_time: e.start_time, capacity: e.capacity,
+              taken: (d.attendance || []).filter(a => a.event_id === e.id).length,
+              mine: (d.attendance || []).some(a => a.event_id === e.id && a.member_id === me),
+              wait_pos: idx >= 0 ? idx + 1 : null
+            };
+          });
+        const past = (d.events || []).filter(e => String(e.date) < today)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 12)
+          .map(e => ({
+            id: e.id, date: e.date, place: e.place,
+            confirmed: !!e.confirmed_at,
+            reviews: posts.filter(p => p.type === 'review' && p.event_id === e.id && !p.hidden).length,
+            went: (d.attendance || []).some(a => a.event_id === e.id && a.member_id === me)
+          }));
+        return { soon, past };
+      }
+      return await rest('rpc/vol_board', { method: 'POST', body: { p_days: 120 } });
+    },
+
+    /* ---------- 대기 신청 ---------- */
+    async myWaitlist() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return [];
+        const w = d.event_waitlist || [];
+        return w.filter(x => x.member_id === me).map(x => ({
+          event_id: x.event_id,
+          pos: w.filter(y => y.event_id === x.event_id &&
+            String(y.created_at) <= String(x.created_at)).length
+        }));
+      }
+      return await rest('rpc/my_waitlist', { method: 'POST', body: {} }) || [];
+    },
+
+    async waitJoin(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return 'nomatch';
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return 'noevent';
+        if ((d.attendance || []).some(a => a.event_id === eventId && a.member_id === me)) return 'dup';
+        const cap = Number(e.capacity) || 0;
+        const taken = (d.attendance || []).filter(a => a.event_id === eventId).length;
+        if (!cap || taken < cap) return 'notfull';
+        d.event_waitlist = d.event_waitlist || [];
+        if (!d.event_waitlist.some(w => w.event_id === eventId && w.member_id === me))
+          d.event_waitlist.push({ id: uid(), event_id: eventId, member_id: me, created_at: new Date().toISOString() });
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/waitlist_join', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    async waitLeave(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        d.event_waitlist = (d.event_waitlist || [])
+          .filter(w => !(w.event_id === eventId && w.member_id === me));
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/waitlist_leave', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    /* ---------- 프로필 사진 ---------- */
+    /* 정사각형으로 잘라 400px 로 줄인다. 줄이면서 위치정보도 떨어진다 */
+    async setMyPhoto(dataUrl) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const m = (d.members || []).find(x => x.id === me);
+        if (!m) throw new Error('로그인이 풀렸어요');
+        m.photo_path = dataUrl || null;
+        demoWrite(d); return dataUrl || null;
+      }
+      if (!dataUrl) {
+        await rest('rpc/set_my_photo', { method: 'POST', body: { p_path: '' } });
+        return null;
+      }
+      const meId = await DB.community.myId();
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = meId + '/' + Date.now() + '.jpg';
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/avatars/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': blob.type || 'image/jpeg'
+        },
+        body: blob
+      });
+      if (!r.ok) throw new Error('사진을 올리지 못했어요');
+      await rest('rpc/set_my_photo', { method: 'POST', body: { p_path: path } });
+      return path;
+    },
+
+    /* 비공개 보관함이라 볼 때마다 서명된 주소를 받는다 */
+    async avatarUrl(path) {
+      if (!path) return '';
+      if (!HAS_SB || /^data:/.test(path)) return path;
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/avatars/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expiresIn: 3600 })
+      });
+      if (!r.ok) return '';
+      const j = await r.json().catch(() => ({}));
+      return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+    },
+
+    /* ---------- 새 소식 ---------- */
+    /* 내 글에 달린 댓글·반응. 내가 한 것은 세지 않는다 */
+    async news() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return [];
+        const mine = d.posts.filter(p => p.author_id === me).map(p => p.id);
+        const out = [];
+        d.comments.filter(c => mine.indexOf(c.post_id) >= 0 && c.author_id !== me && !c.hidden)
+          .forEach(c => out.push({
+            kind: 'comment', at: c.created_at, post_id: c.post_id,
+            who: (demoMember(c.author_id) || {}).name, detail: c.body, react: null
+          }));
+        d.reactions.filter(r => mine.indexOf(r.post_id) >= 0 && r.member_id !== me)
+          .forEach(r => out.push({
+            kind: 'reaction', at: r.created_at || new Date().toISOString(), post_id: r.post_id,
+            who: (demoMember(r.member_id) || {}).name, detail: null, react: r.kind
+          }));
+        (d.member_notices || []).filter(n => n.member_id === me)
+          .forEach(n => out.push({
+            kind: n.kind, at: n.created_at, post_id: null,
+            who: null, detail: n.detail, react: null
+          }));
+        return out.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
+      }
+      return await rest('rpc/my_news', { method: 'POST', body: { p_limit: 30 } }) || [];
+    },
+
+    /* ---------- 봉사 신청 (로그인한 구성원) ---------- */
+    /* 이름이 아니라 내 id 로 한다. 동명이인이 있어도 섞이지 않는다 */
+    async mySignups() {
+      if (!HAS_SB) {
+        const id = myDemoId();
+        if (!id) return [];
+        return (cdemo().attendance || [])
+          .filter(a => a.member_id === id).map(a => a.event_id);
+      }
+      return await rest('rpc/my_signups', { method: 'POST', body: {} }) || [];
+    },
+
+    async signup(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return 'nomatch';
+        const e = (d.events || []).find(x => x.id === eventId);
+        if (!e) return 'noevent';
+        if (e.signup_open_at && Date.now() < Date.parse(e.signup_open_at)) return 'before';
+        d.attendance = d.attendance || [];
+        if (d.attendance.some(a => a.event_id === eventId && a.member_id === me)) return 'dup';
+        const taken = d.attendance.filter(a => a.event_id === eventId).length;
+        if (Number(e.capacity) > 0 && taken >= Number(e.capacity)) return 'full';
+        d.attendance.push({ id: uid(), event_id: eventId, member_id: me, hours: 0 });
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/event_signup_me', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    async cancelSignup(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        d.attendance = (d.attendance || []).filter(a => !(a.event_id === eventId && a.member_id === me));
+        promoteWait(d, eventId);
+        demoWrite(d); return 'ok';
+      }
+      return await rest('rpc/event_cancel_me', { method: 'POST', body: { p_event: eventId } });
+    },
+
+    /* ---------- 사진 ---------- */
+    /* 비공개 버킷에 올리고, 볼 때는 서명된 주소를 받아온다 */
+    async uploadPhoto(postId, dataUrl, i) {
+      const blob = await (await fetch(dataUrl)).blob();
+      const path = postId + '/' + Date.now() + '-' + i + '.jpg';
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': blob.type || 'image/jpeg'
+        },
+        body: blob
+      });
+      if (!r.ok) throw new Error('사진을 올리지 못했어요');
+      return path;
+    },
+
+    async photoUrl(path) {
+      if (!HAS_SB) return path;               /* 체험 모드는 dataURL 그대로 */
+      if (!path) return '';
+      if (/^data:/.test(path)) return path;
+      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/community/' + path, {
+        method: 'POST',
+        headers: {
+          apikey: C.SUPABASE_ANON_KEY,
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ expiresIn: 3600 })
+      });
+      if (!r.ok) return '';
+      const j = await r.json().catch(() => ({}));
+      return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+    },
+
+    /* 내 구성원 id — 서버가 정해준다 */
+    async myId() {
+      if (!HAS_SB) return myDemoId();
+      const v = await rest('rpc/my_member_id', { method: 'POST', body: {} });
+      if (!v) throw new Error('명부와 이어진 계정이 아니에요');
+      return v;
+    }
   };
 
   window.DB = DB;

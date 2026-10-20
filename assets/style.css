@@ -29,7 +29,7 @@
   --purple:#A78BD0;
   --purple-soft:#EFE8F8;
 
-  --r-xl:28px; --r-lg:22px; --r-md:16px; --r-sm:11px;
+  --r-xl:26px; --r-lg:20px; --r-md:16px; --r-sm:11px;
   --shadow:0 8px 26px rgba(58,72,44,.08);
   --shadow-sm:0 3px 12px rgba(58,72,44,.06);
   --shadow-pop:0 14px 40px rgba(58,72,44,.16);
@@ -84,7 +84,10 @@ a{color:inherit;text-decoration:none}
 .view{display:none;animation:fade .32s ease}
 .view.on{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.stack{display:grid;gap:14px}
+/* grid 자식은 기본이 min-width:auto 라 내용이 넓으면 칸을 밀어낸다.
+   칩 줄처럼 가로로 긴 것이 들어오면 화면 전체가 옆으로 벌어진다. */
+.stack{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.stack>*{min-width:0}
 .row{display:flex;align-items:center;gap:10px}
 /* display 를 지정한 요소도 hidden 이면 확실히 숨긴다 */
 [hidden]{display:none!important}
@@ -149,6 +152,14 @@ a{color:inherit;text-decoration:none}
 .stat{flex:1;display:flex;align-items:center;gap:9px;justify-content:center;position:relative;min-width:0}
 .stat+.stat::before{content:'';position:absolute;left:0;top:6px;bottom:6px;width:1px;background:var(--line)}
 .stat .ic{width:42px;height:42px;border-radius:15px;display:grid;place-items:center;font-size:19px;flex:none}
+/* 한 칸에 셋이 들어갈 때는 좁은 화면에서 아이콘을 줄이고 글자를 붙인다 */
+.statcard .stat:nth-child(3):last-child ~ *,
+.statcard:has(.stat:nth-child(3)) .stat{min-width:0}
+.statcard:has(.stat:nth-child(3)) .stat .ic{width:34px;height:34px;border-radius:12px}
+.statcard:has(.stat:nth-child(3)) .stat .ic svg{width:17px;height:17px}
+.statcard:has(.stat:nth-child(3)) .stat .lb{font-size:11px;white-space:nowrap}
+.statcard:has(.stat:nth-child(3)) .stat .vl{font-size:15px;white-space:nowrap}
+.statcard:has(.stat:nth-child(3)){gap:4px}
 .stat .lb{font-size:12px;color:var(--ink-3);line-height:1.2}
 .stat .vl{font-family:var(--font-title);font-size:21px;line-height:1.15}
 .ic.green{background:var(--brand-soft);color:var(--brand-deep)}
@@ -161,7 +172,7 @@ a{color:inherit;text-decoration:none}
 /* ---------- 버튼 ---------- */
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  padding:12px 18px;border-radius:15px;border:1px solid transparent;
+  padding:12px 18px;border-radius:14px;border:1px solid transparent;
   background:var(--surface-2);color:var(--ink);font-weight:600;font-size:14px;
   cursor:pointer;transition:.16s;white-space:nowrap
 }
@@ -180,6 +191,12 @@ a{color:inherit;text-decoration:none}
 
 /* ---------- 칩/배지 ---------- */
 .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+/* 옆으로 더 있다는 것을 옅은 페이드로 알린다 */
+.chipwrap{position:relative;flex:1;min-width:0}
+.chipwrap::after{
+  content:'';position:absolute;right:0;top:0;bottom:6px;width:28px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--bg))
+}
 .chips::-webkit-scrollbar{display:none}
 .chip{
   padding:9px 15px;border-radius:999px;border:1px solid var(--line);
@@ -188,6 +205,7 @@ a{color:inherit;text-decoration:none}
 }
 .chip.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-deep)}
 .chip .n{background:var(--surface-2);border-radius:999px;padding:0 7px;font-size:11.5px}
+.chip .x{margin-left:4px;opacity:.6;font-size:11px}
 .chip.on .n{background:rgba(255,255,255,.6)}
 .badge{
   display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;
@@ -227,6 +245,31 @@ a{color:inherit;text-decoration:none}
   box-shadow:0 0 0 1px var(--line-2)
 }
 .avatar.sm{width:38px;height:38px;font-size:18px}
+/* 사진이 채워지면 글자는 가린다 */
+
+/* 상단바 프로필 동그라미 */
+.avatar.tiny{width:32px;height:32px;font-size:15px;border-width:1.5px;cursor:pointer}
+.prof-big{
+  width:132px;height:132px;border-radius:50%;margin:0 auto;display:grid;place-items:center;
+  background:var(--brand-soft);color:var(--brand-deep);font-family:var(--font-title);font-size:52px;
+  background-size:cover;background-position:center
+}
+.prof-big.has-photo{color:transparent;font-size:0}
+/* 사진이 채워지면 이니셜은 가린다. 색조 규칙보다 뒤에 둬야 덮인다 */
+html .avatar.has-photo,
+html[data-theme="dark"] .avatar.has-photo{
+  background-size:cover;background-position:center;
+  color:transparent;font-size:0
+}
+/* 그린 한 계열 4단계 — 사람은 구분되고 화면 색은 늘지 않는다 */
+.avatar.av0{background-color:#E7F2DC;color:#3F7A2A}
+.avatar.av1{background-color:#D9EBC9;color:#36691F}
+.avatar.av2{background-color:#EFF6E6;color:#4E8C36}
+.avatar.av3{background-color:#CFE4BB;color:#2F5C1B}
+html[data-theme="dark"] .avatar.av0{background-color:#2C3B25;color:#A6D986}
+html[data-theme="dark"] .avatar.av1{background-color:#34462B;color:#B7E39B}
+html[data-theme="dark"] .avatar.av2{background-color:#263320;color:#96CD76}
+html[data-theme="dark"] .avatar.av3{background-color:#3C5131;color:#C6EBAD}
 .avatar.lg{width:84px;height:84px;font-size:40px}
 
 /* 참여왕 배너 */
@@ -311,6 +354,9 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .check.on{background:var(--brand-soft);border-color:var(--brand)}
 .check .box{width:22px;height:22px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;flex:none;color:#fff;font-size:12px;transition:.14s}
 .check.on .box{background:var(--brand);border-color:var(--brand)}
+/* 체크 표시는 켜졌을 때만. 다크에서 흰 체크가 미리 보이던 것 */
+.check .box.tick .svg{opacity:0;transition:.14s}
+.check.on .box.tick .svg{opacity:1}
 .check .hr{width:56px;flex:none}
 .check .hr input{width:100%;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);text-align:center;font-size:13px}
 
@@ -333,6 +379,233 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   .tabbar button{padding:8px 12px;font-size:11px;min-width:58px}
 }
 .tabbar button.on{background:var(--brand-soft);color:var(--brand-deep)}
+/* 새 소식 — 안 읽은 줄은 진하게, 왼쪽에 초록 점 */
+.newsrow{
+  display:flex;align-items:flex-start;gap:9px;width:100%;
+  border:none;background:none;text-align:left;font-family:inherit;cursor:pointer;
+  padding:10px 0;border-bottom:1px dashed var(--line-2)
+}
+.newsrow:last-child{border-bottom:none}
+.newsrow .pt{
+  width:7px;height:7px;border-radius:50%;background:var(--brand);
+  flex:none;margin-top:6px;transition:.14s
+}
+.newsrow .tx{flex:1;min-width:0;font-size:13px;line-height:1.6;color:var(--ink)}
+.newsrow .at{flex:none;font-size:11px;color:var(--ink-3)}
+.newsrow.read{opacity:.55}
+.newsrow.read .pt{background:transparent}
+.newsrow.read .tx{font-weight:400}
+.newsrow:not(.read) .tx{font-weight:600}
+
+/* 지난 봉사 줄 — 누를 수 있다 */
+.pastrow{
+  display:flex;align-items:center;gap:10px;width:100%;
+  border:none;background:none;text-align:left;font-family:inherit;cursor:pointer;
+  padding:11px 0;border-bottom:1px dashed var(--line-2);font-size:13.5px;color:var(--ink)
+}
+.pastrow:last-child{border-bottom:none}
+.pastrow .nm{flex:1;min-width:0}
+.pastrow .rt{flex:none;font-size:12px;color:var(--ink-3)}
+.pastrow .go{flex:none;font-size:12px;color:var(--brand-deep);font-weight:700}
+
+/* 안 읽은 새 소식이 있으면 탭에 점 */
+.tabbar button.dotted{position:relative}
+.tabbar button.dotted::before{
+  content:'';position:absolute;top:5px;right:9px;width:7px;height:7px;border-radius:50%;
+  background:var(--coral,#E4725B);box-shadow:0 0 0 2px var(--surface)
+}
+/* 선택된 탭 아래 작은 발바닥 — 한 화면에 한 곳만 */
+.tabbar button .pawdot{
+  height:0;overflow:hidden;opacity:0;transition:.18s;
+  display:block;color:var(--brand)
+}
+.tabbar button .pawdot svg{width:9px;height:9px;display:block;margin:0 auto}
+.tabbar button.on .pawdot{height:9px;opacity:1}
+@media (prefers-reduced-motion:reduce){ .tabbar button .pawdot{transition:none} }
+
+/* 하단 탭에 가리지 않도록 본문 끝에 두는 여백 */
+.tabgap{height:120px}
+
+/* ---------- 글쓰기 버튼 ---------- */
+/* 하단 탭 바로 위, 오른쪽에 뜬다 */
+.fab{
+  /* 넓은 화면에서도 앱 기둥(480px) 안쪽에 붙어 있게 */
+  position:fixed;right:max(18px, calc(50vw - 222px));bottom:104px;z-index:51;
+  width:52px;height:52px;border-radius:19px;border:none;cursor:pointer;
+  display:grid;place-items:center;
+  background:var(--brand);color:#fff;box-shadow:var(--shadow-pop);
+  transition:.16s
+}
+.fab:hover{filter:brightness(.96)}
+.fab:active{transform:scale(.94)}
+.fab .svg{width:24px;height:24px}
+
+/* ---------- 피드 ---------- */
+.post{padding:16px 16px 12px}
+.post .tapzone{cursor:pointer}
+.post .tapzone:active{opacity:.75}
+/* 제목 줄 오른쪽 작은 아이콘 버튼 */
+.titlerow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;min-width:0}
+.iconbtn.sq{width:36px;height:36px;border-radius:12px}
+.post .who{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.post .who .nm{font-weight:700;font-size:14px}
+.post .who .at{font-size:11.5px;color:var(--ink-3)}
+.post .bd{font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.post .meta{
+  display:inline-flex;align-items:center;gap:6px;margin-bottom:9px;
+  background:var(--surface-2);border-radius:11px;padding:5px 10px;
+  font-size:12px;color:var(--ink-3)
+}
+
+/* 사진 넘겨 보기 — 옆으로 밀면 한 장씩 */
+.shots{
+  display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;
+  margin:11px -16px 0;padding:0 16px;scrollbar-width:none
+}
+.shots::-webkit-scrollbar{display:none}
+.shots img{
+  width:100%;flex:none;scroll-snap-align:center;
+  aspect-ratio:1/1;object-fit:cover;border-radius:15px;background:var(--surface-2)
+}
+.dots{display:flex;justify-content:center;gap:5px;margin-top:8px}
+/* 사진이 많으면 점 대신 숫자로 센다 */
+.shotn{margin-top:8px;text-align:center;font-size:11.5px;font-weight:700;color:var(--ink-3)}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--line);transition:.2s}
+.dots i.on{background:var(--brand);width:14px;border-radius:3px}
+
+/* 반응 — 이모지 칩 + 개수 */
+.reacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.react{
+  display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  border:1px solid var(--line);background:var(--surface);border-radius:999px;
+  min-height:34px;padding:5px 12px;font-size:17px;color:var(--ink-3);transition:.14s;
+  font-family:inherit;line-height:1
+}
+.react:active{transform:scale(.94)}
+.react.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-deep);font-weight:700}
+.react .n{font-size:12.5px;font-weight:700}
+.react.add{color:var(--ink-3);font-size:13px;gap:5px}
+.react.add .lbl{font-size:12.5px;font-weight:700}
+.react.add .svg{width:17px;height:17px}
+
+/* 발자국 ↔ 운영진 전환 — 운영진에게만 보인다 */
+.sidesw{
+  display:inline-flex;gap:2px;padding:3px;border-radius:999px;
+  background:var(--surface-2);border:1px solid var(--line-2)
+}
+.sidesw button{
+  border:none;background:none;cursor:pointer;font-family:inherit;
+  padding:6px 13px;border-radius:999px;font-size:12.5px;font-weight:700;
+  color:var(--ink-3);transition:.14s;white-space:nowrap
+}
+.sidesw button.on{background:var(--surface);color:var(--brand-deep);box-shadow:var(--shadow-sm)}
+
+/* ---------- 선 일러스트 ---------- */
+/* 빈 화면·오류·배지에만. 선은 아이콘과 같은 색, 포인트는 그린 하나 */
+.illus{width:132px;height:99px;display:block;margin:0 auto;color:var(--ink-3)}
+.illus .soft{fill:var(--brand-soft);stroke:currentColor}
+.illus .dot{fill:currentColor;stroke:none}
+.illus .thin{stroke-width:1.7;opacity:.55}
+.illus.sm{width:92px;height:69px}
+.illus.xs{width:52px;height:39px}
+.illus.badge-on{color:var(--brand-deep)}
+.illus.badge-on .soft{fill:var(--brand-soft)}
+.illus.off{opacity:.3}
+.illus.off .soft{fill:var(--surface-2)}
+.badge-nm{font-size:11.5px;font-weight:700;color:var(--ink-3);margin-top:3px;opacity:.45}
+.badge-nm.on{color:var(--brand-deep);opacity:1;font-family:var(--font-title)}
+
+/* 반응을 누르면 톡 튀었다 돌아온다 */
+.react.pop{animation:pop .22s ease}
+@keyframes pop{
+  0%{transform:scale(1)}
+  45%{transform:scale(1.22)}
+  100%{transform:scale(1)}
+}
+@media (prefers-reduced-motion:reduce){ .react.pop{animation:none} }
+
+/* 발자국이 콩콩 — 불러오는 중 표시 */
+.paws{display:flex;gap:7px;justify-content:center;align-items:center;height:22px}
+.paws i{
+  width:13px;height:13px;color:var(--brand);opacity:.25;
+  animation:pawhop 1.05s infinite
+}
+.paws i:nth-child(2){animation-delay:.18s}
+.paws i:nth-child(3){animation-delay:.36s}
+.paws i svg{width:13px;height:13px;display:block}
+@keyframes pawhop{
+  0%,70%,100%{opacity:.25;transform:translateY(0)}
+  35%{opacity:1;transform:translateY(-4px)}
+}
+
+/* 카드 모양 스켈레톤 */
+.skel{border-radius:var(--r-lg);background:var(--surface);padding:16px;box-shadow:var(--shadow-sm)}
+.skel .ln{
+  height:12px;border-radius:7px;margin-bottom:9px;
+  background:linear-gradient(90deg,var(--surface-2) 25%,var(--line-2) 37%,var(--surface-2) 63%);
+  background-size:400% 100%;animation:shimmer 1.3s ease infinite
+}
+.skel .ln.w40{width:40%}
+.skel .ln.w70{width:70%}
+.skel .ln.tall{height:120px;border-radius:15px}
+.skel .ln:last-child{margin-bottom:0}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+
+/* 동작 줄이기가 켜져 있으면 전부 멈춘다 */
+@media (prefers-reduced-motion:reduce){
+  .paws i,.skel .ln{animation:none}
+  .paws i{opacity:.6}
+}
+
+/* 숫자 세 칸 — 봉사 횟수 · 적립 · 사료 */
+.stat3{display:flex;align-items:stretch;text-align:center}
+.stat3>div{flex:1;min-width:0;padding:2px 4px}
+.stat3>div+div{border-left:1px solid var(--line-2)}
+.stat3 .v{
+  font-family:var(--font-title);font-size:23px;line-height:1.15;
+  color:var(--brand-deep);word-break:keep-all
+}
+.stat3 .v .u{font-size:13px;margin-left:1px}
+.stat3 .k{color:var(--ink-3);font-size:11.5px;margin-top:4px}
+@media (max-width:359px){ .stat3 .v{font-size:20px} }
+
+/* 댓글 — 카드 안에서 바로 쓰고 바로 보인다 */
+.cmts{margin-top:12px;border-top:1px solid var(--line-2);padding-top:10px}
+.morecmt{
+  border:none;background:none;cursor:pointer;padding:0 0 7px;
+  color:var(--ink-3);font-size:12.5px;font-family:inherit
+}
+.morecmt:hover{color:var(--brand-deep)}
+.cline{font-size:13px;line-height:1.65;padding:3px 0;word-break:break-word}
+.cline b{font-weight:700}
+.cline .tx{color:var(--ink)}
+.cline .at{color:var(--ink-3);font-size:11px}
+.cline .linkbtn{font-size:12px;padding:0 3px}
+.cwrite{display:flex;gap:7px;align-items:center;margin-top:9px}
+.cwrite .input{flex:1;min-width:0;padding:9px 12px;border-radius:13px;font-size:13.5px}
+.cwrite .btn{flex:none;padding:9px 14px;border-radius:13px}
+
+/* 사진 모아보기 */
+.grid-shots{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.grid-shots img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;cursor:pointer;background:var(--surface-2)}
+
+/* 투표 */
+.opt{
+  /* button 은 display:block 만으로 안 늘어난다. 막대가 의미를 가지려면 폭이 같아야 한다 */
+  position:relative;overflow:hidden;cursor:pointer;display:block;width:100%;
+  border:1px solid var(--line);border-radius:14px;padding:11px 13px;
+  margin-bottom:7px;font-size:13.5px;background:var(--surface);transition:.14s;
+  font-family:inherit;color:var(--ink);text-align:left
+}
+.opt .fillbar{position:absolute;inset:0 auto 0 0;background:var(--brand-soft);transition:width .4s ease}
+.opt .lb{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.opt .lb .nm{display:flex;align-items:center;gap:6px;min-width:0}
+.opt .lb .nm .svg{width:16px;height:16px;flex:none;color:var(--brand-deep);display:none}
+.opt .lb .cnt{flex:none;font-size:12.5px;color:var(--ink-3);text-align:right}
+.opt.mine{border-color:var(--brand);background:var(--surface)}
+.opt.mine .lb .nm{font-weight:800;color:var(--brand-deep)}
+.opt.mine .lb .nm .svg{display:block}
+.opt.mine .lb .cnt{color:var(--brand-deep);font-weight:700}
 
 /* ---------- 모달 ---------- */
 .overlay{
@@ -342,10 +615,62 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 }
 @media(min-width:620px){.overlay{align-items:center;padding:22px}}
 .sheet{
-  background:var(--surface);width:100%;max-width:560px;max-height:88vh;overflow:auto;
+  background:var(--surface);width:100%;max-width:560px;max-height:88vh;
   border-radius:26px 26px 0 0;padding:22px;box-shadow:var(--shadow-pop);
-  animation:up .28s cubic-bezier(.2,.9,.3,1)
+  animation:up .28s cubic-bezier(.2,.9,.3,1);
+  display:flex;flex-direction:column;min-height:0
 }
+.sheet .sheet-body{overflow:auto;flex:1;min-height:0}
+/* 주 버튼 자리 — 내용이 길어도 늘 보인다 */
+.sheet .sheet-foot{
+  flex:none;padding-top:14px;margin-top:4px;
+  background:var(--surface);
+  padding-bottom:max(0px, env(safe-area-inset-bottom))
+}
+.sheet .sheet-foot > .btn{width:100%}
+.sheet .sheet-foot .row{display:flex;gap:8px;align-items:stretch}
+.sheet .sheet-foot .row .btn{width:auto}
+.sheet .sheet-foot .row .btn.grow{flex:1}
+.sheet .sheet-foot .row .btn.ghost{flex:none;min-width:84px}
+/* 단계형 입력 */
+/* 진행 표시 — 지금 단계는 길고 진한 막대, 나머지는 점. 오른쪽에 1/4 */
+.wiz-prog{display:flex;align-items:center;gap:8px;margin:-4px 0 16px}
+.wiz-dots{display:flex;gap:6px;align-items:center;flex:1}
+.wiz-dots i{width:7px;height:7px;border-radius:50%;background:var(--line);transition:.2s}
+.wiz-dots i.done{background:var(--brand-soft)}
+.wiz-dots i.on{background:var(--brand-deep);width:28px;height:6px;border-radius:3px}
+.wiz-step{flex:none;font-size:12px;font-weight:700;color:var(--ink-3)}
+/* 한 칸만 묻는 화면의 큰 입력칸 */
+.input.lgin{font-size:18px;padding:15px 16px;font-weight:600}
+/* 질문은 본문 서체로 — 로고 서체는 로고에만 */
+.wiz-q{
+  font-family:var(--font-body, inherit);
+  font-size:22px;font-weight:800;line-height:1.35;margin:0 0 6px;letter-spacing:-.01em
+}
+.wiz-hint{font-size:13px;color:var(--ink-3);margin:0 0 16px;line-height:1.6}
+.wiz-sum{display:grid;gap:6px;margin-bottom:16px}
+.wiz-sum .it{
+  display:flex;justify-content:space-between;gap:10px;align-items:center;width:100%;
+  background:var(--surface-2);border-radius:13px;padding:10px 13px;font-size:13px;
+  border:none;font-family:inherit;cursor:pointer;text-align:left;color:var(--ink);
+  min-height:44px
+}
+.wiz-sum .it:active{opacity:.7}
+.wiz-sum .it .k{color:var(--ink-3)}
+.wiz-sum .it .v{font-weight:700;text-align:right;min-width:0;word-break:break-all}
+
+/* 목록 한 줄 — 어디를 눌러도 되고, 높이는 최소 56px */
+.row56{
+  display:flex;align-items:center;gap:12px;width:100%;min-height:56px;
+  border:none;background:none;text-align:left;font-family:inherit;cursor:pointer;
+  padding:10px 0;color:var(--ink)
+}
+.row56 .mid{flex:1;min-width:0}
+.row56 .t{display:block;font-size:14.5px;font-weight:600}
+.row56 .s{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+.row56 .end{flex:none;font-size:13px;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.row56 .end .svg{width:17px;height:17px;color:var(--line)}
+.row56:active{opacity:.7}
 @media(min-width:620px){.sheet{border-radius:26px}}
 @keyframes up{from{transform:translateY(24px);opacity:.4}to{transform:none;opacity:1}}
 .sheet .hd{display:flex;align-items:center;gap:10px;margin-bottom:16px}
@@ -515,3 +840,216 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .faces{display:flex;padding-left:5px}
 .faces .avatar{margin-left:-9px;width:28px;height:28px;font-size:13px}
 .picker{display:grid;gap:8px;padding:2px}
+
+/* 퀴즈 — 선택지 옆 「정답」 고르기 동그라미 */
+.ansdot{width:34px;height:34px;flex:none;border-radius:50%;border:2px solid var(--line);
+  background:var(--surface);color:transparent;display:grid;place-items:center;cursor:pointer;
+  transition:.16s}
+.ansdot svg{width:17px;height:17px}
+.ansdot.on{border-color:var(--brand);background:var(--brand);color:#fff}
+.ansdot[hidden]{display:none}
+
+/* 퀴즈 카드 — 발표 전 안내 줄과 발표 뒤 정답 표시 */
+.quizwhen{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-3);
+  margin-top:8px}
+.quizwhen svg{width:13px;height:13px}
+.opt.answer{border-color:var(--brand);background:var(--brand-soft)}
+.opt.answer .lb{font-weight:800;color:var(--brand-deep)}
+.quizscore{margin-top:9px;font-size:12px;font-weight:700;color:var(--brand-deep)}
+
+/* 고른 사진 — 빼기·순서 바꾸기 */
+.shotchip{position:relative;display:inline-block;touch-action:none;transition:.16s}
+.shotchip img{width:72px;height:72px;object-fit:cover;border-radius:13px;display:block;
+  pointer-events:none}
+/* button 의 44px 탭 영역 규칙을 여기서는 쓰지 않는다 — 사진 위에 얹는 작은 표시다 */
+.shotchip .rm{position:absolute;top:-6px;right:-6px;width:24px;height:24px;min-height:0;
+  border-radius:50%;border:2px solid var(--surface);background:var(--ink);color:#fff;
+  font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.shotchip .first{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.6);color:#fff;
+  font-size:9px;font-weight:700;border-radius:5px;padding:1px 4px;pointer-events:none}
+.shotchip.dragging{transform:scale(1.12);box-shadow:var(--shadow-md);z-index:2;opacity:.85}
+
+/* 사진 크게 보기 — 전체 화면 */
+.shotview{position:fixed;inset:0;z-index:300;background:#000;display:flex;flex-direction:column}
+.shotview-top{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;align-items:center;
+  gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;
+  background:linear-gradient(to bottom,rgba(0,0,0,.55),transparent)}
+.shotview-x{width:38px;height:38px;min-height:0;border-radius:50%;border:none;cursor:pointer;
+  background:rgba(255,255,255,.18);color:#fff;display:grid;place-items:center;padding:0}
+.shotview-x svg{width:19px;height:19px}
+.shotview-n{color:#fff;font-size:13px;font-weight:700;opacity:.9}
+.shotview-track{flex:1;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch}
+.shotview-track::-webkit-scrollbar{display:none}
+.shotview-cell{flex:0 0 100%;scroll-snap-align:center;display:grid;place-items:center;overflow:hidden}
+.shotview-cell img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s}
+/* 사진을 누를 수 있다는 걸 알리려고 살짝 눌리는 느낌만 준다 */
+.shots img{cursor:zoom-in}
+.shots img:active{opacity:.92}
+
+/* 구성원 줄 — 카카오 연결 여부 */
+.linkdot{display:inline-flex;align-items:center;gap:4px;color:var(--ink-3)}
+.linkdot::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--line)}
+.linkdot.on{color:var(--brand-deep);font-weight:700}
+.linkdot.on::before{background:var(--brand)}
+
+/* 스크롤을 내리면 + 버튼이 작아진다 — 칩 줄과 격자 아이콘을 가리지 않게 */
+.fab.small{width:46px;height:46px}
+.fab.small span,.fab.small .lb{display:none}
+.fab{transition:width .18s,height .18s}
+
+/* 공지 — 한 줄로 접어 두고 누르면 펼친다 */
+.pinrow{width:100%;display:flex;align-items:center;gap:9px;background:var(--gold-soft);
+  border:none;border-radius:16px;padding:12px 14px;margin-bottom:7px;cursor:pointer;
+  text-align:left;min-height:0;transition:.16s}
+.pinrow .ic{flex:none;display:grid;place-items:center;color:#8a6414}
+.pinrow .ic svg{width:17px;height:17px}
+.pinrow .tx{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pinrow .ar{flex:none;color:#8a6414;opacity:.55;transition:.18s}
+.pinrow .ar svg{width:15px;height:15px}
+.pinrow.on{border-bottom-left-radius:0;border-bottom-right-radius:0;margin-bottom:0}
+.pinrow.on .ar{transform:rotate(90deg)}
+.pinfull{background:var(--gold-soft);border-radius:0 0 16px 16px;padding:2px 14px 13px;
+  margin-bottom:7px;font-size:13.5px;line-height:1.65;color:var(--ink);white-space:pre-wrap}
+.pinfull .who{margin-top:8px;font-size:11.5px;color:#8a6414;opacity:.85}
+.pinfull .linkbtn{margin-top:4px;font-size:12.5px}
+:root[data-theme="dark"] .pinrow .ic,
+:root[data-theme="dark"] .pinrow .ar,
+:root[data-theme="dark"] .pinfull .who{color:var(--gold)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pinrow .ic,
+  :root:not([data-theme="light"]) .pinrow .ar,
+  :root:not([data-theme="light"]) .pinfull .who{color:var(--gold)}}
+
+/* 구성원 줄은 두 줄로 — 넘치면 줄이지 말고 숨긴다 */
+.item .sub{flex-wrap:nowrap;overflow:hidden}
+.item .sub > *{flex:none}
+
+/* 후기 남기기 권유 — 나에게만 보이는 카드 */
+/* 후기 권유 — 한 줄로. 첫 화면에서 피드를 가리지 않게 */
+.askcard{display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px;
+  min-height:64px}
+.askcard .paw{flex:none;width:32px;height:32px;border-radius:11px;display:grid;
+  place-items:center;background:var(--brand-soft);color:var(--brand-deep)}
+.askcard .paw svg{width:17px;height:17px}
+.askcard .tx{flex:1;min-width:0;font-size:13.5px;font-weight:600;line-height:1.45;
+  color:var(--ink)}
+.askcard .go{flex:none;min-height:0;padding:9px 13px;border-radius:999px;border:none;
+  background:var(--brand);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer}
+.askcard .no{flex:none;width:26px;height:26px;min-height:0;border-radius:50%;border:none;
+  background:none;color:var(--ink-3);font-size:14px;cursor:pointer;display:grid;
+  place-items:center;padding:0}
+
+/* 오늘 만난 친구 — 발바닥 이름표 */
+.animals{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.apaw{display:inline-flex;align-items:center;gap:5px;min-height:0;padding:6px 11px;
+  border-radius:999px;border:1px solid var(--line);background:var(--surface-2);
+  color:var(--ink-2);font-size:12.5px;font-weight:600;cursor:pointer;transition:.16s}
+.apaw svg{width:13px;height:13px;color:var(--brand)}
+.apaw:active{opacity:.75}
+.apaw .adopted{background:var(--gold-soft);color:#8a6414;border-radius:6px;
+  padding:1px 5px;font-size:10.5px;font-weight:700}
+.apaw.pick.on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-deep)}
+
+/* 운영진 할 일 — 챙길 게 있을 때만 보인다 */
+.todo{display:grid;gap:7px;margin-bottom:14px}
+.todoit{display:flex;align-items:center;gap:10px;width:100%;min-height:0;padding:12px 14px;
+  border-radius:16px;border:1px solid var(--line);background:var(--surface);cursor:pointer;
+  text-align:left;transition:.16s}
+.todoit .ic{flex:none;width:30px;height:30px;border-radius:10px;display:grid;place-items:center;
+  background:var(--gold-soft);color:#8a6414}
+.todoit .ic svg{width:16px;height:16px}
+.todoit .tx{flex:1;font-size:13.5px;font-weight:600;color:var(--ink)}
+.todoit .n{flex:none;min-width:24px;height:24px;border-radius:999px;background:var(--danger);
+  color:#fff;font-size:12px;font-weight:800;display:grid;place-items:center;padding:0 7px}
+.todoit:active{opacity:.75}
+
+/* 글 아래 「더하기」 칩 — 눌러야 펼쳐진다 */
+.addrow{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+.addchip{display:inline-flex;align-items:center;gap:6px;min-height:0;padding:9px 13px;
+  border-radius:999px;border:1px dashed var(--line);background:none;color:var(--ink-3);
+  font-size:12.5px;font-weight:600;cursor:pointer;transition:.16s}
+.addchip svg{width:14px;height:14px}
+.addchip .v{display:none}
+.addchip.on{border-style:solid;border-color:var(--brand);background:var(--brand-soft);
+  color:var(--brand-deep)}
+.addchip.on .v{display:inline;opacity:.85;max-width:110px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.addchip.on .v::before{content:'· '}
+.expand{margin-top:12px;padding:14px;border-radius:16px;background:var(--surface-2)}
+
+/* 알림 설정 — 종류마다 한 줄 */
+.nrow{display:flex;align-items:center;gap:9px;padding:11px 0;border-bottom:1px solid var(--line)}
+.nrow:last-of-type{border-bottom:none}
+.nrow .t{font-size:13.5px;font-weight:600}
+.nrow .s{font-size:11.5px;color:var(--ink-3);margin-top:2px;line-height:1.45}
+.nrow .linkbtn{flex:none;font-size:11.5px}
+/* 켜짐·꺼짐 스위치 */
+.sw{flex:none;width:44px;height:26px;min-height:0;border-radius:999px;border:none;
+  background:var(--line);cursor:pointer;padding:3px;transition:.18s;position:relative}
+.sw span{display:block;width:20px;height:20px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.18s}
+.sw.on{background:var(--brand)}
+.sw.on span{transform:translateX(18px)}
+.bigic{width:54px;height:54px;margin:0 auto;border-radius:18px;display:grid;place-items:center;
+  background:var(--brand-soft);color:var(--brand-deep)}
+.bigic svg{width:26px;height:26px}
+
+/* 체험 모드 알림 미리보기 — 폰 알림처럼 위에서 내려온다 */
+.pushban{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 10px);
+  z-index:400;display:flex;gap:10px;align-items:flex-start;background:var(--surface);
+  border:1px solid var(--line);border-radius:18px;padding:12px 13px;cursor:pointer;
+  box-shadow:0 10px 30px rgba(27,29,26,.16);transform:translateY(-130%);transition:.26s}
+.pushban.in{transform:translateY(0)}
+.pushban .ic{flex:none;width:26px;height:26px;border-radius:8px;background:var(--brand);
+  color:#fff;display:grid;place-items:center}
+.pushban .ic svg{width:15px;height:15px}
+.pushban .tx{flex:1;min-width:0}
+.pushban .t{display:block;font-size:13.5px;font-weight:700;line-height:1.35}
+.pushban .b{display:block;font-size:12.5px;color:var(--ink-3);line-height:1.5;margin-top:2px}
+
+/* 지운 뒤 되돌릴 틈 — 아래에서 올라온다 */
+.undobar{position:fixed;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);
+  z-index:420;display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;
+  border-radius:16px;padding:13px 16px;font-size:13.5px;
+  box-shadow:0 10px 28px rgba(27,29,26,.28);transform:translateY(140%);transition:.26s}
+.undobar.in{transform:translateY(0)}
+.undobar span{flex:1}
+.undobar button{flex:none;min-height:0;border:none;background:none;cursor:pointer;
+  color:var(--brand);font-size:13.5px;font-weight:800;padding:4px 2px}
+
+/* 저장 공간 막대 */
+.bar{height:9px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.bar span{display:block;height:100%;border-radius:999px;background:var(--brand);transition:.3s}
+.bar.warn span{background:var(--danger)}
+.pill-note.warn{background:var(--danger-soft);color:var(--danger)}
+
+/* 처음이에요 Q&A — 한눈에 들어오게. 글자는 셋 크기만 쓴다 */
+.qcard{padding:17px 18px}
+.qtop{display:flex;gap:10px;align-items:flex-start}
+.qmark{flex:none;width:24px;height:24px;border-radius:50%;background:var(--brand);
+  color:#fff;font-size:13px;font-weight:800;display:grid;place-items:center;margin-top:1px}
+.qt{margin:0;font-family:var(--font-body);font-size:16px;font-weight:700;
+  line-height:1.5;color:var(--ink);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.qmeta{display:flex;align-items:center;gap:9px;margin-top:9px;margin-left:34px;
+  font-size:13px;color:var(--ink-3);line-height:1.5}
+.qsolved{display:inline-flex;align-items:center;gap:4px;background:var(--brand-soft);
+  color:var(--brand-deep);border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
+.qsolved svg{width:12px;height:12px}
+.qbest{display:flex;gap:8px;align-items:flex-start;margin:11px 0 0 34px;
+  padding:10px 12px;border-radius:12px;background:var(--surface-2)}
+.amark{flex:none;width:20px;height:20px;border-radius:50%;background:var(--brand-soft);
+  color:var(--brand-deep);font-size:11px;font-weight:800;display:grid;place-items:center}
+.qbest .at{flex:1;min-width:0;font-size:13px;color:var(--ink-2);line-height:1.5;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 질문 상세 — 고른 답이 맨 위 */
+.ans{display:flex;gap:9px;padding:12px 0;border-bottom:1px solid var(--line)}
+.ans:last-child{border-bottom:none}
+.ans.best{background:var(--brand-soft);border:1px solid var(--brand);border-radius:14px;
+  padding:13px;margin-bottom:4px}
+.ans .who2{font-size:13px;font-weight:700;color:var(--ink-2)}
+.ans .at2{margin-left:6px;font-size:12px;font-weight:400;color:var(--ink-3)}
+.ans .ab{margin-top:4px;font-size:15px;line-height:1.5;color:var(--ink);white-space:pre-wrap}
+.ans .linkbtn{margin-top:6px;font-size:12.5px}
