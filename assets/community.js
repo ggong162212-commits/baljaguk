@@ -771,7 +771,7 @@ window.Community = (function () {
       '<div class="card center" style="padding:32px 22px">' +
       '<div style="font-size:28px">🐾</div>' +
       '<h3 style="margin-top:10px;font-size:17px">아직 투표가 없어요</h3>' +
-      '<p class="mut sm" style="margin-top:8px">투표는 운영진이 올려요.</p></div>');
+      '<p class="mut sm" style="margin-top:8px">누구나 만들 수 있어요.</p></div>');
     paint(rows.map(postCard).join(''));
     bindOnce();
     loadPhotos($('#view'));

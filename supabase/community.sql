@@ -245,9 +245,6 @@ begin
   if new.type = 'notice' and not is_admin() then
     raise exception '공지는 운영진만 쓸 수 있어요';
   end if;
-  if new.type = 'poll' and not is_admin() then
-    raise exception '투표는 운영진만 만들 수 있어요';
-  end if;
   if new.pinned and not is_admin() then
     raise exception '고정은 운영진만 할 수 있어요';
   end if;
