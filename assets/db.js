@@ -920,6 +920,8 @@
         let list = d.posts.slice()
           .filter(p => !p.hidden || p.author_id === meId)
           .filter(p => !o.type || p.type === o.type)
+          /* 공식 투표는 투표 탭에만 */
+          .filter(p => o.type || p.type !== 'poll')
           .filter(p => !o.place || p.place === o.place)
           .filter(p => !o.cursor || String(p.created_at) < String(o.cursor))
           .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))

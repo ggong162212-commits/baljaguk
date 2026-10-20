@@ -300,6 +300,8 @@ pick as (
    where (p_cursor is null or p.created_at < p_cursor)
      and (p_type   is null or p.type  = p_type)
      and (p_place  is null or p.place = p_place)
+     /* 공식 투표는 투표 탭에만. 피드에는 글 속 투표만 보인다 */
+     and (p_type is not null or p.type <> 'poll')
      and (not p.hidden
           or p.author_id = (select id from me_)
           or is_admin())
@@ -884,3 +886,43 @@ $$;
 
 revoke all on function vol_board(int) from public, anon;
 grant execute on function vol_board(int) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 21) 글 종류에 「자유글」 추가, 글 속 투표에 정답(퀴즈)
+--     공식 투표(type='poll')는 투표 탭에만, 글 속 투표는 피드에만 보인다.
+-- ------------------------------------------------------------
+alter table posts drop constraint if exists posts_type_check;
+alter table posts add constraint posts_type_check
+  check (type in ('review', 'poll', 'notice', 'free'));
+
+alter table polls add column if not exists answer_option_id uuid references poll_options(id) on delete set null;
+alter table polls add column if not exists revealed_at timestamptz;
+
+-- 공지·공식투표는 운영진만. 자유글·후기는 모든 구성원.
+create or replace function posts_guard()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if new.type = 'notice' and not is_admin() then
+    raise exception '공지는 운영진만 쓸 수 있어요';
+  end if;
+  if new.type = 'poll' and not is_admin() then
+    raise exception '투표는 운영진만 만들 수 있어요';
+  end if;
+  if new.pinned and not is_admin() then
+    raise exception '고정은 운영진만 할 수 있어요';
+  end if;
+  if tg_op = 'UPDATE' and new.hidden is distinct from old.hidden
+     and not is_admin() and old.author_id <> my_member_id() then
+    raise exception '숨기기는 운영진만 할 수 있어요';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists posts_guard_trg on posts;
+create trigger posts_guard_trg before insert or update on posts
+  for each row execute function posts_guard();
