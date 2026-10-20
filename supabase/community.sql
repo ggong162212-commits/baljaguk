@@ -63,6 +63,10 @@ create table if not exists posts (
   -- 올린 사람이 발자국 인스타그램에 써도 된다고 한 경우에만 true
   insta_ok    boolean not null default false
 );
+/* 이미 만들어진 표에는 create table 이 건너뛴다 — 칸을 따로 더해 준다.
+   (실서버에 posts 가 먼저 있었고 insta_ok 가 없어서 2026-10-20 배포가 멈췄다) */
+alter table posts add column if not exists insta_ok boolean not null default false;
+
 create index if not exists posts_created_idx on posts (created_at desc);
 create index if not exists posts_type_idx    on posts (type, created_at desc);
 
