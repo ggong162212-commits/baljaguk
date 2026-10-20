@@ -149,8 +149,8 @@
       ? '체험 모드예요. 아무 값이나 넣으면 운영진으로 들어갑니다.'
       : '';
 
-    $('#tabbar').innerHTML = TABS.map(t =>
-      '<button type="button" data-tab="' + t.id + '"><span class="i">' + ic(t.icon) + '</span>' + t.label + '</button>').join('');
+    $('#tabbar').innerHTML = '<div class="tabbar-in">' + TABS.map(t =>
+      '<button type="button" data-tab="' + t.id + '"><span class="i">' + ic(t.icon) + '</span>' + t.label + '</button>').join('') + '</div>';
     $$('#tabbar [data-tab]').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 
     $('#loginForm').addEventListener('submit', login);
@@ -553,8 +553,8 @@
       esc(r.reporter || '(알 수 없음)') + '</div>' +
       '<div class="row" style="gap:7px;margin-top:11px">' +
       (r.post_id
-        ? '<button class="btn ghost sm grow" type="button" data-rhide="' + esc(r.post_id) + '">' +
-          '글 숨기기</button>'
+        ? '<button class="btn ghost sm grow" type="button" data-rdel="' + esc(r.post_id) + '">' +
+          '글 삭제</button>'
         : '') +
       '<button class="btn soft sm grow" type="button" data-rdone="' + esc(r.id) + '">' +
       '처리했어요</button></div></div>').join('');
@@ -563,9 +563,14 @@
       try { await DB.reportDone(b.dataset.rdone); toast('처리했어요', 'ok'); closeSheet(); render(); }
       catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
     });
-    box.querySelectorAll('[data-rhide]').forEach(b => b.onclick = async () => {
-      try { await DB.community.setHidden(b.dataset.rhide, true); toast('숨겼어요', 'ok'); }
-      catch (e) { toast(e.message || '숨기지 못했어요', 'err'); }
+    /* 「숨기기」를 없애고 삭제만 남겼다 — 신고 화면에 옛 버튼이 남아 있었다 */
+    box.querySelectorAll('[data-rdel]').forEach(b => b.onclick = async () => {
+      if (!await confirmSheet('이 글을 지울까요?',
+        '되돌릴 수 없어요. 댓글과 사진도 같이 지워져요.', '지우기')) return;
+      try {
+        await DB.community.removePost(b.dataset.rdel);
+        toast('지웠어요', 'ok'); closeSheet(); render();
+      } catch (e) { toast(e.message || '지우지 못했어요', 'err'); }
     });
   }
 

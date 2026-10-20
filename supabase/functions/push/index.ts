@@ -25,7 +25,7 @@ const WANT: Record<string, string> = {
   post: 'want_post', comment: 'want_comment', reply: 'want_reply',
   reaction: 'want_reaction', notice: 'want_notice', vol: 'want_vol',
   promoted: 'want_promoted', poll: 'want_poll', quiz: 'want_quiz',
-  before: 'want_before', thanks: 'want_thanks',
+  before: 'want_before', thanks: 'want_thanks', feedback: 'want_feedback',
 };
 
 /* ---------- 작은 도구들 ---------- */

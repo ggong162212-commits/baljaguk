@@ -263,6 +263,9 @@
   }
 
   /* ---------------- 공개 API ---------------- */
+  /* 사람 사진 주소 — 받아 둔 것을 다시 쓴다 (화면마다 다시 받지 않게) */
+  const AVATAR_CACHE = new Map();
+
   const DB = {
     mode: HAS_SB ? 'supabase' : 'demo',
     isDemo: () => !HAS_SB,
@@ -1907,18 +1910,29 @@
     async avatarUrl(path) {
       if (!path) return '';
       if (!HAS_SB || /^data:/.test(path)) return path;
-      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/avatars/' + path, {
-        method: 'POST',
-        headers: {
-          apikey: C.SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + session.access_token,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ expiresIn: 3600 })
-      });
-      if (!r.ok) return '';
-      const j = await r.json().catch(() => ({}));
-      return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+      /* 같은 사람 사진을 화면마다 다시 받아오지 않게 한 번만 받아 둔다.
+         서명된 주소는 한 시간짜리라 55분이 지나면 다시 받는다. */
+      const hit = AVATAR_CACHE.get(path);
+      if (hit && hit.until > Date.now()) return hit.url;
+      if (hit && hit.pending) return await hit.pending;
+      const job = (async () => {
+        const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/avatars/' + path, {
+          method: 'POST',
+          headers: {
+            apikey: C.SUPABASE_ANON_KEY,
+            Authorization: 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ expiresIn: 3600 })
+        });
+        if (!r.ok) { AVATAR_CACHE.delete(path); return ''; }
+        const j = await r.json().catch(() => ({}));
+        const url = j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+        AVATAR_CACHE.set(path, { url, until: Date.now() + 55 * 60 * 1000 });
+        return url;
+      })();
+      AVATAR_CACHE.set(path, { pending: job, until: 0 });
+      return await job;
     },
 
     /* ---------- 새 소식 ---------- */

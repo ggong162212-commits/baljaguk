@@ -40,7 +40,10 @@ self.addEventListener('notificationclick', event => {
     /* 이미 열려 있는 창이 있으면 그 창을 쓴다 — 창이 여러 개 생기지 않게 */
     for (const c of all) {
       if (c.url.indexOf(self.registration.scope) === 0) {
-        await c.navigate(full);
+        /* 주소가 #post=… 만 다르면 navigate 로는 화면이 안 바뀐다.
+           열려 있는 창에 직접 알려 주고, 그래도 안 되면 navigate 로 넘긴다. */
+        try { c.postMessage({ type: 'goto', url: url }); } catch (e) { }
+        try { await c.navigate(full); } catch (e) { }
         return c.focus();
       }
     }

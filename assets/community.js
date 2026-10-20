@@ -6,7 +6,7 @@
 window.Community = (function () {
   const {
     $, $$, esc, toast, sheet, closeSheet, confirmSheet,
-    won, num, credit, fmtDate, fmtDateTime, relTime, avatar, resizeImage, cropSquare, cheer
+    won, num, credit, copy, fmtDate, fmtDateTime, relTime, avatar, resizeImage, cropSquare, cheer
   } = UI;
 
   const TABS = [
@@ -42,10 +42,11 @@ window.Community = (function () {
     $('#footLink').hidden = true;
 
     const bar = $('#tabbar');
-    bar.innerHTML = TABS.map(t =>
+    /* 안쪽 틀로 한 번 감싼다 — 탭바는 화면 끝까지, 버튼은 앱 기둥 안에 */
+    bar.innerHTML = '<div class="tabbar-in">' + TABS.map(t =>
       '<button type="button" data-tab="' + t.id + '" aria-label="' + t.label + '">' +
       '<span class="i">' + ic(t.icon) + '</span>' + t.label +
-      '<span class="pawdot">' + ic('paw') + '</span></button>').join('');
+      '<span class="pawdot">' + ic('paw') + '</span></button>').join('') + '</div>';
     $$('#tabbar [data-tab]').forEach(b =>
       b.addEventListener('click', () => go(b.dataset.tab)));
     bar.hidden = false;
@@ -102,6 +103,36 @@ window.Community = (function () {
     try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
     go('home');
     paintTabDot();
+    /* 알림을 눌러 들어왔으면 그 글·봉사·설문으로 바로 보낸다.
+       (주소에 #post=… 가 붙어 오는데 아무도 읽지 않아 늘 홈만 열렸다) */
+    openFromHash();
+    window.addEventListener('hashchange', openFromHash);
+    /* 알림을 눌렀을 때 서비스워커가 알려 준다 — 주소만 바뀌면 화면이 안 바뀌어서 */
+    try {
+      navigator.serviceWorker.addEventListener('message', e => {
+        const u = e.data && e.data.type === 'goto' && e.data.url;
+        if (!u) return;
+        const i = String(u).indexOf('#');
+        if (i < 0) return;
+        location.hash = String(u).slice(i + 1);
+        openFromHash();
+      });
+    } catch (e) { }
+  }
+
+  /* 주소 끝의 #post=… 를 보고 그 화면을 연다 */
+  async function openFromHash() {
+    const h = String(location.hash || '').replace(/^#/, '');
+    if (!h) return;
+    const m = /^(post|vol|poll|news)=(.+)$/.exec(h);
+    /* 한 번 쓰고 지운다 — 다시 눌렀을 때 또 열리지 않게 */
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+    if (!m) return;
+    const [, what, id] = m;
+    if (what === 'post') { await openPost(decodeURIComponent(id)); return; }
+    if (what === 'vol') { go('vol'); return; }
+    if (what === 'poll') { go('poll'); return; }
+    if (what === 'news') { go('me'); return; }
   }
 
   /* ---------- 아바타 사진 채우기 ----------
@@ -811,7 +842,7 @@ window.Community = (function () {
         : (p.date || p.place
           ? '<div class="meta">' + ic('calendar') +
           (p.date ? fmtDate(p.date) : '') +
-          (p.place ? ' · ' + esc(p.place) : '') + '</div>'
+          (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '')) +
 
       (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
@@ -1002,15 +1033,18 @@ window.Community = (function () {
   }
 
   function commentLine(c) {
-    const name = typeof c.author === 'string' ? c.author : ((c.author || {}).name || '?');
+    const who = typeof c.author === 'string' ? { name: c.author } : (c.author || { name: '?' });
+    const name = who.name || '?';
     return '<div class="cline" data-c="' + esc(c.id) + '">' +
+      avatar(who) +
+      '<span class="ctx">' +
       '<b>' + esc(name) + '</b> ' +
       '<span class="tx">' + (c.hidden ? '<span class="mut">운영진이 숨긴 댓글이에요</span>' : esc(c.body)) + '</span> ' +
       '<span class="at">' + relTime(c.created_at) + (c.edited_at ? ' · 수정됨' : '') + '</span>' +
       (c.mine || AM_ADMIN
         ? ' <button class="linkbtn" type="button" data-cmenu="' + esc(c.id) + '">⋯</button>'
         : '') +
-      '</div>';
+      '</span></div>';
   }
 
   /* ---------- 카드 안의 동작 — 한 곳에서 받는다 ----------
@@ -2155,8 +2189,17 @@ window.Community = (function () {
      글 상세 — 카드를 누르면 열린다. 댓글 전체와 입력칸은 여기에만.
      ============================================================ */
   async function openPost(id) {
-    const p = findRow(id);
-    if (!p) return;
+    let p = findRow(id);
+    /* 맨 위에 고정된 공지는 목록(F.rows)에 없고 F.pins 에 따로 온다.
+       그래서 「글로 열기」를 눌러도 아무 일이 없었다 — 공지를 따로 받아온다. */
+    if (!p) {
+      try {
+        const res = await DB.community.feed({ type: 'notice', limit: 40 });
+        (res.rows || []).forEach(r => { if (!findRow(r.id)) F.rows.push(r); });
+        p = findRow(id);
+      } catch (e) { /* 못 받아오면 아래에서 알린다 */ }
+    }
+    if (!p) { toast('글을 찾지 못했어요', 'err'); return; }
     const who = p.author || { name: '?' };
 
     const ov = sheet({
@@ -2171,7 +2214,7 @@ window.Community = (function () {
         (p.date || p.place
           ? '<div class="meta">' + ic('calendar') +
           (p.date ? fmtDate(p.date) : '') +
-          (p.place ? ' · ' + esc(p.place) : '') + '</div>'
+          (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '') +
 
         (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
@@ -2190,6 +2233,7 @@ window.Community = (function () {
     });
 
     loadPhotos(ov);
+    loadAvatars(ov);   /* 글 상세에서 프로필 사진이 안 보이던 것 */
 
     async function draw() {
       let list = [];
@@ -2346,15 +2390,26 @@ window.Community = (function () {
      ============================================================ */
   async function photoWall() {
     const ov = sheet({ title: '사진 모아보기', body: '<div id="wall" class="mut sm">불러오는 중…</div>' });
+    /* 후기만 모으면 거의 비어 보인다 — 사진은 자유글에도 올라온다.
+       종류를 가리지 않고 모은다. (실서버: 사진 23장 중 후기는 1건뿐이었다) */
     let res;
-    try { res = await DB.community.feed({ type: 'review', limit: 50 }); }
+    try { res = await DB.community.feed({ limit: 60 }); }
     catch (e) { ov.querySelector('#wall').textContent = '불러오지 못했어요'; return; }
     const shots = [];
-    (res.rows || []).forEach(r => (r.photos || []).forEach(p => shots.push(p)));
-    if (!shots.length) { ov.querySelector('#wall').innerHTML = '<div class="mut sm">아직 사진이 없어요</div>'; return; }
+    (res.rows || []).forEach(r => (r.photos || []).forEach(path => shots.push({ path, id: r.id })));
+    if (!shots.length) {
+      ov.querySelector('#wall').innerHTML =
+        '<div class="card empty" style="padding:26px 20px">' +
+        '<div style="display:flex;justify-content:center;color:var(--ink-3)">' + ic('image') + '</div>' +
+        '<div style="margin-top:8px">아직 올라온 사진이 없어요</div>' +
+        '<div class="sm" style="margin-top:4px">봉사 후기에 사진을 올리면 여기에 모여요</div></div>';
+      return;
+    }
     ov.querySelector('#wall').innerHTML =
-      '<div class="grid-shots">' + shots.map(p =>
-        '<img alt="봉사 사진" data-path="' + esc(p) + '">').join('') + '</div>';
+      '<div class="mut sm" style="margin-bottom:9px">사진 ' + shots.length + '장</div>' +
+      '<div class="grid-shots">' + shots.map((x, i) =>
+        '<img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(x.path) + '" ' +
+        'data-big="' + esc(x.id) + '">').join('') + '</div>';
     loadPhotos(ov);
   }
 
@@ -2757,7 +2812,16 @@ window.Community = (function () {
     $('#headTitle').textContent = '봉사';
     $('#headLead').textContent = '다가오는 봉사와 지난 기록이에요.';
     paint('<div id="soon">' + loading(1) + '</div><div id="past"></div>' +
-      '<div id="shelters"></div>');
+      '<div id="shelters"></div>' +
+      /* 후원 현황을 봉사 탭 아래에서도 바로 */
+      '<button class="item linkrow" type="button" id="fundRow2" style="width:100%">' +
+      '<span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' +
+      ic('heart') + '</span>' +
+      '<span class="grow" style="text-align:left"><span class="nm">발자국 후원 현황</span>' +
+      '<span class="sub">봉사로 모인 후원금과 사료</span></span>' +
+      ic('chevron') + '</button>');
+    const fr2 = $('#fundRow2');
+    if (fr2) fr2.onclick = fundSheet;
 
     let board = null;
     try { board = await DB.community.volBoard(); } catch (e) { }
@@ -2906,6 +2970,32 @@ window.Community = (function () {
       return;
     }
     writeSheet(eventId);
+  }
+
+  /* 서버가 돌려주는 까닭을 사람 말로 */
+  const SIGNUP_MSG = {
+    nomatch:  '먼저 이름 확인을 해주세요',
+    noevent:  '없어진 봉사예요',
+    closed:   '신청이 닫혔어요',
+    full:     '자리가 다 찼어요',
+    dup:      '이미 신청했어요',
+    notfull:  '아직 자리가 있어요. 그냥 신청하면 돼요',
+    past:     '이미 지난 봉사예요'
+  };
+
+  /* 대기 신청·취소 */
+  async function doWait(id, leave) {
+    const btn = $('#view').querySelector('[data-' + (leave ? 'wleave' : 'wjoin') + '="' + id + '"]');
+    if (btn) { btn.disabled = true; btn.textContent = leave ? '취소 중…' : '신청 중…'; }
+    try {
+      const r = leave ? await DB.community.waitLeave(id) : await DB.community.waitJoin(id);
+      if (r !== 'ok') throw new Error(SIGNUP_MSG[r] || '처리하지 못했어요');
+      toast(leave ? '대기를 취소했어요' : '대기 신청했어요', 'ok');
+      renderVol();
+    } catch (e) {
+      toast(e.message || '처리하지 못했어요', 'err');
+      renderVol();
+    }
   }
 
   async function doSignup(id, cancel) {
@@ -3060,6 +3150,14 @@ window.Community = (function () {
 
       badgeCard(times, places.length) +
 
+      /* 후원 현황을 커뮤니티 안에서 바로 — 주소를 하나로 합쳤으니 */
+      '<button class="item linkrow" type="button" id="fundRow" style="width:100%">' +
+      '<span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' +
+      ic('heart') + '</span>' +
+      '<span class="grow" style="text-align:left"><span class="nm">발자국 후원 현황</span>' +
+      '<span class="sub">우리가 모은 후원금과 사료를 모두 볼 수 있어요</span></span>' +
+      ic('chevron') + '</button><div class="sp"></div>' +
+
       (places.length
         ? '<div class="card"><h3>보호소별 적립</h3>' +
         '<div class="sub">내가 다녀온 만큼만 모아 보여드려요.</div><div class="sp"></div>' +
@@ -3076,6 +3174,69 @@ window.Community = (function () {
         (r.place ? ' · ' + esc(r.place) : '') + '</span>' +
         '<span class="v">' + (Number(r.per) > 0 ? '+' + credit(r.per, r.unit) : '<span class="mut">적립 없음</span>') +
         '</span></div>').join('') + '</div>';
+
+    const fr = $('#fundRow');
+    if (fr) fr.onclick = fundSheet;
+  }
+
+  /* ============================================================
+     후원 현황 — 커뮤니티 안에서 바로 본다
+     바깥 공개용 fund.html 은 그대로 두고, 같은 데이터를 쓴다.
+     ============================================================ */
+  async function fundSheet() {
+    const ov = sheet({
+      title: '발자국 후원 현황',
+      body: '<div id="fundBody" class="mut sm">불러오는 중…</div>'
+    });
+    let d;
+    try { d = await DB.publicFunds(); }
+    catch (e) { ov.querySelector('#fundBody').textContent = '불러오지 못했어요'; return; }
+
+    const n = x => Number(x) || 0;
+    const won2 = n(d.total_saved), kg2 = n(d.total_saved_kg);
+    const paid2 = n(d.total_paid), paidKg2 = n(d.total_paid_kg);
+    const places2 = d.places || [], entries = (d.entries || []).slice(0, 12);
+
+    ov.querySelector('#fundBody').innerHTML =
+      '<div class="card center" style="padding:20px 18px">' +
+      '<div class="mut sm">지금까지 모인 것</div>' +
+      '<div class="money" style="font-size:30px;color:var(--brand-deep);margin-top:4px">' +
+      won(won2) + '</div>' +
+      (kg2 ? '<div class="money" style="font-size:22px;color:var(--brand-deep);margin-top:2px">' +
+        credit(kg2, 'kg') + '</div>' : '') +
+      '<div class="sm mut" style="margin-top:8px">' +
+      '전달 ' + won(paid2) + (paidKg2 ? ' · ' + credit(paidKg2, 'kg') : '') + '</div>' +
+      '<div class="sm mut" style="margin-top:8px;line-height:1.55">' +
+      '봉사에 다녀오면 참여한 인원수만큼 그 보호소 앞으로 쌓여요</div></div>' +
+
+      (places2.length
+        ? '<div class="section-title">' + ic('paw') + '<span>보호소별</span></div>' +
+          '<div class="list">' + places2.map(x =>
+            '<div class="item" style="cursor:default">' +
+            '<span class="ic green" style="width:34px;height:34px;border-radius:12px;display:grid;place-items:center">' +
+            ic('heart') + '</span>' +
+            '<div class="grow"><div class="nm">' + esc(x.place) + '</div>' +
+            '<div class="sub">전달 ' + credit(n(x.paid), x.unit) + '</div></div>' +
+            '<div class="money" style="color:var(--brand-deep)">' + credit(n(x.saved), x.unit) + '</div>' +
+            '</div>').join('') + '</div><div class="sp"></div>'
+        : '') +
+
+      (entries.length
+        ? '<div class="section-title">' + ic('calendar') + '<span>최근 적립</span></div>' +
+          '<div class="card" style="padding:4px 16px">' + entries.map((r, i) =>
+            '<div class="kv"' + (i ? '' : ' style="border-top:none"') + '>' +
+            '<span class="k">' + fmtDate(r.date) + ' · ' + esc(r.place) + '</span>' +
+            '<span class="v">' + credit(n(r.amount), r.unit) + '</span></div>').join('') +
+          '</div><div class="sp"></div>'
+        : '') +
+
+      '<button class="btn ghost block sm" type="button" id="fundShare">바깥에 보여줄 링크 복사</button>';
+
+    const sb = ov.querySelector('#fundShare');
+    if (sb) sb.onclick = () => {
+      const url = location.origin + location.pathname.replace(/[^/]*$/, '') + 'fund.html';
+      copy(url, '링크를 복사했어요');
+    };
   }
 
   /* 기록 배지 — 확정된 기록에서만 센다 */
