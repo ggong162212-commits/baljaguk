@@ -896,16 +896,29 @@
         })),
       reactions: counts,
       my_reactions: rs.filter(r => r.member_id === meId).map(r => r.kind),
-      poll: poll ? {
-        question: poll.question, multi: !!poll.multi, anonymous: !!poll.anonymous,
-        closes_at: poll.closes_at || null, closed_at: poll.closed_at || null,
-        options: d.poll_options.filter(o => o.post_id === p.id)
-          .sort((a, b) => a.sort - b.sort).map(o => ({
-            id: o.id, label: o.label,
-            votes: d.poll_votes.filter(v => v.option_id === o.id).length,
-            mine: d.poll_votes.some(v => v.option_id === o.id && v.member_id === meId)
-          }))
-      } : null
+      /* 퀴즈는 발표 전까지 정답도 분포도 내보내지 않는다 (실서버 feed() 와 같은 규칙) */
+      poll: poll ? (function () {
+        const quiz = !!poll.answer_option_id;
+        const shown = !quiz || !!poll.revealed_at;
+        const mine_ = d.poll_votes.filter(v => v.post_id === p.id);
+        return {
+          question: poll.question, multi: !!poll.multi, anonymous: !!poll.anonymous,
+          closes_at: poll.closes_at || null, closed_at: poll.closed_at || null,
+          quiz: quiz,
+          reveal_at: poll.reveal_at || null,
+          revealed: !!poll.revealed_at,
+          answer: poll.revealed_at ? poll.answer_option_id : null,
+          voters: shown ? new Set(mine_.map(v => v.member_id)).size : null,
+          correct: quiz && poll.revealed_at
+            ? mine_.filter(v => v.option_id === poll.answer_option_id).length : null,
+          options: d.poll_options.filter(o => o.post_id === p.id)
+            .sort((a, b) => a.sort - b.sort).map(o => ({
+              id: o.id, label: o.label,
+              votes: shown ? d.poll_votes.filter(v => v.option_id === o.id).length : null,
+              mine: d.poll_votes.some(v => v.option_id === o.id && v.member_id === meId)
+            }))
+        };
+      })() : null
     };
   }
 
@@ -926,16 +939,17 @@
           .filter(p => !o.cursor || String(p.created_at) < String(o.cursor))
           .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
           .slice(0, o.limit || 20);
-        const pin = o.cursor ? null : d.posts
+        const pins = o.cursor ? [] : d.posts
           .filter(p => p.type === 'notice' && p.pinned && !p.hidden)
-          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
         return {
           rows: list.map(p => demoPostRow(d, p, meId)),
           cursor: list.length ? list[list.length - 1].created_at : null,
-          pinned: pin ? {
-            id: pin.id, body: pin.body, created_at: pin.created_at,
-            author: (demoMember(pin.author_id) || {}).name
-          } : null
+          pinned: pins.slice(0, 3).map(p => ({
+            id: p.id, body: p.body, created_at: p.created_at,
+            author: (demoMember(p.author_id) || {}).name
+          })),
+          pinned_total: pins.length
         };
       }
       return await rest('rpc/feed', {
@@ -963,12 +977,18 @@
         d.posts.push(p);
         photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
         if (v.poll) {
+          const made = (v.poll.options || []).map((lb, i) => {
+            const o = { id: uid(), post_id: p.id, label: lb, sort: i };
+            d.poll_options.push(o);
+            return o;
+          });
           d.polls.push({
             post_id: p.id, question: v.poll.question, multi: !!v.poll.multi,
-            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null, closed_at: null
+            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null, closed_at: null,
+            reveal_at: v.poll.reveal_at || null, revealed_at: null,
+            answer_option_id: v.poll.answer_index != null && made[v.poll.answer_index]
+              ? made[v.poll.answer_index].id : null
           });
-          (v.poll.options || []).forEach((lb, i) =>
-            d.poll_options.push({ id: uid(), post_id: p.id, label: lb, sort: i }));
         }
         demoWrite(d);
         return { id: p.id };
@@ -998,13 +1018,24 @@
           method: 'POST', prefer: 'return=minimal',
           body: {
             post_id: id, question: v.poll.question, multi: !!v.poll.multi,
-            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null
+            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null,
+            reveal_at: v.poll.reveal_at || null
           }
         });
-        await rest('poll_options', {
-          method: 'POST', prefer: 'return=minimal',
+        /* 선택지를 먼저 넣고, 그 중 몇 번째가 정답인지 뒤에 이어 붙인다.
+           정답 칸은 선택지 id 를 가리키기 때문이다. */
+        const opts = await rest('poll_options', {
+          method: 'POST', prefer: 'return=representation',
           body: (v.poll.options || []).map((lb, i) => ({ post_id: id, label: lb, sort: i }))
         });
+        if (v.poll.answer_index != null && opts && opts.length) {
+          const sorted = opts.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+          const ans = sorted[v.poll.answer_index];
+          if (ans) await rest('polls?post_id=eq.' + encodeURIComponent(id), {
+            method: 'PATCH', prefer: 'return=minimal',
+            body: { answer_option_id: ans.id }
+          });
+        }
       }
       return { id };
     },
@@ -1213,6 +1244,41 @@
       return await rest('rpc/poll_who', {
         method: 'POST', body: { p_option: optionId }
       }) || [];
+    },
+
+    /* ---------- 퀴즈 정답 발표 ----------
+       예약 시각이 지났으면 누가 열어도, 아직이면 만든 사람만.
+       E단계에 pg_cron 이 들어오면 시간 맞춰 저절로 돈다. */
+    async revealQuiz(postId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const q = (d.polls || []).find(x => x.post_id === postId);
+        if (!q || !q.answer_option_id) return null;
+        if (q.revealed_at) return { ok: true, already: true };
+        const post = (d.posts || []).find(x => x.id === postId);
+        const early = q.reveal_at && Date.parse(q.reveal_at) > Date.now();
+        if (early && (!post || post.author_id !== me)) return { ok: false, why: 'early' };
+
+        q.revealed_at = new Date().toISOString();
+        const ansOpt = (d.poll_options || []).find(o => o.id === q.answer_option_id);
+        const ans = ansOpt ? ansOpt.label : '';
+        const seen = {};
+        (d.poll_votes || []).filter(v => v.post_id === postId).forEach(v => {
+          if (seen[v.member_id]) return;
+          seen[v.member_id] = true;
+          d.member_notices = d.member_notices || [];
+          d.member_notices.push({
+            id: uid(), member_id: v.member_id, kind: 'quiz', post_id: postId,
+            body: v.option_id === q.answer_option_id
+              ? '정답이에요! ' + ans + ' 였어요 🐾'
+              : '아쉬워요! 정답은 ' + ans + ' 였어요',
+            created_at: new Date().toISOString(), read_at: null
+          });
+        });
+        demoWrite(d);
+        return { ok: true, told: Object.keys(seen).length };
+      }
+      return await rest('rpc/reveal_quiz', { method: 'POST', body: { p_post: postId } });
     },
 
     /* ---------- 봉사 탭 한 번에 ----------

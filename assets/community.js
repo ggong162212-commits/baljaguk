@@ -6,7 +6,7 @@
 window.Community = (function () {
   const {
     $, $$, esc, toast, sheet, closeSheet, confirmSheet,
-    won, num, credit, fmtDate, relTime, avatar, resizeImage, cropSquare, cheer
+    won, num, credit, fmtDate, fmtDateTime, relTime, avatar, resizeImage, cropSquare, cheer
   } = UI;
 
   const TABS = [
@@ -31,7 +31,7 @@ window.Community = (function () {
   let cur = 'home';
 
   /* 피드 상태 — 더 내리면 이어 붙인다 */
-  const F = { rows: [], cursor: null, type: null, place: null, done: false, busy: false, pinned: null };
+  const F = { rows: [], cursor: null, kind: 'all', place: '', done: false, busy: false };
 
   /* ---------- 들어오기 ---------- */
   async function start(me) {
@@ -82,6 +82,8 @@ window.Community = (function () {
       loadAvatars(tb);
     }
 
+    const sv0 = savedFilter();
+    F.kind = sv0.kind; F.place = sv0.place;
     try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
     go('home');
     paintTabDot();
@@ -207,7 +209,7 @@ window.Community = (function () {
     const showFab = tab === 'home' || (tab === 'poll' && AM_ADMIN);
     fab.hidden = !showFab;
     fab.setAttribute('aria-label', tab === 'poll' ? '투표 만들기' : '글쓰기');
-    fab.onclick = tab === 'poll' ? pollSheet : writeSheet;
+    fab.onclick = () => (tab === 'poll' ? pollSheet() : writeSheet());
     window.scrollTo(0, 0);
     if (tab === 'home') return renderHome(true);
     if (tab === 'vol') return renderVol();
@@ -234,7 +236,11 @@ window.Community = (function () {
      홈 — 피드
      ============================================================ */
   async function renderHome(reset) {
-    if (reset) { F.rows = []; F.cursor = null; F.done = false; F.pinned = null; }
+    if (reset) {
+      F.rows = []; F.cursor = null; F.done = false;
+      const sv = savedFilter();
+      if (F.kind === undefined || F.kind === null) { F.kind = sv.kind; F.place = sv.place; }
+    }
     $('#headTitle').textContent = '안녕하세요, ' + ME.name + '님';
     $('#headLead').textContent = '우리가 함께 걸은 기록이에요.';
 
@@ -252,26 +258,73 @@ window.Community = (function () {
     await loadMore(true);
   }
 
-  function paintChips() {
-    const places = placeList();
-    const mk = (key, label, on) =>
-      '<button type="button" class="chip' + (on ? ' on' : '') + '" data-chip="' + key + '">' + esc(label) + '</button>';
-    $('#chips').innerHTML =
-      mk('all', '전체', !F.type && !F.place) +
-      mk('review', '후기', F.type === 'review') +
-      mk('poll', '투표', F.type === 'poll') +
-      places.map(p => mk('place:' + p, p, F.place === p)).join('');
+  /* ---------- 홈 필터 ----------
+     전체 · 봉사지별 · 자유게시판 셋뿐이다.
+     「후기」는 봉사지별이 하고, 「투표」는 하단 투표 탭이 한다. */
+  const FKEY = 'baljaguk.homeFilter';
+  function savedFilter() {
+    try { return JSON.parse(localStorage.getItem(FKEY) || 'null') || { kind: 'all', place: '' }; }
+    catch (e) { return { kind: 'all', place: '' }; }
+  }
+  function saveFilter(v) {
+    try { localStorage.setItem(FKEY, JSON.stringify(v)); } catch (e) { }
+  }
 
-    $$('#chips [data-chip]').forEach(b => b.addEventListener('click', async () => {
-      const k = b.dataset.chip;
-      if (k === 'all') { F.type = null; F.place = null; }
-      else if (k.indexOf('place:') === 0) { F.type = null; F.place = k.slice(6); }
-      else { F.type = k; F.place = null; }
+  function paintChips() {
+    const chip = (on, label, attr) =>
+      '<button type="button" class="chip' + (on ? ' on' : '') + '" ' + attr + '>' + label + '</button>';
+
+    $('#chips').innerHTML =
+      chip(F.kind === 'all', '전체', 'data-f="all"') +
+      (F.kind === 'place' && F.place
+        ? chip(true, '봉사지: ' + esc(F.place) + ' <span class="x">✕</span>', 'data-f="clear"')
+        : chip(false, '봉사지별', 'data-f="place"')) +
+      chip(F.kind === 'free', '자유게시판', 'data-f="free"');
+
+    $$('#chips [data-f]').forEach(b => b.addEventListener('click', async () => {
+      const k = b.dataset.f;
+      if (k === 'place') return placeSheet();
+      if (k === 'clear') { F.kind = 'all'; F.place = ''; }
+      else { F.kind = k; F.place = ''; }
+      saveFilter({ kind: F.kind, place: F.place });
       await renderHome(true);
     }));
   }
 
-  /* 설정에 적힌 봉사지 목록 — 없으면 피드에 나온 곳으로 */
+  /* 봉사지는 수가 늘어날 수 있어 칩으로 늘어놓지 않고 시트에서 고른다 */
+  async function placeSheet() {
+    const list = placeInfo();
+    const ov = sheet({
+      title: '어느 봉사지를 볼까요?',
+      body: '<div id="plList" class="mut sm">' + paws() + '</div>'
+    });
+    let counts = {};
+    try {
+      const r = await DB.community.feed({ type: 'review', limit: 50 });
+      (r && r.rows || []).forEach(x => {
+        if (x.place) counts[x.place] = (counts[x.place] || 0) + 1;
+      });
+    } catch (e) { }
+    ov.querySelector('#plList').innerHTML = list.length
+      ? list.map(p =>
+        '<button class="row56" type="button" data-pick="' + esc(p.name) + '">' +
+        '<span class="ic" style="width:38px;height:38px;border-radius:13px;display:grid;' +
+        'place-items:center;background:var(--brand-soft);color:var(--brand-deep)">' +
+        ic('home') + '</span>' +
+        '<span class="mid"><span class="t">' + esc(p.name) + '</span>' +
+        (p.area ? '<span class="s">' + esc(p.area) + '</span>' : '') + '</span>' +
+        '<span class="end">후기 ' + (counts[p.name] || 0) + '개' + ic('chevron') + '</span>' +
+        '</button>').join('')
+      : '<div class="mut sm">봉사지가 아직 없어요</div>';
+
+    ov.querySelectorAll('[data-pick]').forEach(b => b.onclick = async () => {
+      F.kind = 'place'; F.place = b.dataset.pick;
+      saveFilter({ kind: F.kind, place: F.place });
+      closeSheet();
+      await renderHome(true);
+    });
+  }
+
   /* 설정에 적힌 봉사지 전체 정보 */
   function placeInfo() {
     const s = (window.__settings || {});
@@ -310,7 +363,10 @@ window.Community = (function () {
     let res;
     try {
       res = await DB.community.feed({
-        cursor: F.cursor, type: F.type, place: F.place, limit: 20
+        cursor: F.cursor,
+        type: F.kind === 'free' ? 'free' : (F.kind === 'place' ? 'review' : null),
+        place: F.kind === 'place' ? F.place : null,
+        limit: 20
       });
     } catch (e) {
       F.busy = false;
@@ -330,11 +386,17 @@ window.Community = (function () {
     F.busy = false;
     if (!res) return;
 
-    if (first && res.pinned) {
-      F.pinned = res.pinned;
-      $('#pin').innerHTML = pinnedCard(res.pinned);
-      $('#pin').querySelectorAll('[data-open]').forEach(b =>
-        b.addEventListener('click', () => openPost(b.dataset.open)));
+    /* 발표 시각이 지난 퀴즈가 있으면 먼저 처리하고 다시 그린다 */
+    if (first && await sweepQuizzes(res.rows)) return renderHome(true);
+
+    if (first) {
+      const pins = res.pinned || [];
+      const total = Number(res.pinned_total) || pins.length;
+      $('#pin').innerHTML = pins.map(pinnedCard).join('') +
+        (total > pins.length
+          ? '<button class="morecmt" type="button" data-notices="1" ' +
+            'style="margin:-4px 0 10px">공지 ' + total + '개 모두 보기</button>'
+          : '');
     }
 
     const rows = res.rows || [];
@@ -364,13 +426,18 @@ window.Community = (function () {
   }
 
   function emptyFeed() {
+    const free = F.kind === 'free';
     return '<div class="card center" style="padding:28px 22px">' +
       illus('emptyFeed') +
-      '<h3 style="margin-top:12px;font-size:17px">아직 후기가 없어요</h3>' +
+      '<h3 style="margin-top:12px;font-size:17px">' +
+      (free ? '아직 올라온 글이 없어요'
+        : (F.kind === 'place' ? '이 봉사지 후기가 아직 없어요' : '아직 후기가 없어요')) + '</h3>' +
       '<p class="mut sm" style="margin-top:7px;line-height:1.6">' +
-      '다녀온 날과 보호소를 고르면 금방 써져요.</p>' +
+      (free ? '일상도, 궁금한 것도 편하게 올려주세요.'
+        : '다녀온 날과 보호소를 고르면 금방 써져요.') + '</p>' +
       '<div style="margin-top:15px">' +
-      '<button class="btn primary" type="button" data-write>첫 후기 쓰기</button></div></div>';
+      '<button class="btn primary" type="button" data-write>' +
+      (free ? '첫 글 쓰기' : '첫 후기 쓰기') + '</button></div></div>';
   }
 
   /* 맨 위 고정 공지 — 있을 때만 */
@@ -533,6 +600,7 @@ window.Community = (function () {
       if ((b = hit('data-signup'))) return doSignup(b.dataset.signup, false);
       if ((b = hit('data-cancel'))) return doSignup(b.dataset.cancel, true);
       if ((b = hit('data-retry'))) return go(cur);
+      if ((b = hit('data-reveal'))) return doReveal(b.dataset.reveal);
       if ((b = hit('data-wjoin'))) return doWait(b.dataset.wjoin, false);
       if ((b = hit('data-wleave'))) return doWait(b.dataset.wleave, true);
       if ((b = hit('data-past'))) return openPast(b.dataset.past);
@@ -713,7 +781,352 @@ window.Community = (function () {
   /* ============================================================
      글쓰기 — 봉사 후기
      ============================================================ */
+  /* ---------- 글쓰기 ----------
+     먼저 어떤 글인지 고르고, 고른 것에 맞는 단계만 묻는다.
+     후기는 봉사·사진·글·투표, 자유글은 사진·글·투표. */
   async function writeSheet(preEvent) {
+    if (typeof preEvent === 'string' && preEvent) return reviewWizard(preEvent);
+
+    const admin = ME.role === 'admin';
+    const row = (key, icon, t, s) =>
+      '<button class="row56" type="button" data-w="' + key + '">' +
+      '<span class="ic" style="width:40px;height:40px;border-radius:14px;display:grid;' +
+      'place-items:center;background:var(--brand-soft);color:var(--brand-deep)">' + ic(icon) + '</span>' +
+      '<span class="mid"><span class="t">' + t + '</span><span class="s">' + s + '</span></span>' +
+      '<span class="end">' + ic('chevron') + '</span></button>';
+
+    const ov = sheet({
+      title: '어떤 글인가요?',
+      body: row('review', 'calendar', '봉사 후기', '다녀온 날의 기록이에요') +
+        row('free', 'edit', '자유글', '일상도, 궁금한 것도 편하게') +
+        (admin ? row('notice', 'alert', '공지', '모두에게 알리는 글이에요') : '')
+    });
+
+    ov.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
+      const k = b.dataset.w;
+      closeSheet();
+      setTimeout(() => {
+        if (k === 'review') reviewWizard(null);
+        else if (k === 'free') freeWizard();
+        else noticeWizard();
+      }, 180);
+    });
+  }
+
+  /* 기본 발표 시각 — 내일 저녁 8시 */
+  function defaultReveal() {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(20, 0, 0, 0);
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* 투표·퀴즈 넣기 — 후기·자유글·공지가 같이 쓴다. 넣지 않아도 넘어간다.
+     퀴즈는 같은 구조에 정답과 발표 시각만 더한 것이다. */
+  function pollStep() {
+    return {
+      key: 'poll', short: '투표',
+      q: '투표나 퀴즈를 넣을까요?',
+      hint: '안 넣어도 괜찮아요. 넣으면 글 안에서 바로 누를 수 있어요.',
+      body: '<div class="seg" id="pKind" style="margin-bottom:12px">' +
+        '<button type="button" data-k="none" class="on">안 넣기</button>' +
+        '<button type="button" data-k="poll">투표</button>' +
+        '<button type="button" data-k="quiz">퀴즈</button></div>' +
+
+        '<div id="pBox" hidden>' +
+        '<label class="field"><span class="lb" id="pQL">무엇을 물어볼까요?</span>' +
+        '<input class="input" id="pQ" placeholder="다음엔 어디로 갈까요?"></label>' +
+
+        '<div class="lb" style="margin-bottom:6px" id="pOL">고를 것</div>' +
+        '<div id="pOpts" style="display:grid;gap:7px"></div>' +
+        '<button type="button" class="btn ghost sm block" id="pAdd" style="margin-top:8px">' +
+        '하나 더 넣기</button>' +
+
+        '<div id="pPollOnly">' +
+        '<button type="button" class="check" id="pMulti" style="width:100%;text-align:left;margin-top:10px">' +
+        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+        '<span class="grow"><span class="sm">여러 개 고를 수 있게</span></span></button></div>' +
+
+        '<div id="pQuizOnly" hidden>' +
+        '<div class="pill-note" style="margin-top:12px">' +
+        '정답은 발표 전까지 아무에게도 안 보여요. 고른 사람도 자기 답만 보여요.</div>' +
+        '<label class="field" style="margin-top:12px"><span class="lb">정답 발표 시간</span>' +
+        '<input class="input" type="datetime-local" id="pWhen"></label>' +
+        '</div></div>',
+
+      after: (r, vals) => {
+        const seg = r.querySelector('#pKind'), box = r.querySelector('#pBox');
+        const opts = r.querySelector('#pOpts');
+        const quizOnly = r.querySelector('#pQuizOnly'), pollOnly = r.querySelector('#pPollOnly');
+        const saved = vals.poll || {};
+        let kind = saved.kind || 'none';
+
+        /* 퀴즈는 선택지마다 「정답」 고르기가 하나씩 붙는다 */
+        const addOpt = (val, isAns) => {
+          if (opts.children.length >= 6) return;
+          const i = opts.children.length;
+          const w = document.createElement('div');
+          w.className = 'row';
+          w.style.gap = '6px';
+          w.innerHTML =
+            '<button type="button" class="ansdot' + (isAns ? ' on' : '') + '" data-ans ' +
+            'aria-label="정답으로 고르기" title="정답">' + ic('check') + '</button>' +
+            '<input class="input grow" placeholder="' + (i + 1) + '번" value="' + esc(val || '') + '">' +
+            (i >= 2 ? '<button type="button" class="btn ghost sm" data-del>✕</button>' : '');
+          opts.appendChild(w);
+          w.querySelector('[data-ans]').onclick = () => {
+            opts.querySelectorAll('[data-ans]').forEach(d => d.classList.remove('on'));
+            w.querySelector('[data-ans]').classList.add('on');
+          };
+          const del = w.querySelector('[data-del]');
+          if (del) del.onclick = () => w.remove();
+          syncKind();
+        };
+
+        function syncKind() {
+          box.hidden = kind === 'none';
+          quizOnly.hidden = kind !== 'quiz';
+          pollOnly.hidden = kind === 'quiz';
+          opts.querySelectorAll('[data-ans]').forEach(d => { d.hidden = kind !== 'quiz'; });
+          r.querySelector('#pQL').textContent =
+            kind === 'quiz' ? '무엇을 맞혀볼까요?' : '무엇을 물어볼까요?';
+          r.querySelector('#pQ').placeholder =
+            kind === 'quiz' ? '이 친구 이름은 뭘까요?' : '다음엔 어디로 갈까요?';
+          r.querySelector('#pOL').textContent =
+            kind === 'quiz' ? '고를 것 — 정답 하나를 눌러주세요' : '고를 것';
+          seg.querySelectorAll('[data-k]').forEach(b =>
+            b.classList.toggle('on', b.dataset.k === kind));
+        }
+
+        const seed = saved.options && saved.options.length ? saved.options : ['', ''];
+        seed.forEach((o, i) => addOpt(typeof o === 'string' ? o : o.label,
+          saved.answer != null && saved.answer === i));
+        r.querySelector('#pAdd').onclick = () => addOpt('', false);
+
+        seg.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+          kind = b.dataset.k; syncKind();
+        });
+        r.querySelector('#pMulti').onclick = e => e.currentTarget.classList.toggle('on');
+        r.querySelector('#pWhen').value = saved.when || defaultReveal();
+        if (saved.question) r.querySelector('#pQ').value = saved.question;
+        if (saved.multi) r.querySelector('#pMulti').classList.add('on');
+        syncKind();
+      },
+
+      read: r => {
+        const on = r.querySelector('#pKind [data-k].on');
+        const kind = on ? on.dataset.k : 'none';
+        if (kind === 'none') return null;
+        const rows = Array.prototype.slice.call(r.querySelectorAll('#pOpts .row'));
+        const options = rows.map(w => w.querySelector('input').value.trim());
+        let answer = null;
+        rows.forEach((w, i) => {
+          if (w.querySelector('[data-ans]').classList.contains('on')) answer = i;
+        });
+        return {
+          kind: kind,
+          question: r.querySelector('#pQ').value.trim(),
+          multi: kind === 'poll' && r.querySelector('#pMulti').classList.contains('on'),
+          options: options,
+          answer: kind === 'quiz' ? answer : null,
+          when: kind === 'quiz' ? r.querySelector('#pWhen').value : null
+        };
+      },
+
+      valid: v => {
+        if (!v) return '';
+        if (!v.question) return v.kind === 'quiz' ? '무엇을 맞혀볼지 적어주세요' : '무엇을 물어볼지 적어주세요';
+        const filled = v.options.filter(Boolean);
+        if (filled.length < 2) return '고를 것을 두 개 넘게 적어주세요';
+        if (filled.length !== v.options.length) return '빈 칸을 채우거나 지워주세요';
+        if (v.kind === 'quiz') {
+          if (v.answer == null) return '정답 하나를 눌러주세요';
+          if (!v.when) return '발표 시간을 골라주세요';
+          if (new Date(v.when).getTime() <= Date.now()) return '발표 시간은 지금보다 뒤여야 해요';
+        }
+        return '';
+      },
+
+      sum: v => !v ? '없음'
+        : (v.kind === 'quiz' ? '퀴즈 · ' : '투표 · ') +
+          cut(v.question, 14) + ' · ' + v.options.filter(Boolean).length + '개'
+    };
+  }
+
+  /* 사진 고르기 단계 — 후기·자유글 공용 */
+  function photoStep(withInsta) {
+    return {
+      key: 'photos', short: '사진',
+      q: '사진이 있나요?',
+      hint: '없어도 괜찮아요. 다섯 장까지 넣을 수 있어요.',
+      body: '<div class="dropzone" id="wDrop" tabindex="0" role="button" aria-label="사진 고르기">' +
+        '<div id="wIdle"><div class="big">' + ic('image') + '</div>' +
+        '<div class="sm mut" style="margin-top:4px">눌러서 고르세요. 알아서 줄여서 올려요</div></div>' +
+        '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap;justify-content:center"></div>' +
+        '</div>' +
+        '<input type="file" id="wPhotos" accept="image/*" multiple hidden>' +
+        (withInsta
+          ? '<button type="button" class="check" id="wInsta" style="margin-top:12px;width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">' +
+            '발자국 인스타그램에 올려도 괜찮아요</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
+            '다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.<br>' +
+            '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>'
+          : ''),
+      after: (r, vals) => {
+        const file = r.querySelector('#wPhotos');
+        const drop = r.querySelector('#wDrop');
+        const idle = r.querySelector('#wIdle');
+        const thumbs = r.querySelector('#wThumbs');
+        const insta = r.querySelector('#wInsta');
+        r.__shots = (vals.photos && vals.photos.list) || [];
+
+        const paintThumbs = () => {
+          if (!r.__shots.length) { idle.hidden = false; thumbs.innerHTML = ''; return; }
+          idle.hidden = true;
+          thumbs.innerHTML = r.__shots.map(src =>
+            '<img src="' + src + '" alt="" style="width:54px;height:54px;object-fit:cover;' +
+            'border-radius:11px">').join('') +
+            '<div class="sm mut" style="width:100%;margin-top:6px">' +
+            r.__shots.length + '장 · 다시 눌러 바꿀 수 있어요</div>';
+        };
+        paintThumbs();
+        if (insta) insta.addEventListener('click', () => insta.classList.toggle('on'));
+        drop.addEventListener('click', () => file.click());
+        drop.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
+        });
+        file.addEventListener('change', async e => {
+          const fs = Array.prototype.slice.call(e.target.files || []).slice(0, 5);
+          if (!fs.length) return;
+          idle.hidden = true;
+          thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
+          const out = [];
+          for (let i = 0; i < fs.length; i++) {
+            try { out.push(await resizeImage(fs[i], 1600, .82)); }
+            catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
+          }
+          r.__shots = out;
+          paintThumbs();
+        });
+      },
+      read: r => ({
+        list: r.__shots || [],
+        insta: !!(r.querySelector('#wInsta') && r.querySelector('#wInsta').classList.contains('on'))
+      }),
+      fill: (r, v) => {
+        const insta = r.querySelector('#wInsta');
+        if (v.insta && insta) insta.classList.add('on');
+      },
+      sum: v => v.list.length ? v.list.length + '장' + (v.insta ? ' · 인스타 동의' : '') : '없음'
+    };
+  }
+
+  /* 글에 붙일 투표/퀴즈를 서버가 받는 모양으로 */
+  function pollPayload(v) {
+    if (!v) return null;
+    const options = v.options.filter(Boolean);
+    return {
+      question: v.question,
+      multi: !!v.multi,
+      anonymous: false,
+      options: options,
+      /* 퀴즈는 정답 자리와 발표 시각을 같이 보낸다 */
+      answer_index: v.kind === 'quiz' ? v.answer : null,
+      reveal_at: v.kind === 'quiz' && v.when ? new Date(v.when).toISOString() : null
+    };
+  }
+
+  /* ---------- 자유글 ---------- */
+  function freeWizard() {
+    UI.wizard({
+      title: '자유글 쓰기',
+      doneLabel: '올리기',
+      steps: [
+        photoStep(false),
+        {
+          key: 'body', short: '글',
+          q: '무슨 이야기인가요?',
+          hint: '일상도, 궁금한 것도 좋아요.',
+          body: '<label class="field"><textarea class="input" id="wBody" rows="5" ' +
+            'placeholder="오늘 있었던 일, 궁금한 것…"></textarea></label>',
+          read: r => r.querySelector('#wBody').value.trim(),
+          fill: (r, v) => { r.querySelector('#wBody').value = v; },
+          sum: v => cut(v, 20)
+        },
+        pollStep()
+      ],
+      done: async v => {
+        if (!v.body && !v.photos.list.length && !v.poll) {
+          throw new Error('글이나 사진을 넣어주세요');
+        }
+        await DB.community.createPost({
+          type: 'free', body: v.body, photos: v.photos.list, poll: pollPayload(v.poll)
+        });
+        closeSheet();
+        cheer && cheer();
+        toast('올렸어요', 'ok');
+        F.kind = 'free'; F.place = '';
+        saveFilter({ kind: 'free', place: '' });
+        renderHome(true);
+      }
+    });
+  }
+
+  /* ---------- 공지 (운영진) ---------- */
+  function noticeWizard() {
+    UI.wizard({
+      title: '공지 쓰기',
+      doneLabel: '올리기',
+      steps: [
+        {
+          key: 'body', short: '내용',
+          q: '무엇을 알릴까요?',
+          hint: '모두에게 보이고, 어떤 필터에서든 맨 위에 붙어요.',
+          body: '<label class="field"><textarea class="input" id="nBody" rows="5" ' +
+            'placeholder="11월 정기모임 안내…"></textarea></label>',
+          read: r => r.querySelector('#nBody').value.trim(),
+          fill: (r, v) => { r.querySelector('#nBody').value = v; },
+          valid: v => v ? '' : '내용을 적어주세요',
+          sum: v => cut(v, 20)
+        },
+        {
+          key: 'pin', short: '맨 위 고정',
+          q: '맨 위에 붙여둘까요?',
+          hint: '붙여두면 모두의 홈 맨 위에 보여요. 세 개까지 붙일 수 있어요.',
+          body: '<button type="button" class="check on" id="nPin" style="width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">맨 위에 고정</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+            '나중에 글에서 「공지 내리기」로 뗄 수 있어요</span></span></button>',
+          after: r => {
+            const b = r.querySelector('#nPin');
+            b.onclick = () => b.classList.toggle('on');
+          },
+          read: r => r.querySelector('#nPin').classList.contains('on'),
+          fill: (r, v) => { r.querySelector('#nPin').classList.toggle('on', !!v); },
+          sum: v => v ? '고정함' : '고정 안 함'
+        },
+        pollStep()
+      ],
+      done: async v => {
+        await DB.community.createPost({
+          type: 'notice', body: v.body, pinned: v.pin, poll: pollPayload(v.poll)
+        });
+        closeSheet();
+        toast('공지를 올렸어요', 'ok');
+        F.kind = 'all'; F.place = '';
+        saveFilter({ kind: 'all', place: '' });
+        renderHome(true);
+      }
+    });
+  }
+
+  /* ---------- 봉사 후기 ---------- */
+  async function reviewWizard(preEvent) {
     let acts = [];
     try {
       const a = await DB.myActivity();
@@ -781,67 +1194,7 @@ window.Community = (function () {
           valid: v => v.date ? '' : '날짜를 골라주세요',
           sum: v => fmtDate(v.date) + (v.place ? ' · ' + v.place : '')
         },
-        {
-          key: 'photos', short: '사진',
-          q: '사진이 있나요?',
-          hint: '없어도 괜찮아요. 다섯 장까지 넣을 수 있어요.',
-          body: '<div class="dropzone" id="wDrop" tabindex="0" role="button" aria-label="사진 고르기">' +
-            '<div id="wIdle"><div class="big">' + ic('image') + '</div>' +
-            '<div class="sm mut" style="margin-top:4px">눌러서 고르세요. 알아서 줄여서 올려요</div></div>' +
-            '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap;justify-content:center"></div>' +
-            '</div>' +
-            '<input type="file" id="wPhotos" accept="image/*" multiple hidden>' +
-            '<button type="button" class="check" id="wInsta" style="margin-top:12px;width:100%;text-align:left">' +
-            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
-            '<span class="grow"><span class="sm" style="font-weight:700">' +
-            '발자국 인스타그램에 올려도 괜찮아요</span>' +
-            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
-            '다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.<br>' +
-            '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>',
-          after: (r, vals) => {
-            const file = r.querySelector('#wPhotos');
-            const drop = r.querySelector('#wDrop');
-            const idle = r.querySelector('#wIdle');
-            const thumbs = r.querySelector('#wThumbs');
-            const insta = r.querySelector('#wInsta');
-            r.__shots = (vals.photos && vals.photos.list) || [];
-
-            const paintThumbs = () => {
-              if (!r.__shots.length) { idle.hidden = false; thumbs.innerHTML = ''; return; }
-              idle.hidden = true;
-              thumbs.innerHTML = r.__shots.map(src =>
-                '<img src="' + src + '" alt="" style="width:54px;height:54px;object-fit:cover;' +
-                'border-radius:11px">').join('') +
-                '<div class="sm mut" style="width:100%;margin-top:6px">' +
-                r.__shots.length + '장 · 다시 눌러 바꿀 수 있어요</div>';
-            };
-            paintThumbs();
-            insta.addEventListener('click', () => insta.classList.toggle('on'));
-            drop.addEventListener('click', () => file.click());
-            drop.addEventListener('keydown', e => {
-              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
-            });
-            file.addEventListener('change', async e => {
-              const fs = Array.prototype.slice.call(e.target.files || []).slice(0, 5);
-              if (!fs.length) return;
-              idle.hidden = true;
-              thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
-              const out = [];
-              for (let i = 0; i < fs.length; i++) {
-                try { out.push(await resizeImage(fs[i], 1600, .82)); }
-                catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
-              }
-              r.__shots = out;
-              paintThumbs();
-            });
-          },
-          read: r => ({
-            list: r.__shots || [],
-            insta: r.querySelector('#wInsta').classList.contains('on')
-          }),
-          fill: (r, v) => { if (v.insta) r.querySelector('#wInsta').classList.add('on'); },
-          sum: v => v.list.length ? v.list.length + '장' + (v.insta ? ' · 인스타 동의' : '') : '없음'
-        },
+        photoStep(true),
         {
           key: 'body', short: '글',
           q: '어떤 하루였나요?',
@@ -851,7 +1204,8 @@ window.Community = (function () {
           read: r => r.querySelector('#wBody').value.trim(),
           fill: (r, v) => { r.querySelector('#wBody').value = v; },
           sum: v => cut(v, 20)
-        }
+        },
+        pollStep()
       ],
       done: async v => {
         if (!v.body && !v.photos.list.length) throw new Error('글이나 사진을 넣어주세요');
@@ -859,7 +1213,7 @@ window.Community = (function () {
           type: 'review', event_id: v.when.event_id,
           date: v.when.date, place: v.when.place,
           body: v.body, photos: v.photos.list,
-          insta_ok: v.photos.insta
+          insta_ok: v.photos.insta, poll: pollPayload(v.poll)
         });
         closeSheet();
         cheer && cheer();
@@ -1004,6 +1358,35 @@ window.Community = (function () {
     });
   }
 
+  /* 「지금 발표하기」 — 만든 사람만 */
+  async function doReveal(id) {
+    if (!await confirmSheet('지금 발표할까요?',
+      '참여한 사람 모두에게 정답을 알려요. 발표한 뒤에는 답을 못 바꿔요.',
+      '발표하기')) return;
+    try {
+      const r = await DB.community.revealQuiz(id);
+      if (r && r.ok) { toast('정답을 발표했어요', 'ok'); renderHome(true); }
+      else toast('아직 발표할 수 없어요', 'err');
+    } catch (e) { toast(e.message || '발표하지 못했어요', 'err'); }
+  }
+
+  /* 예약 시각이 지난 퀴즈를 피드를 열 때 발표한다.
+     E단계에 pg_cron 이 들어오면 이 자리는 없어도 된다. */
+  async function sweepQuizzes(rows) {
+    const due = (rows || []).filter(p => {
+      const q = p.poll;
+      return q && q.quiz && !q.revealed && q.reveal_at &&
+        Date.parse(q.reveal_at) <= Date.now();
+    });
+    if (!due.length) return false;
+    let any = false;
+    for (const p of due) {
+      try { const r = await DB.community.revealQuiz(p.id); if (r && r.ok && !r.already) any = true; }
+      catch (e) { /* 못 해도 다음에 다시 본다 */ }
+    }
+    return any;
+  }
+
   /* ============================================================
      사진 모아보기
      ============================================================ */
@@ -1026,29 +1409,62 @@ window.Community = (function () {
      ============================================================ */
   function pollBlock(p) {
     const q = p.poll;
-    const closed = !!q.closed_at || (q.closes_at && Date.parse(q.closes_at) < Date.now());
-    const total = (q.options || []).reduce((t, o) => t + (o.votes || 0), 0);
+    const quiz = !!q.quiz;
+    /* 퀴즈는 발표되기 전까지 분포를 안 보여준다. 분포가 곧 정답 힌트다. */
+    const hide = quiz && !q.revealed;
+    const closed = !!q.closed_at || (q.closes_at && Date.parse(q.closes_at) < Date.now()) ||
+      (quiz && q.revealed);
+    const total = hide ? 0 : (q.options || []).reduce((t, o) => t + (o.votes || 0), 0);
+    const iVoted = (q.options || []).some(o => o.mine);
+
     return '<div style="margin-top:10px">' +
-      '<div style="font-weight:700;font-size:14.5px;margin-bottom:9px">' + esc(q.question) + '</div>' +
+      '<div style="font-weight:700;font-size:14.5px;margin-bottom:9px">' +
+      (quiz ? '<span class="badge" style="margin-right:6px">퀴즈</span>' : '') +
+      esc(q.question) + '</div>' +
+
       (q.options || []).map(o => {
         const pct = total ? Math.round(o.votes / total * 100) : 0;
-        return '<button class="opt' + (o.mine ? ' mine' : '') + '" type="button" ' +
+        const isAns = quiz && q.revealed && q.answer === o.id;
+        return '<button class="opt' + (o.mine ? ' mine' : '') + (isAns ? ' answer' : '') +
+          '" type="button" ' +
           'data-vote="' + esc(p.id) + '" data-opt="' + esc(o.id) + '" ' +
           'data-multi="' + (q.multi ? '1' : '') + '" data-anon="' + (q.anonymous ? '1' : '') + '"' +
           (closed ? ' disabled' : '') + '>' +
-          '<span class="fillbar" style="width:' + pct + '%"></span>' +
-          '<span class="lb"><span class="nm">' + ic('check') + '<span>' + esc(o.label) + '</span></span>' +
-          '<span class="cnt">' + num(o.votes || 0) + '명 · ' + pct + '%</span></span></button>';
+          (hide ? '' : '<span class="fillbar" style="width:' + pct + '%"></span>') +
+          '<span class="lb"><span class="nm">' + ic('check') +
+          '<span>' + esc(o.label) + '</span></span>' +
+          '<span class="cnt">' +
+          (hide ? (o.mine ? '내 답' : '') : num(o.votes || 0) + '명 · ' + pct + '%') +
+          '</span></span></button>';
       }).join('') +
+
+      /* 발표 전 — 언제 알려주는지만 */
+      (hide
+        ? '<div class="quizwhen">' + ic('clock') + '<span>' +
+          (q.reveal_at ? '정답 발표 ' + fmtDateTime(q.reveal_at) : '정답 발표를 기다리는 중') +
+          (iVoted ? ' · 그때까지 답을 바꿀 수 있어요' : '') + '</span></div>'
+        : '') +
+
+      /* 발표 뒤 — 몇 명 중 몇 명이 맞혔는지 */
+      (quiz && q.revealed
+        ? '<div class="quizscore">' +
+          num(q.voters || 0) + '명 중 ' + num(q.correct || 0) + '명 정답' + '</div>'
+        : '') +
+
       '<div class="row between" style="margin-top:7px;gap:8px">' +
       '<span class="mut" style="font-size:11.5px">' +
-      (closed ? '마감됐어요' : (q.closes_at ? fmtDate(q.closes_at) + ' 마감' : '진행 중')) +
-      ' · ' + num(total) + '명 참여' +
-      (q.multi ? ' · 여러 개' : '') +
-      (q.anonymous ? ' · 익명' : '') + '</span>' +
-      (!closed && (p.mine || AM_ADMIN)
-        ? '<button class="linkbtn" type="button" data-close="' + esc(p.id) + '">일찍 마감</button>'
-        : '') + '</div></div>';
+      (quiz
+        ? (q.revealed ? '정답이 나왔어요' : (iVoted ? '답을 냈어요' : '아직 안 풀었어요'))
+        : (closed ? '마감됐어요' : (q.closes_at ? fmtDate(q.closes_at) + ' 마감' : '진행 중')) +
+          ' · ' + num(total) + '명 참여' +
+          (q.multi ? ' · 여러 개' : '') +
+          (q.anonymous ? ' · 익명' : '')) + '</span>' +
+
+      (quiz && !q.revealed && p.mine
+        ? '<button class="linkbtn" type="button" data-reveal="' + esc(p.id) + '">지금 발표하기</button>'
+        : (!quiz && !closed && (p.mine || AM_ADMIN)
+          ? '<button class="linkbtn" type="button" data-close="' + esc(p.id) + '">일찍 마감</button>'
+          : '')) + '</div></div>';
   }
 
   async function renderPolls() {

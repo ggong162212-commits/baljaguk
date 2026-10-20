@@ -344,12 +344,26 @@ rows_ as (
                      where r.post_id = p.id group by kind) z),
     'my_reactions', (select coalesce(json_agg(r.kind), '[]'::json) from reactions r
                       where r.post_id = p.id and r.member_id = (select id from me_)),
+    /* 퀴즈는 발표 전까지 정답도 분포도 내보내지 않는다.
+       내가 뭘 골랐는지만 돌려준다 — 분포가 곧 정답 힌트가 되기 때문이다. */
     'poll', (select json_build_object(
                'question', q.question, 'multi', q.multi, 'anonymous', q.anonymous,
                'closes_at', q.closes_at, 'closed_at', q.closed_at,
+               'quiz', q.answer_option_id is not null,
+               'reveal_at', q.reveal_at,
+               'revealed', q.revealed_at is not null,
+               'answer', case when q.revealed_at is not null then q.answer_option_id end,
+               'voters', case when q.answer_option_id is null or q.revealed_at is not null then (
+                           select count(distinct v.member_id)::int from poll_votes v
+                            where v.post_id = p.id) end,
+               'correct', case when q.answer_option_id is not null and q.revealed_at is not null then (
+                           select count(*)::int from poll_votes v
+                            where v.option_id = q.answer_option_id) end,
                'options', (select coalesce(json_agg(json_build_object(
                              'id', o.id, 'label', o.label,
-                             'votes', (select count(*)::int from poll_votes v where v.option_id = o.id),
+                             'votes', case when q.answer_option_id is null or q.revealed_at is not null
+                                        then (select count(*)::int from poll_votes v
+                                               where v.option_id = o.id) end,
                              'mine', exists (select 1 from poll_votes v
                                               where v.option_id = o.id
                                                 and v.member_id = (select id from me_)))
@@ -363,13 +377,19 @@ select case when not is_member() then null else
   json_build_object(
     'rows',   (select coalesce(json_agg(j order by created_at desc), '[]'::json) from rows_),
     'cursor', (select min(created_at) from rows_),
+    /* 고정 공지는 어떤 필터에서든 맨 위에. 최신순 최대 3개 */
     'pinned', case when p_cursor is null then (
-                select json_build_object(
-                  'id', p.id, 'body', p.body, 'created_at', p.created_at,
-                  'author', (select m.name from members m where m.id = p.author_id))
-                  from posts p
-                 where p.type = 'notice' and p.pinned and not p.hidden
-                 order by p.created_at desc limit 1) end
+                select coalesce(json_agg(json_build_object(
+                         'id', z.id, 'body', z.body, 'created_at', z.created_at,
+                         'author', z.who) order by z.created_at desc), '[]'::json)
+                  from (select p.id, p.body, p.created_at,
+                               (select m.name from members m where m.id = p.author_id) as who
+                          from posts p
+                         where p.type = 'notice' and p.pinned and not p.hidden
+                         order by p.created_at desc limit 3) z) end,
+    'pinned_total', case when p_cursor is null then (
+                select count(*)::int from posts p
+                 where p.type = 'notice' and p.pinned and not p.hidden) end
   )
 end;
 $$;
@@ -926,3 +946,155 @@ $$;
 drop trigger if exists posts_guard_trg on posts;
 create trigger posts_guard_trg before insert or update on posts
   for each row execute function posts_guard();
+
+
+-- ------------------------------------------------------------
+-- 22) 퀴즈 — 같은 투표 구조를 쓴다
+--     answer_option_id 가 있으면 퀴즈. 발표 전에는 정답도 분포도 내보내지 않는다.
+-- ------------------------------------------------------------
+alter table polls add column if not exists reveal_at timestamptz;
+
+-- 발표 전에는 답을 바꿀 수 있고, 발표 뒤에는 못 바꾼다
+create or replace function poll_guard()
+returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+declare q polls%rowtype;
+begin
+  select * into q from polls where post_id = new.post_id;
+  if q.revealed_at is not null then
+    raise exception '정답이 발표된 퀴즈예요';
+  end if;
+  if q.closed_at is not null then
+    raise exception '마감된 투표예요';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists poll_guard_trg on poll_votes;
+create trigger poll_guard_trg before insert on poll_votes
+  for each row execute function poll_guard();
+
+-- 정답 발표. 예약 시각이 지났거나, 만든 사람이 「지금 발표하기」를 누르면.
+-- 참여한 사람마다 새 소식을 남긴다. 두 번 발표되지 않는다.
+create or replace function reveal_quiz(p_post uuid)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  q polls%rowtype;
+  owner uuid;
+  ans text;
+  n int;
+begin
+  if not is_member() then return null; end if;
+  select * into q from polls where post_id = p_post;
+  if q.post_id is null or q.answer_option_id is null then return null; end if;
+  if q.revealed_at is not null then return json_build_object('ok', true, 'already', true); end if;
+
+  select author_id into owner from posts where id = p_post;
+  /* 예약 시각이 지났으면 누가 열어도 발표된다.
+     아직이면 만든 사람만 「지금 발표하기」를 할 수 있다. */
+  if coalesce(q.reveal_at, now()) > now() and owner <> my_member_id() then
+    return json_build_object('ok', false, 'why', 'early');
+  end if;
+
+  update polls set revealed_at = now() where post_id = p_post and revealed_at is null;
+  if not found then return json_build_object('ok', true, 'already', true); end if;
+
+  select label into ans from poll_options where id = q.answer_option_id;
+
+  insert into member_notices (member_id, kind, body, post_id)
+  select v.member_id, 'quiz',
+         case when v.option_id = q.answer_option_id
+              then '정답이에요! ' || coalesce(ans, '') || ' 였어요 🐾'
+              else '아쉬워요! 정답은 ' || coalesce(ans, '') || ' 였어요' end,
+         p_post
+    from (select distinct on (member_id) member_id, option_id
+            from poll_votes where post_id = p_post
+           order by member_id, created_at) v;
+  get diagnostics n = row_count;
+
+  return json_build_object('ok', true, 'told', n);
+end;
+$$;
+
+revoke all on function reveal_quiz(uuid) from public, anon;
+grant execute on function reveal_quiz(uuid) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 23) 명부 연결 날짜 — 운영진 화면에서 누가 들어왔는지 보려고
+--     읽기는 기존 운영진 정책 그대로. 새 공개 경로를 만들지 않는다.
+-- ------------------------------------------------------------
+alter table members add column if not exists linked_at timestamptz;
+
+-- claim_member 가 이어줄 때 날짜를 같이 남긴다 (schema.sql 원본에서 이 줄만 고침)
+create or replace function claim_member(p_name text, p_last4 text)
+returns json
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  m     members%rowtype;
+  n     int;
+  t     claim_attempts%rowtype;
+  digits text;
+begin
+  if auth.uid() is null then
+    return json_build_object('ok', false, 'why', 'nologin');
+  end if;
+
+  -- 이미 이어져 있으면 그대로
+  select * into m from members where auth_user_id = auth.uid();
+  if found then
+    return json_build_object('ok', true, 'name', m.name, 'role', m.role, 'already', true);
+  end if;
+
+  -- 너무 많이 틀렸으면 잠근다
+  select * into t from claim_attempts where auth_user_id = auth.uid();
+  if found and t.tries >= 5 and t.last_at > now() - interval '1 hour' then
+    return json_build_object('ok', false, 'why', 'locked');
+  end if;
+
+  digits := regexp_replace(coalesce(p_last4, ''), '[^0-9]', '', 'g');
+
+  select count(*) into n from members
+   where btrim(name) = btrim(p_name)
+     and status <> 'left'
+     and right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 4) = digits
+     and digits <> '';
+
+  if n <> 1 then
+    insert into claim_attempts (auth_user_id, tries, last_at)
+    values (auth.uid(), 1, now())
+    on conflict (auth_user_id) do update
+      set tries = case when claim_attempts.last_at > now() - interval '1 hour'
+                       then claim_attempts.tries + 1 else 1 end,
+          last_at = now();
+    return json_build_object('ok', false, 'why', case when n = 0 then 'nomatch' else 'many' end);
+  end if;
+
+  select * into m from members
+   where btrim(name) = btrim(p_name)
+     and status <> 'left'
+     and right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 4) = digits;
+
+  -- 이미 다른 카카오 계정이 그 이름을 쓰고 있으면 막는다
+  if m.auth_user_id is not null then
+    return json_build_object('ok', false, 'why', 'taken');
+  end if;
+
+  update members set auth_user_id = auth.uid(),
+                     linked_at = coalesce(linked_at, now())
+   where id = m.id;
+  delete from claim_attempts where auth_user_id = auth.uid();
+
+  return json_build_object('ok', true, 'name', m.name, 'role', m.role);
+end $$;
+
+revoke all on function claim_member(text, text) from public, anon;
+grant execute on function claim_member(text, text) to authenticated;
