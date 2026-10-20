@@ -190,7 +190,7 @@ create policy "survey admin"  on survey_responses for all    to authenticated us
 
 -- 끝. 이제 Authentication → Users → Add user 로 운영진 계정을 만드세요.
 --   Email    : unyoung@baljaguk.club   (아무거나 가능, config.js 와 같아야 함)
---   Password : 260324                  (운영진 페이지에서 입력할 비밀번호)
+--   Password : 직접 정하세요 (코드에는 적지 않습니다 · 비상 로그인 전용)
 --   Auto Confirm User : 켜기
 
 -- ============================================================
@@ -1050,3 +1050,54 @@ select tablename as 테이블, policyname as 규칙,
  order by tablename;
 
 -- 운영진 화면(admin.html)에서 신청 목록·재정이 그대로 보이면 제대로 된 것.
+
+
+--  발자국 🐾 2단계 · 내 활동 내역
+--  Supabase 대시보드 → SQL Editor → New query →
+--  이 파일 전체를 붙여넣고 Run (한 번만 실행하면 됩니다)
+--
+--  · 로그인한 본인의 기록만 내려갑니다
+--  · 이름·연락처·학번은 한 글자도 나가지 않습니다
+--  · 운영진이 「확정」한 봉사만 셉니다
+-- ============================================================
+
+create or replace function my_activity()
+returns json
+language sql
+security definer
+set search_path = public
+stable
+as $$
+with me_ as (
+  select m.id from members m where m.auth_user_id = auth.uid()
+),
+mine as (
+  select e.date, e.title, e.place,
+         coalesce(e.credit_per_person, 0)::int as per
+    from attendance a
+    join me_      on me_.id = a.member_id
+    join events e on e.id    = a.event_id
+   where e.confirmed_at is not null
+),
+byplace as (
+  select place, count(*)::int as times, sum(per)::int as credit
+    from mine where per > 0 group by place
+)
+select case when not exists (select 1 from me_) then null else
+  json_build_object(
+    'times',        (select count(*)::int               from mine),
+    'last_date',    (select max(date)                   from mine),
+    'credit_total', (select coalesce(sum(per), 0)::int  from mine),
+    'places',       (select coalesce(json_agg(json_build_object(
+                       'place', place, 'times', times, 'credit', credit)
+                       order by credit desc), '[]'::json) from byplace),
+    'records',      (select coalesce(json_agg(json_build_object(
+                       'date', date, 'title', title, 'place', place, 'per', per)
+                       order by date desc), '[]'::json) from mine)
+  )
+end;
+$$;
+
+-- 로그인한 구성원만 부를 수 있습니다 (비로그인 anon 은 제외)
+revoke all on function my_activity() from public, anon;
+grant execute on function my_activity() to authenticated;

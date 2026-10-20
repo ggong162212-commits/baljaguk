@@ -131,7 +131,6 @@
   function boot() {
     $('#brandIcon').innerHTML = ic('paw');
     $('#gearBtn').innerHTML = ic('settings');
-    $('#lockIcon').innerHTML = ic('lock');
     $('#applySearchIcon').innerHTML = ic('search');
     $('#memberSearchIcon').innerHTML = ic('search');
     $('#surveySearchIcon').innerHTML = ic('search');
@@ -141,7 +140,7 @@
     $('#modeBadge').textContent = DB.isDemo() ? '체험 모드' : '연결됨';
     $('#modeBadge').className = 'badge ' + (DB.isDemo() ? 'pending' : 'approved');
     $('#loginHint').textContent = DB.isDemo()
-      ? '아직 데이터베이스에 연결하지 않아 체험 모드예요. 기본 비밀번호는 260324.'
+      ? '체험 모드예요. 아무 값이나 넣으면 운영진으로 들어갑니다.'
       : '';
 
     $('#tabbar').innerHTML = TABS.map(t =>
@@ -149,52 +148,105 @@
     $$('#tabbar [data-tab]').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 
     $('#loginForm').addEventListener('submit', login);
+    $('#sosOpen').addEventListener('click', () => {
+      const f = $('#loginForm');
+      f.hidden = !f.hidden;
+      if (!f.hidden) $('#em').focus();
+    });
     start();
   }
 
-  // 잠금이 꺼져 있으면(기본) 주소만으로 바로 들어간다
-  const locked = () => {
-    const v = localStorage.getItem('baljaguk.lock');
-    return v === null ? !!(window.CONFIG || {}).ADMIN_LOCK : v === '1';
-  };
+  /* ---------- 입구 ----------
+     운영진인 것이 확인되기 전에는 데이터를 한 줄도 불러오지 않는다.
+     주소를 안다고 들어와지던 예전 방식은 없앴다. */
+  const backHere = () => location.origin + location.pathname;
+
   async function start() {
-    /* 구성원이 카카오로 로그인한 상태로 이 주소에 들어올 수 있다.
-       그 열쇠로는 아무것도 못 보지만, 빈 운영진 화면을 보여줄 이유도 없다. */
-    if (DB.isAuthed()) {
-      if (await DB.isAdmin()) return enter();
-      return denied();
-    }
-    if (!locked()) {
-      try { await DB.login((window.CONFIG || {}).ADMIN_PASSWORD || (window.CONFIG || {}).DEMO_PASSWORD || '260324'); return enter(); }
-      catch (e) { toast('자동 입장에 실패했어요. 비밀번호로 들어와주세요', 'err'); }
-    }
-    $('#pw').focus();
+    const why = DB.authError && DB.authError();
+    if (why) return gate('login', why);
+    if (!DB.isAuthed()) return gate('login', '');
+
+    let me = null;
+    try { me = await DB.me(); }
+    catch (e) { return gate('login', '지금은 연결이 잘 안 돼요. 잠시 뒤 다시 해주세요.'); }
+
+    if (!me || !me.login) return gate('login', '');
+
+    /* 비상 로그인(공유 계정)은 명부에 없지만 운영진이다 */
+    if (!me.linked) return (await DB.isAdmin()) ? enter() : gate('claim', '');
+    if (me.status === 'left') return gate('left', me.name);
+    return (await DB.isAdmin()) ? enter() : gate('denied', me.name);
   }
 
-  /* 구성원 계정으로 운영진 주소에 들어온 경우 */
-  function denied() {
+  /* 못 들어온 사람에게 보여줄 화면들 */
+  function gate(kind, arg) {
     $('#login').hidden = false;
-    $('#loginForm').hidden = true;
-    $('#loginHint').textContent = '';
-    const box = $('#login').querySelector('.card');
-    box.innerHTML =
+    const box = $('#gateCard');
+    const icon = (bg, fg, name) =>
       '<div style="display:flex;justify-content:center">' +
-      '<span style="width:60px;height:60px;border-radius:22px;background:var(--surface-2);color:var(--ink-3);display:grid;place-items:center">' +
-      ic('lock') + '</span></div>' +
+      '<span style="width:60px;height:60px;border-radius:22px;background:var(' + bg + ');color:var(' + fg +
+      ');display:grid;place-items:center">' + ic(name) + '</span></div>';
+
+    if (kind === 'login') {
+      box.innerHTML =
+        (arg ? '<div class="pill-note" style="text-align:left">' + esc(arg) + '</div>' : '') +
+        icon('--brand-soft', '--brand-deep', 'lock') +
+        '<h2 style="margin-top:14px;font-size:22px">운영진 전용</h2>' +
+        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+        '카카오로 로그인하면 운영진인지 확인하고 열어드려요.</p>' +
+        '<div style="margin-top:18px"><button class="btn primary lg block" type="button" id="kko">' +
+        '카카오로 로그인</button></div>';
+      $('#kko').onclick = () => DB.kakaoLogin(backHere());
+      return;
+    }
+    if (kind === 'claim') {
+      box.innerHTML =
+        icon('--brand-soft', '--brand-deep', 'paw') +
+        '<h2 style="margin-top:14px;font-size:22px">본인 확인이 먼저예요</h2>' +
+        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+        '이름과 휴대폰 뒤 4자리로 명부와 한 번만 이어주세요.<br>' +
+        '그 다음 다시 들어오시면 돼요.</p>' +
+        '<div style="margin-top:18px;display:grid;gap:8px">' +
+        '<a class="btn primary lg block" href="me.html">본인 확인하러 가기</a>' +
+        '<button class="btn ghost block sm" type="button" id="out">다른 카카오 계정으로</button></div>';
+      $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
+      return;
+    }
+    if (kind === 'left') {
+      box.innerHTML =
+        icon('--surface-2', '--ink-3', 'lock') +
+        '<h2 style="margin-top:14px;font-size:22px">' + esc(arg || '') + '님</h2>' +
+        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
+        '지금은 활동 중인 구성원이 아니라서 들어올 수 없어요.<br>' +
+        '다시 함께하시려면 다른 운영진에게 말씀해주세요.</p>' +
+        '<div style="margin-top:18px"><button class="btn ghost block sm" type="button" id="out">로그아웃</button></div>';
+      $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
+      return;
+    }
+    /* denied — 로그인은 했지만 운영진이 아닌 구성원 */
+    box.innerHTML =
+      icon('--surface-2', '--ink-3', 'lock') +
       '<h2 style="margin-top:14px;font-size:22px">운영진만 들어올 수 있어요</h2>' +
       '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
-      '여기는 신청자 연락처와 재정을 다루는 곳이에요.<br>내 봉사 기록은 아래에서 볼 수 있어요.</p>' +
+      '여기는 신청자 연락처와 재정을 다루는 곳이에요.<br>내 활동은 아래에서 볼 수 있어요.</p>' +
       '<div style="margin-top:18px;display:grid;gap:8px">' +
       '<a class="btn primary lg block" href="me.html">내 활동으로 가기</a>' +
-      '<button class="btn ghost block sm" type="button" id="relog">운영진 비밀번호로 들어가기</button></div>';
-    $('#relog').onclick = () => { DB.memberLogout(); location.reload(); };
+      '<button class="btn ghost block sm" type="button" id="out">다른 카카오 계정으로</button></div>';
+    $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
   }
 
+  /* 비상 로그인 — 입력값은 쓰고 바로 버린다 */
   async function login(e) {
     e.preventDefault();
     const btn = $('#loginBtn'); btn.disabled = true; btn.textContent = '확인 중…';
-    try { await DB.login($('#pw').value.trim()); await enter(); toast('어서오세요!', 'ok'); }
-    catch (err) { toast(err.message || '비밀번호가 맞지 않아요', 'err'); $('#pw').select(); }
+    const em = $('#em'), pw = $('#pw');
+    try {
+      await DB.login(pw.value.trim(), em.value.trim());
+      em.value = ''; pw.value = '';
+      if (!(await DB.isAdmin())) { DB.logout(); throw new Error('그 계정은 운영진이 아니에요'); }
+      await enter(); toast('어서오세요!', 'ok');
+    }
+    catch (err) { toast(err.message || '로그인하지 못했어요', 'err'); pw.select(); }
     finally { btn.disabled = false; btn.textContent = '들어가기'; }
   }
 
@@ -800,6 +852,9 @@
         memo: m.memo || ''
       };
       if (!patch.name) return toast('이름을 입력해주세요', 'err');
+      /* 마지막 운영진까지 일반회원으로 내리면 아무도 못 들어온다 */
+      if (!isNew && m.role === 'admin' && patch.role !== 'admin' && lastAdmin(m.id))
+        return toast('마지막 운영진이에요. 다른 사람을 먼저 운영진으로 올려주세요', 'err');
       closeSheet();
       try {
         if (isNew) await DB.members.create(patch); else await DB.members.update(m.id, patch);
@@ -809,9 +864,17 @@
     const del = ov.querySelector('[data-del]');
     if (del) del.onclick = async () => {
       closeSheet();
+      if (m.role === 'admin' && lastAdmin(m.id))
+        return toast('마지막 운영진이에요. 다른 사람을 먼저 운영진으로 올려주세요', 'err');
       if (!await confirmSheet(m.name + '님을 명단에서 지울까요?', '봉사 참여 기록도 함께 사라져요.', '삭제', true)) return;
       await DB.members.remove(m.id); await reload(); toast('삭제했어요');
     };
+  }
+
+  /* 이 사람 말고 활동 중인 운영진이 더 있는가 */
+  function lastAdmin(id) {
+    return (S.members || []).filter(x =>
+      x.role === 'admin' && x.status !== 'left' && x.id !== id).length === 0;
   }
 
   /* ============================================================
@@ -2617,16 +2680,14 @@
       '<label class="switch" style="justify-content:space-between"><span class="sm">승인할 때 회비를 동아리비 수입에 더하기</span>' +
       '<span style="display:flex"><input type="checkbox" id="autoFee"' + (autoFee() ? ' checked' : '') + '><span class="track"></span></span></label></div>' +
 
-      '<div class="card"><h3>운영진 페이지 잠금</h3>' +
-      '<div class="sub">꺼두면 이 주소로 들어온 사람은 비밀번호 없이 바로 보게 돼요.</div><div class="sp"></div>' +
-      '<label class="switch" style="justify-content:space-between"><span class="sm">들어올 때 비밀번호 물어보기</span>' +
-      '<span style="display:flex"><input type="checkbox" id="lockSw"' + (locked() ? ' checked' : '') + '><span class="track"></span></span></label>' +
-      (locked() ? '' : '<p class="pill-note" style="margin-top:12px">지금은 잠금이 꺼져 있어요. 주소를 아는 사람은 신청자 연락처·입금증·재정을 볼 수 있으니 주소를 운영진끼리만 공유해주세요.</p>') +
+      '<div class="card"><h3>이 화면에 들어오는 방법</h3>' +
+      '<div class="sub">카카오로 로그인한 운영진만 들어올 수 있어요.</div><div class="sp"></div>' +
+      '<p class="sm mut" style="line-height:1.7;margin:0">' +
+      '운영진을 늘리거나 빼려면 <b>구성원</b> 탭에서 바꿔주세요.<br>' +
+      '명부에서 빠진 사람은 바로 못 들어와요.</p>' +
+      '<p class="pill-note" style="margin-top:12px">공유 계정 비밀번호는 비상용이에요. ' +
+      '이 화면에서는 바꿀 수 없고, Supabase에서 직접 바꿔주세요.</p>' +
       '</div>' +
-
-      '<div class="card"><h3>비밀번호</h3><div class="sub">잠금을 켰을 때 쓰는 비밀번호예요.</div><div class="sp"></div>' +
-      '<label class="field"><span class="lb">새 비밀번호</span><input class="input" id="pw1" type="password" inputmode="numeric" placeholder="6자 이상"></label>' +
-      '<button class="btn ghost block" id="savePw">비밀번호 바꾸기</button></div>' +
 
       '<div class="card"><h3>데이터</h3><div class="sp"></div>' +
       '<div class="row" style="gap:8px"><button class="btn ghost grow" id="backup">전체 백업 내려받기</button>' +
@@ -2648,11 +2709,6 @@
       toast('저장했어요', 'ok'); renderSettings();
     };
     $('#goFormSettings').onclick = () => go('apply');
-    $('#lockSw').onchange = e => {
-      localStorage.setItem('baljaguk.lock', e.target.checked ? '1' : '0');
-      toast(e.target.checked ? '이제 들어올 때 비밀번호를 물어봐요' : '잠금을 껐어요. 주소만 알면 바로 들어와요');
-      renderSettings();
-    };
     function paintPlaces() {
       const list = volPlaces();
       $('#placeList').innerHTML = list.map((pl, i) =>
@@ -2724,12 +2780,6 @@
     $('#autoFee').onchange = e => {
       localStorage.setItem('baljaguk.autoFee', e.target.checked ? '1' : '0');
       toast(e.target.checked ? '승인 시 회비를 자동 기록해요' : '자동 기록을 껐어요');
-    };
-    $('#savePw').onclick = async () => {
-      const v = $('#pw1').value.trim();
-      if (v.length < 6) return toast('6자 이상으로 정해주세요', 'err');
-      try { await DB.changePassword(v); $('#pw1').value = ''; toast('비밀번호를 바꿨어요', 'ok'); }
-      catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     };
     $('#backup').onclick = () => {
       const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), ...S }, null, 2)], { type: 'application/json' });

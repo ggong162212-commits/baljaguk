@@ -66,8 +66,7 @@
     return {
       campaigns: [camp], donations: dons, survey_responses: survey,
       settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: ['천보금 보호소'], form_open_at: null, form_close_at: null, capacity: null, closed_message: '이번 기수 모집이 마감되었어요. 다음 모집 소식을 기다려주세요!' }, C.FALLBACK),
-      applications: apps, members, events, attendance: att, finance: fin,
-      password: C.DEMO_PASSWORD || '260324'
+      applications: apps, members, events, attendance: att, finance: fin
     };
   }
   function demoRead() {
@@ -187,13 +186,22 @@
     isAuthed: () => HAS_SB ? !!(session && session.access_token)
       : (localStorage.getItem('baljaguk.demoAuth') === '1' || localStorage.getItem('baljaguk.demoLogin') === '1'),
 
-    async login(password) {
+    /* 비상 로그인 — 카카오가 막혔을 때만 쓰는 공유 계정.
+       이메일·비밀번호를 그때그때 받아서 쓰고, 어디에도 저장하지 않는다. */
+    async login(password, email) {
       if (!HAS_SB) {
+        /* 체험 모드에는 지킬 비밀이 없다. 명부의 운영진으로 들어간 것처럼 둔다 */
         const d = demoRead();
-        if (String(password) !== String(d.password)) throw new Error('비밀번호가 맞지 않아요');
-        localStorage.setItem('baljaguk.demoAuth', '1'); return true;
+        const admin = (d.members || []).find(m => m.role === 'admin' && m.status !== 'left');
+        if (!admin) throw new Error('체험 명부에 운영진이 없어요');
+        localStorage.setItem('baljaguk.demoAuth', '1');
+        localStorage.setItem('baljaguk.demoLogin', '1');
+        localStorage.setItem('baljaguk.demoMe', admin.id);
+        return true;
       }
-      const j = await auth('token?grant_type=password', { email: C.ADMIN_EMAIL, password: String(password) });
+      const j = await auth('token?grant_type=password', {
+        email: String(email || C.ADMIN_EMAIL), password: String(password)
+      });
       session = j; localStorage.setItem(SKEY, JSON.stringify(j)); return true;
     },
     logout() {
@@ -259,7 +267,16 @@
 
     /* 이 사람이 운영진인가 — 데이터베이스에 직접 물어본다 */
     async isAdmin() {
-      if (!HAS_SB) return localStorage.getItem('baljaguk.demoAuth') === '1';
+      if (!HAS_SB) {
+        /* 체험 모드도 실제와 똑같이 명부의 역할을 따른다.
+           비상 로그인(demoAuth)으로 들어온 경우만 예외로 통과시킨다. */
+        const id = localStorage.getItem('baljaguk.demoMe');
+        if (id) {
+          const m = (demoRead().members || []).find(x => x.id === id);
+          return !!(m && m.role === 'admin' && m.status !== 'left');
+        }
+        return localStorage.getItem('baljaguk.demoAuth') === '1';
+      }
       if (!session || !session.access_token) return false;
       try { return !!(await rest('rpc/is_admin', { method: 'POST', body: {} })); }
       catch (e) { return false; }
@@ -317,6 +334,38 @@
       return await rest('rpc/claim_member', {
         method: 'POST', body: { p_name: String(name || '').trim(), p_last4: String(last4 || '').trim() }
       });
+    },
+
+    /* ---------- 내 활동 (본인 것만) ---------- */
+    /* 확정된 봉사만 센다. 다른 사람 기록도, 내 연락처도 내려오지 않는다 */
+    async myActivity() {
+      if (!HAS_SB) {
+        const id = localStorage.getItem('baljaguk.demoMe');
+        if (!id) return null;
+        const d = demoRead();
+        const mine = (d.attendance || [])
+          .filter(a => a.member_id === id)
+          .map(a => (d.events || []).find(e => e.id === a.event_id))
+          .filter(e => e && e.confirmed_at)
+          .map(e => ({
+            date: e.date, title: e.title, place: e.place,
+            per: Number(e.credit_per_person) || 0
+          }))
+          .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+        const byplace = {};
+        mine.filter(r => r.per > 0).forEach(r => {
+          const k = byplace[r.place] = byplace[r.place] || { place: r.place, times: 0, credit: 0 };
+          k.times += 1; k.credit += r.per;
+        });
+        return {
+          times: mine.length,
+          last_date: mine.length ? mine[0].date : null,
+          credit_total: mine.reduce((t, r) => t + r.per, 0),
+          places: Object.keys(byplace).map(k => byplace[k]).sort((a, b) => b.credit - a.credit),
+          records: mine
+        };
+      }
+      return await rest('rpc/my_activity', { method: 'POST', body: {} });
     },
 
     /* 이번 학기 설문 회차 */

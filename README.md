@@ -43,9 +43,9 @@ python -m http.server 8080
 # → http://localhost:8080/index.html
 ```
 
-운영진 페이지는 기본적으로 **주소만 알면 비밀번호 없이** 열립니다.
-운영진 화면 **설정 → 운영진 페이지 잠금**을 켜면 비밀번호(기본 `260324`)를 묻습니다.
-잠금을 꺼 두는 동안에는 주소를 아는 사람이 신청자 연락처·입금증·재정을 볼 수 있으니 주소를 운영진끼리만 공유해주세요.
+운영진 페이지는 **카카오로 로그인한 운영진**만 들어갈 수 있습니다.
+명부(`members`)에서 역할이 운영진이고 활동 중인 사람만 통과합니다.
+카카오 로그인이 막혔을 때만 쓰는 **비상 로그인**이 화면 맨 아래에 있습니다. 비밀번호는 저장되지 않습니다.
 
 ---
 
@@ -55,9 +55,9 @@ python -m http.server 8080
 
 1. <https://supabase.com> 가입 → **New project** 생성
 2. 왼쪽 **SQL Editor** → `supabase/schema.sql` 파일 내용을 통째로 붙여넣고 **Run**
-3. **Authentication → Users → Add user**  *(비밀번호 없이 들어가더라도 이 계정은 꼭 필요합니다)*
-   - Email: `unyoung@baljaguk.club` *(아무 주소나 가능. 4번의 `ADMIN_EMAIL`과 같기만 하면 됩니다)*
-   - Password: `260324` *(운영진 페이지에서 입력할 비밀번호)*
+3. **Authentication → Users → Add user**  *(비상 로그인용 공유 계정입니다)*
+   - Email: `unyoung@baljaguk.club` *(아무 주소나 가능. `ADMIN_EMAIL`과 같기만 하면 됩니다)*
+   - Password: 직접 정해서 **Supabase 안에만** 두세요 (코드에 적지 않습니다)
    - **Auto Confirm User** 켜기
 4. **Project Settings → API** 에서 두 값을 복사해 `assets/config.js` 에 붙여넣기
    ```js

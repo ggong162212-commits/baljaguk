@@ -7,10 +7,11 @@
    1. https://supabase.com 가입 → New project
    2. SQL Editor 에 supabase/schema.sql 붙여넣고 Run
    3. Project Settings → API 에서 아래 두 값 복사
-   4. Authentication → Users → Add user
-        Email    : 아래 ADMIN_EMAIL 과 똑같이
-        Password : 운영진 비밀번호 (기본 260324)
-        Auto Confirm User 켜기
+
+   ★ 비밀번호는 이 파일에 두지 않습니다.
+     이 파일은 사이트에 들어온 누구나 열어볼 수 있어서,
+     여기 적는 순간 비밀번호가 아니게 됩니다.
+     운영진은 카카오로 로그인해서 들어옵니다 (admin.html).
    ============================================================ */
 
 window.CONFIG = {
@@ -20,18 +21,10 @@ window.CONFIG = {
   // ② publishable key (공개되어도 안전한 키입니다. RLS 가 막아줍니다)
   SUPABASE_ANON_KEY: 'sb_publishable_XcdlWyuV0ywCfqJIRpWVHA_zCXs6HT7',
 
-  // 운영진 로그인에 쓸 계정 이메일 (화면에는 안 보이고 비밀번호만 입력받습니다)
+  // 비상 로그인에 쓰는 공유 계정 이메일.
+  // 평소에는 안 씁니다. 카카오 로그인이 막혔을 때만 admin.html 맨 아래
+  // 「비상 로그인」에서 이메일·비밀번호를 그때그때 직접 입력합니다.
   ADMIN_EMAIL: 'unyoung@baljaguk.club',
-
-  // 운영진 비밀번호 (Supabase Authentication 에서 만든 계정의 비밀번호와 같게)
-  ADMIN_PASSWORD: '260324',
-
-  // false = 운영진 주소로 들어오면 비밀번호 없이 바로 열림 (주소를 아는 사람만 온다는 전제)
-  // true  = 들어올 때마다 비밀번호를 물어봄
-  ADMIN_LOCK: false,
-
-  // 체험 모드에서 쓰는 기본 운영진 비밀번호
-  DEMO_PASSWORD: '260324',
 
   // 설문(survey.html) 회차. 학기가 바뀌면 이 값만 바꾸면 응답이 새로 쌓입니다.
   SURVEY_TOPIC: '2026-2',
