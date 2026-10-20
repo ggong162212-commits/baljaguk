@@ -52,6 +52,23 @@ window.Community = (function () {
 
     $('#fab').innerHTML = ic('plus');
 
+    /* 운영진에게만 「발자국 | 운영진」 전환. 구성원에게는 보이지 않는다 */
+    if (AM_ADMIN) {
+      const bm = document.querySelector('.topbar .brandmark');
+      if (bm && !document.querySelector('.sidesw')) {
+        bm.classList.remove('grow');
+        const wm = bm.querySelector('.wordmark'); if (wm) wm.hidden = true;
+        bm.insertAdjacentHTML('afterend',
+          '<div class="sidesw grow" style="justify-content:center;flex:1">' +
+          '<button type="button" class="on">발자국</button>' +
+          '<button type="button" data-goadmin>운영진</button></div>');
+        document.querySelector('[data-goadmin]').onclick = () => {
+          try { localStorage.setItem('baljaguk.side', 'admin'); } catch (e) { }
+          location.href = 'admin.html';
+        };
+      }
+    }
+
     /* 다크 모드 버튼은 프로필 시트 안으로 옮기고, 그 자리에 프로필 동그라미 */
     const tb = document.querySelector('.topbar .in');
     const themeBtn = tb && tb.querySelector('[data-theme-btn]');
@@ -65,6 +82,7 @@ window.Community = (function () {
       loadAvatars(tb);
     }
 
+    try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
     go('home');
     paintTabDot();
   }

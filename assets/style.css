@@ -477,6 +477,18 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .react.add .lbl{font-size:12.5px;font-weight:700}
 .react.add .svg{width:17px;height:17px}
 
+/* 발자국 ↔ 운영진 전환 — 운영진에게만 보인다 */
+.sidesw{
+  display:inline-flex;gap:2px;padding:3px;border-radius:999px;
+  background:var(--surface-2);border:1px solid var(--line-2)
+}
+.sidesw button{
+  border:none;background:none;cursor:pointer;font-family:inherit;
+  padding:6px 13px;border-radius:999px;font-size:12.5px;font-weight:700;
+  color:var(--ink-3);transition:.14s;white-space:nowrap
+}
+.sidesw button.on{background:var(--surface);color:var(--brand-deep);box-shadow:var(--shadow-sm)}
+
 /* ---------- 선 일러스트 ---------- */
 /* 빈 화면·오류·배지에만. 선은 아이콘과 같은 색, 포인트는 그린 하나 */
 .illus{width:132px;height:99px;display:block;margin:0 auto;color:var(--ink-3)}

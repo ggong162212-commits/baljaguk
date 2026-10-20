@@ -267,6 +267,24 @@
     if (!MEINFO || !MEINFO.linked) return;
     const tb = document.querySelector('#topbar .in');
     if (!tb || tb.querySelector('#profBtn')) return;
+
+    /* 커뮤니티와 같은 자리에 같은 전환 스위치 */
+    const bm = tb.querySelector('.brandmark');
+    if (bm && !tb.querySelector('.sidesw')) {
+      bm.classList.remove('grow');
+      /* 전환 스위치가 들어오면 상단바가 좁아진다. 글자는 줄이고 발바닥만 남긴다 */
+      const wm = bm.querySelector('.wordmark'); if (wm) wm.hidden = true;
+      const mb = tb.querySelector('#modeBadge'); if (mb) mb.hidden = true;
+      bm.insertAdjacentHTML('afterend',
+        '<div class="sidesw grow" style="justify-content:center;flex:1">' +
+        '<button type="button" data-goapp>발자국</button>' +
+        '<button type="button" class="on">운영진</button></div>');
+      tb.querySelector('[data-goapp]').onclick = () => {
+        try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
+        location.href = 'me.html';
+      };
+    }
+    try { localStorage.setItem('baljaguk.side', 'admin'); } catch (e) { }
     /* 다크 버튼은 프로필 시트 안으로 */
     const th = tb.querySelector('[data-theme-btn]');
     if (th) th.hidden = true;

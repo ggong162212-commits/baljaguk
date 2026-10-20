@@ -46,6 +46,16 @@
     catch (e) { return paintLogin('지금은 연결이 잘 안 돼요. 잠시 뒤 다시 해주세요.'); }
 
     if (!me || !me.login) return paintLogin('');
+    /* 운영진이 마지막에 운영진 화면을 보고 있었다면 그쪽으로 보낸다.
+       주소는 하나로 기억하고, 돌아오는 길은 상단 전환 스위치에 있다. */
+    if (me.linked && me.status !== 'left') {
+      let side = '';
+      try { side = localStorage.getItem('baljaguk.side') || ''; } catch (e) { }
+      if (side === 'admin' && !location.hash && await DB.isAdmin()) {
+        location.replace('admin.html');
+        return;
+      }
+    }
     if (!me.linked) return paintClaim();
     if (me.status === 'left') return paintLeft(me);
     return paintHome(me);
