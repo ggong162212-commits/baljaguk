@@ -334,6 +334,77 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 }
 .tabbar button.on{background:var(--brand-soft);color:var(--brand-deep)}
 
+/* 하단 탭에 가리지 않도록 본문 끝에 두는 여백 */
+.tabgap{height:96px}
+
+/* ---------- 글쓰기 버튼 ---------- */
+/* 하단 탭 바로 위, 오른쪽에 뜬다 */
+.fab{
+  position:fixed;right:18px;bottom:92px;z-index:51;
+  width:52px;height:52px;border-radius:19px;border:none;cursor:pointer;
+  display:grid;place-items:center;
+  background:var(--brand);color:#fff;box-shadow:var(--shadow-pop);
+  transition:.16s
+}
+.fab:hover{filter:brightness(.96)}
+.fab:active{transform:scale(.94)}
+.fab .svg{width:24px;height:24px}
+
+/* ---------- 피드 ---------- */
+.post{padding:16px 16px 12px}
+.post .who{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.post .who .nm{font-weight:700;font-size:14px}
+.post .who .at{font-size:11.5px;color:var(--ink-3)}
+.post .bd{font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.post .meta{
+  display:inline-flex;align-items:center;gap:6px;margin-bottom:9px;
+  background:var(--surface-2);border-radius:11px;padding:5px 10px;
+  font-size:12px;color:var(--ink-3)
+}
+
+/* 사진 넘겨 보기 — 옆으로 밀면 한 장씩 */
+.shots{
+  display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;
+  margin:11px -16px 0;padding:0 16px;scrollbar-width:none
+}
+.shots::-webkit-scrollbar{display:none}
+.shots img{
+  width:100%;flex:none;scroll-snap-align:center;
+  aspect-ratio:1/1;object-fit:cover;border-radius:15px;background:var(--surface-2)
+}
+.dots{display:flex;justify-content:center;gap:5px;margin-top:8px}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--line);transition:.2s}
+.dots i.on{background:var(--brand);width:14px;border-radius:3px}
+
+/* 반응 — 이모지 칩 + 개수 */
+.reacts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.react{
+  display:inline-flex;align-items:center;gap:5px;cursor:pointer;
+  border:1px solid var(--line);background:var(--surface);border-radius:999px;
+  padding:5px 10px;font-size:13px;color:var(--ink-3);transition:.14s;
+  font-family:inherit
+}
+.react:active{transform:scale(.94)}
+.react.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand-deep);font-weight:700}
+.react .n{font-size:11.5px}
+.react.add{color:var(--ink-3)}
+.react.add .svg{width:15px;height:15px}
+
+/* 사진 모아보기 */
+.grid-shots{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.grid-shots img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;cursor:pointer;background:var(--surface-2)}
+
+/* 투표 */
+.opt{
+  position:relative;overflow:hidden;cursor:pointer;display:block;
+  border:1px solid var(--line);border-radius:14px;padding:11px 13px;
+  margin-bottom:7px;font-size:13.5px;background:var(--surface);transition:.14s
+}
+.opt .fillbar{position:absolute;inset:0 auto 0 0;background:var(--brand-soft);transition:width .4s ease}
+.opt .lb{position:relative;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.opt.mine{border-color:var(--brand)}
+.opt.mine .lb b{color:var(--brand-deep)}
+
 /* ---------- 모달 ---------- */
 .overlay{
   position:fixed;inset:0;background:rgba(30,38,26,.5);backdrop-filter:blur(3px);

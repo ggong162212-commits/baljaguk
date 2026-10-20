@@ -146,100 +146,11 @@
     $('#out').onclick = () => { DB.memberLogout(); draw(); };
   }
 
-  /* ---------- ④ 이어진 구성원 ---------- */
+  /* ---------- 4 이어진 구성원 → 커뮤니티로 넘긴다 ---------- */
   function paintHome(me) {
-    $('#headTitle').textContent = me.name + '님';
-    $('#headLead').textContent = '발자국과 함께하고 있어요.';
-    paint(
-      '<div class="card mecard">' +
-      '<span class="big" style="background:var(--brand-soft);color:var(--brand-deep)">' +
-      esc(String(me.name).slice(0, 1)) + '</span>' +
-      '<h3 style="margin-top:14px;font-size:19px">' + esc(me.name) +
-      (me.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</h3>' +
-      '<p class="mut sm" style="margin-top:8px">카카오 계정과 이어졌어요.</p>' +
-      '</div>' +
-      '<div id="act"><div class="card"><div class="mut sm">기록 불러오는 중…</div></div></div>' +
-      '<div class="card"><h3>곧 생겨요</h3>' +
-      '<div class="sub">여기에 이어서 붙습니다.</div><div class="sp"></div>' +
-      '<div class="kv"><span class="k">봉사 후기 피드</span><span class="v mut">준비 중</span></div>' +
-      '</div>' +
-      (me.role === 'admin'
-        ? '<a class="btn soft block" href="admin.html">운영진 화면으로</a>' : '') +
-      '<button class="btn ghost block sm" id="out">로그아웃</button>');
-    $('#out').onclick = () => { DB.memberLogout(); draw(); };
-    loadActivity();
+    if (window.Community && Community.start) return Community.start(me);
+    /* community.js 를 못 읽은 경우에도 화면이 비지 않게 */
+    paint('<div class="card center" style="padding:28px">' +
+      '<div class="mut sm">커뮤니티를 불러오지 못했어요. 새로고침해주세요.</div></div>');
   }
-
-  /* ---------- ⑤ 내 활동 내역 ---------- */
-  /* 화면을 먼저 띄우고 기록은 뒤따라 채운다 — 느린 연결에서도 멈춰 보이지 않게 */
-  async function loadActivity() {
-    const box = $('#act');
-    if (!box) return;
-    let a;
-    try { a = await DB.myActivity(); }
-    catch (e) {
-      return fill(box, '<div class="card"><div class="mut sm">' +
-        '기록을 불러오지 못했어요. 새로고침해주세요.</div></div>');
-    }
-    if (!a) return fill(box, '');
-
-    const times = Number(a.times) || 0;
-
-    /* 아직 한 번도 안 간 사람 — 숫자 0 을 늘어놓는 대신 권한다 */
-    if (!times) {
-      return fill(box,
-        '<div class="card center" style="padding:28px 22px">' +
-        '<div style="font-size:30px">🐾</div>' +
-        '<h3 style="margin-top:10px;font-size:17px">아직 첫 봉사 전이에요</h3>' +
-        '<p class="mut sm" style="margin-top:8px;line-height:1.6">' +
-        '다녀오시면 여기에 횟수와 쌓인 적립금이 모여요.</p>' +
-        '<div style="margin-top:14px">' +
-        '<a class="btn soft" href="volunteer.html">봉사 일정 보기</a></div></div>');
-    }
-
-    const places = Array.isArray(a.places) ? a.places : [];
-    const records = Array.isArray(a.records) ? a.records : [];
-    const credit = Number(a.credit_total) || 0;
-
-    fill(box,
-      /* 요약 — 횟수와 적립금을 가장 크게 */
-      '<div class="card">' +
-      '<div class="row" style="gap:0">' +
-      '<div style="flex:1;text-align:center">' +
-      '<div class="money" style="font-size:26px;color:var(--brand-deep)">' + num(times) + '</div>' +
-      '<div class="mut" style="font-size:12px;margin-top:2px">봉사 횟수</div></div>' +
-      '<div style="width:1px;align-self:stretch;background:var(--line-2)"></div>' +
-      '<div style="flex:1;text-align:center">' +
-      '<div class="money" style="font-size:26px;color:var(--brand-deep)">' + won(credit) + '</div>' +
-      '<div class="mut" style="font-size:12px;margin-top:2px">내가 쌓은 적립금</div></div>' +
-      '</div>' +
-      (a.last_date
-        ? '<div class="divider"></div><div class="kv"><span class="k">마지막 참여</span>' +
-          '<span class="v">' + fmtDate(a.last_date) + '</span></div>'
-        : '') +
-      '</div>' +
-
-      /* 보호소별 — 적립이 쌓이는 곳만 */
-      (places.length
-        ? '<div class="card"><h3>보호소별 적립</h3>' +
-          '<div class="sub">내가 다녀온 만큼만 모아 보여드려요.</div><div class="sp"></div>' +
-          places.map(p =>
-            '<div class="kv"><span class="k">' + esc(p.place || '-') +
-            ' <span class="mut" style="font-size:12px">' + num(p.times) + '회</span></span>' +
-            '<span class="v">' + won(p.credit) + '</span></div>').join('') +
-          '</div>'
-        : '') +
-
-      /* 기록 목록 */
-      '<div class="card"><h3>내 봉사 기록</h3>' +
-      '<div class="sub">운영진이 확정한 봉사만 보여요.</div><div class="sp"></div>' +
-      records.map(r =>
-        '<div class="kv"><span class="k">' + fmtDate(r.date) +
-        (r.place ? ' · ' + esc(r.place) : '') + '</span>' +
-        '<span class="v">' + (Number(r.per) > 0 ? '+' + won(r.per) : '<span class="mut">적립 없음</span>') +
-        '</span></div>').join('') +
-      '</div>');
-  }
-
-  function fill(box, html) { box.innerHTML = html; }
 })();

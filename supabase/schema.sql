@@ -1072,7 +1072,7 @@ with me_ as (
   select m.id from members m where m.auth_user_id = auth.uid()
 ),
 mine as (
-  select e.date, e.title, e.place,
+  select e.id as event_id, e.date, e.title, e.place,
          coalesce(e.credit_per_person, 0)::int as per
     from attendance a
     join me_      on me_.id = a.member_id
@@ -1092,7 +1092,8 @@ select case when not exists (select 1 from me_) then null else
                        'place', place, 'times', times, 'credit', credit)
                        order by credit desc), '[]'::json) from byplace),
     'records',      (select coalesce(json_agg(json_build_object(
-                       'date', date, 'title', title, 'place', place, 'per', per)
+                       'event_id', event_id, 'date', date,
+                       'title', title, 'place', place, 'per', per)
                        order by date desc), '[]'::json) from mine)
   )
 end;

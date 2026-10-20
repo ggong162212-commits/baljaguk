@@ -8,7 +8,7 @@
 <meta name="description" content="발자국 구성원 전용 공간">
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><text y='19' font-size='19'>🐾</text></svg>">
-<link rel="stylesheet" href="assets/style.css?v=202610200949">
+<link rel="stylesheet" href="assets/style.css?v=202610201023">
 <style>
   /* 카카오 버튼 — 카카오가 정해둔 색 그대로 */
   .kakao{
@@ -43,14 +43,21 @@
     <p id="headLead">발자국 구성원만 쓸 수 있는 공간이에요.</p>
   </div>
   <div id="view" class="stack"></div>
-  <div class="linkline"><a href="fund.html">후원금 현황 보기 →</a></div>
-  <div style="height:40px"></div>
+  <div class="linkline" id="footLink"><a href="fund.html">후원금 현황 보기 →</a></div>
+  <div class="tabgap"></div>
 </main>
 
-<script src="assets/config.js?v=202610200949"></script>
-<script src="assets/icons.js?v=202610200949"></script>
-<script src="assets/ui.js?v=202610200949"></script>
-<script src="assets/db.js?v=202610200949"></script>
-<script src="assets/me.js?v=202610200949"></script>
+<!-- 글쓰기 — 피드에서만 보인다 -->
+<button class="fab" id="fab" type="button" hidden aria-label="글쓰기"></button>
+
+<!-- 커뮤니티 하단 탭 — 명부와 이어진 구성원에게만 보인다 -->
+<nav class="tabbar" id="tabbar" hidden aria-label="커뮤니티 메뉴"></nav>
+
+<script src="assets/config.js?v=202610201023"></script>
+<script src="assets/icons.js?v=202610201023"></script>
+<script src="assets/ui.js?v=202610201023"></script>
+<script src="assets/db.js?v=202610201023"></script>
+<script src="assets/community.js?v=202610201023"></script>
+<script src="assets/me.js?v=202610201023"></script>
 </body>
 </html>

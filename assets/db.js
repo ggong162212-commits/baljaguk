@@ -348,7 +348,7 @@
           .map(a => (d.events || []).find(e => e.id === a.event_id))
           .filter(e => e && e.confirmed_at)
           .map(e => ({
-            date: e.date, title: e.title, place: e.place,
+            event_id: e.id, date: e.date, title: e.title, place: e.place,
             per: Number(e.credit_per_person) || 0
           }))
           .sort((a, b) => String(b.date).localeCompare(String(a.date)));
