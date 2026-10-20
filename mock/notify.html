@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>발자국 · 알림 미리보기 (모형)</title>
+<!--
+  실제 OS 화면이 아니라 문구를 확인하려고 그린 모형이다.
+  모양은 비슷하게 맞췄지만 글꼴·여백은 기기마다 조금씩 다르다.
+-->
+<style>
+  :root{
+    --ink:#1b1d1a; --ink2:#5b6158; --line:#e3e6df;
+    --brand:#7cb342; --brand-soft:#eef5e5; --brand-deep:#4e7a24;
+    --paper:#f4f6f0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:375px;margin:0 auto;padding:18px 16px 60px}
+  h1{font-size:19px;margin:0 0 4px}
+  .lede{font-size:12.5px;color:var(--ink2);line-height:1.6;margin:0 0 16px}
+  .warn{background:#fff6e0;border:1px solid #f0dcae;color:#7a5b12;border-radius:12px;
+    padding:10px 12px;font-size:12px;line-height:1.55;margin-bottom:18px}
+  h2{font-size:14px;margin:26px 0 10px;display:flex;align-items:center;gap:7px}
+  h2 .tag{background:var(--brand-soft);color:var(--brand-deep);border-radius:999px;
+    padding:2px 9px;font-size:11px;font-weight:700}
+  .kind{font-size:11.5px;color:var(--ink2);margin:14px 0 6px;font-weight:700}
+  /* 잠금화면 안에서 어떤 알림인지 알려주는 작은 이름표 (실제 화면엔 없다) */
+  .lbl{font-size:10px;font-weight:700;color:rgba(255,255,255,.52);margin:9px 2px 3px;
+    letter-spacing:.3px}
+
+  /* 안드로이드 잠금화면 */
+  .droid{background:linear-gradient(160deg,#2b3a24,#141a12);border-radius:22px;
+    padding:16px 14px 18px;margin-bottom:10px}
+  .droid .clock{color:#fff;text-align:center;margin-bottom:14px}
+  .droid .clock .t{font-size:40px;font-weight:300;letter-spacing:-1px;line-height:1}
+  .droid .clock .d{font-size:12px;opacity:.75;margin-top:3px}
+  .dcard{background:rgba(255,255,255,.93);border-radius:18px;padding:11px 13px;margin-bottom:7px}
+  .dhead{display:flex;align-items:center;gap:6px;font-size:11px;color:#5b6158;margin-bottom:4px}
+  .dtitle{font-size:13.5px;font-weight:700;line-height:1.35}
+  .dbody{font-size:12.5px;color:#3a3f38;line-height:1.5;margin-top:2px}
+
+  /* 아이폰 잠금화면 */
+  .ios{background:linear-gradient(170deg,#4a5d3a,#20281c);border-radius:22px;
+    padding:18px 12px 20px;margin-bottom:10px}
+  .ios .clock{color:#fff;text-align:center;margin-bottom:16px}
+  .ios .clock .d{font-size:13px;opacity:.85}
+  .ios .clock .t{font-size:52px;font-weight:600;letter-spacing:-2px;line-height:1.05}
+  .icard{background:rgba(245,245,245,.82);backdrop-filter:blur(10px);
+    border-radius:20px;padding:11px 13px;margin-bottom:8px}
+  .ihead{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+  .ihead .nm{font-size:11.5px;font-weight:600;color:#3a3f38;flex:1;
+    text-transform:uppercase;letter-spacing:.3px}
+  .ihead .ago{font-size:11px;color:#6b7065}
+  .ititle{font-size:13.5px;font-weight:700;line-height:1.35}
+  .ibody{font-size:12.5px;color:#3a3f38;line-height:1.5}
+
+  /* 앱 안 배너 */
+  .inapp{background:#fff;border:1px solid var(--line);border-radius:18px;
+    padding:12px 13px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start;
+    box-shadow:0 6px 20px rgba(27,29,26,.07)}
+  .inapp .tx{flex:1;min-width:0}
+  .inapp .t{display:block;font-size:13.5px;font-weight:700;line-height:1.35}
+  .inapp .b{display:block;font-size:12.5px;color:var(--ink2);line-height:1.5;margin-top:2px}
+
+  .ico{width:26px;height:26px;border-radius:7px;background:var(--brand);
+    display:grid;place-items:center;flex:none}
+  .ico svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2;
+    stroke-linecap:round;stroke-linejoin:round}
+  .ico.sm{width:17px;height:17px;border-radius:5px}
+  .ico.sm svg{width:11px;height:11px}
+  .appname{font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>발자국 알림 미리보기</h1>
+  <p class="lede">구성원 폰에 뜰 알림 문구를 확인하려고 그린 그림이에요.</p>
+  <div class="warn">
+    <b>실제 화면이 아니라 모형이에요.</b><br>
+    글꼴과 여백은 폰마다 조금씩 달라요. 문구와 순서만 봐주세요.
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+/* 발바닥 — 앱 아이콘 */
+const PAW = '<svg viewBox="0 0 24 24"><ellipse cx="8" cy="7.4" rx="2" ry="2.6"/>' +
+  '<ellipse cx="16" cy="7.4" rx="2" ry="2.6"/><ellipse cx="4.6" cy="12.4" rx="1.8" ry="2.3"/>' +
+  '<ellipse cx="19.4" cy="12.4" rx="1.8" ry="2.3"/>' +
+  '<path d="M12 12.6c2.9 0 5.2 2.1 5.2 4.5 0 1.8-1.5 2.9-3.2 2.9-1 0-1.3-.4-2-.4s-1 .4-2 .4c-1.7 0-3.2-1.1-3.2-2.9 0-2.4 2.3-4.5 5.2-4.5z"/></svg>';
+
+/* 알림 12종 — SPEC.md 알림표와 같은 순서 */
+const LIST = [
+  ['새 글',      '이보호님이 새 글을 올렸어요',
+                 '오늘 처음 간 보금자리! 아이들이 생각보다 훨씬…'],
+  ['댓글',       '이보호님이 댓글을 남겼어요',
+                 '다음엔 같이 가요'],
+  ['대댓글',     '이보호님이 내 댓글에 답글을 남겼어요',
+                 '저도요! 그날 봬요'],
+  ['반응',       '이보호님 외 2명이 내 후기에 반응했어요',
+                 '💗 🐾 👏'],
+  ['봉사 열림',  '봉사 신청이 열렸어요',
+                 '10/31(토) 13:00 금파하우스 · 선착순 8명'],
+  ['대기→신청',  '자리가 났어요!',
+                 '10/31 금파하우스 봉사에 신청됐어요'],
+  ['공지',       '[공지] 11월 정기모임 안내',
+                 '11/8(토) 오후 2시, 학생회관 3층이에요. 다 같이 봐요!'],
+  ['설문',       '설문이 내일 마감돼요',
+                 '다음 봉사는 언제가 좋을까요?'],
+  ['퀴즈 — 정답', '정답이에요! 🐾',
+                 '이 친구 이름은 단비였어요'],
+  ['퀴즈 — 오답', '아쉬워요!',
+                 '정답은 단비였어요'],
+  ['봉사 전날',  '내일 13:00 금파하우스 봉사예요',
+                 '준비물: 목장갑, 편한 옷. 비 오면 단톡방 확인해주세요'],
+  ['봉사 감사',  '오늘 와줘서 고맙다멍!',
+                 '덕분에 지루한 일상 속 웃음이 가득했다멍. 후기도 남겨 줄래멍?']
+];
+
+const esc = t => String(t).replace(/[&<>"]/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* 잠금화면은 알림이 쌓여 보인다 — 시계는 한 번만 */
+function droid(items) {
+  return '<div class="droid">' +
+    '<div class="clock"><div class="t">20:04</div><div class="d">10월 20일 화요일</div></div>' +
+    items.map(([k, t, b]) =>
+      '<div class="lbl">' + esc(k) + '</div>' +
+      '<div class="dcard">' +
+      '<div class="dhead"><span class="ico sm">' + PAW + '</span>' +
+      '<span class="appname">발자국</span><span>· 지금</span></div>' +
+      '<div class="dtitle">' + esc(t) + '</div>' +
+      '<div class="dbody">' + esc(b) + '</div></div>').join('') +
+    '</div>';
+}
+
+function ios(items) {
+  return '<div class="ios">' +
+    '<div class="clock"><div class="d">10월 20일 화요일</div><div class="t">20:04</div></div>' +
+    items.map(([k, t, b]) =>
+      '<div class="lbl on-dark">' + esc(k) + '</div>' +
+      '<div class="icard">' +
+      '<div class="ihead"><span class="ico sm">' + PAW + '</span>' +
+      '<span class="nm">발자국</span><span class="ago">지금</span></div>' +
+      '<div class="ititle">' + esc(t) + '</div>' +
+      '<div class="ibody">' + esc(b) + '</div></div>').join('') +
+    '</div>';
+}
+
+function inapp(items) {
+  return items.map(([k, t, b]) =>
+    '<div class="inapp"><span class="ico">' + PAW + '</span>' +
+    '<span class="tx"><span class="t">' + esc(t) + '</span>' +
+    '<span class="b">' + esc(b) + '</span></span></div>').join('');
+}
+
+/* 종류마다 이름표를 붙여 셋을 나란히 */
+const out = document.getElementById('out');
+out.innerHTML =
+  '<h2 id="s-droid">안드로이드 잠금화면 <span class="tag">모형</span></h2>' +
+  droid(LIST) +
+  '<h2 id="s-ios">아이폰 잠금화면 <span class="tag">모형</span></h2>' +
+  ios(LIST) +
+  '<h2 id="s-inapp">앱 안 배너 <span class="tag">모형</span></h2>' +
+  LIST.map(x => '<div class="kind">' + esc(x[0]) + '</div>' + inapp([x])).join('');
+</script>
+</body>
+</html>
