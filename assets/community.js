@@ -2284,53 +2284,18 @@ window.Community = (function () {
   }
 
   /* ---------- 글 삭제 ----------
-     바로 지우지 않고 5초 동안 되돌릴 틈을 준다.
-     잘못 눌렀을 때 글과 댓글·사진이 통째로 사라지면 되돌릴 방법이 없다. */
-  let undoTimer = null;
-
-  function softDelete(p) {
-    /* 먼저 화면에서만 치운다 */
-    const card = $('#list [data-post="' + p.id + '"]') ||
-      $('#list article[data-id="' + p.id + '"]');
-    const el = card || document.querySelector('[data-open="' + p.id + '"]');
-    const hidden = [];
-    if (el) {
-      const box = el.closest ? (el.closest('article') || el.closest('.card')) : el;
-      if (box) { box.style.display = 'none'; hidden.push(box); }
+     바로 지운다. 5초 뒤에 지우게 했더니, 그 사이 화면이 새로고침되면
+     타이머가 죽어 영영 안 지워졌다 (2026-10-20 실서버에서 드러남).
+     확인 시트에서 「되돌릴 수 없어요」라고 이미 묻는다. */
+  async function softDelete(p) {
+    try {
+      await DB.community.removePost(p.id, p.photos || []);
+      toast('지웠어요', 'ok');
+      F.rows = (F.rows || []).filter(r => String(r.id) !== String(p.id));
+      renderHome(true);
+    } catch (e) {
+      toast(e.message || '지우지 못했어요', 'err');
     }
-    F.rows = (F.rows || []).filter(r => String(r.id) !== String(p.id));
-
-    let undone = false;
-    const bar = document.createElement('div');
-    bar.className = 'undobar';
-    bar.innerHTML = '<span>글을 지웠어요</span>' +
-      '<button type="button" data-undo>되돌리기</button>';
-    document.body.appendChild(bar);
-    requestAnimationFrame(() => bar.classList.add('in'));
-
-    const finish = async () => {
-      bar.classList.remove('in');
-      setTimeout(() => bar.remove(), 240);
-      if (undone) return;
-      try {
-        await DB.community.removePost(p.id, p.photos || []);
-      } catch (e) {
-        toast(e.message || '지우지 못했어요', 'err');
-      }
-      renderHome(true);
-    };
-
-    bar.querySelector('[data-undo]').onclick = () => {
-      undone = true;
-      clearTimeout(undoTimer);
-      hidden.forEach(x => { x.style.display = ''; });
-      bar.classList.remove('in');
-      setTimeout(() => bar.remove(), 240);
-      renderHome(true);
-    };
-
-    clearTimeout(undoTimer);
-    undoTimer = setTimeout(finish, 5000);
   }
 
   /* 「지금 발표하기」 — 만든 사람만 */
