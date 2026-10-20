@@ -446,3 +446,27 @@ create policy "community write" on storage.objects for insert to authenticated
 create policy "community delete" on storage.objects for delete to authenticated
   using (bucket_id in ('community', 'avatars')
          and (owner = auth.uid() or is_admin()));
+
+
+-- ------------------------------------------------------------
+-- 11) 누가 이 선택지를 골랐나 — 이름만. 익명 투표면 아무것도 안 준다.
+-- ------------------------------------------------------------
+create or replace function poll_who(p_option uuid)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case
+    when not is_member() then null
+    when exists (select 1 from poll_options o
+                   join polls q on q.post_id = o.post_id
+                  where o.id = p_option and q.anonymous) then '[]'::json
+    else coalesce(
+      (select json_agg(m.name order by m.name)
+         from poll_votes v join members m on m.id = v.member_id
+        where v.option_id = p_option), '[]'::json)
+  end;
+$$;
+
+revoke all on function poll_who(uuid) from public, anon;
+grant execute on function poll_who(uuid) to authenticated;

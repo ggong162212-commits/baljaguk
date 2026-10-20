@@ -175,17 +175,15 @@
   const fromLocalInput = v => v ? new Date(v).toISOString() : null;
 
   /* ---------- 아바타 (이니셜 + 파스텔) ---------- */
-  const AV = [
-    ['#E7F2DC', '#4E8C36'], ['#FBF0D8', '#9A701A'], ['#E3EFFA', '#2F6494'],
-    ['#FCE6E9', '#B24A59'], ['#EFE8F8', '#6B4C9A'], ['#DFF1EE', '#256F63']
-  ];
+  /* 강조는 그린 하나로. 사람 구분은 같은 계열 4단계로만 한다.
+     색을 인라인으로 박으면 다크 모드에서 못 바꾸니 클래스로 준다. */
   function avatar(m, cls) {
     const name = (m && m.name) || '?';
     let h = 0; for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 997;
-    const [bg, fg] = AV[h % AV.length];
+    const tone = 'av' + (h % 4);
     /* 운영진 왕관 같은 그림 없이 모두 이름 첫 글자로. 구분은 이름 옆 배지로 한다 */
     const face = name.slice(0, 1);
-    return '<div class="avatar' + (cls ? ' ' + cls : '') + '" style="background:' + bg + ';color:' + fg + '" aria-hidden="true">' + esc(face) + '</div>';
+    return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '" aria-hidden="true">' + esc(face) + '</div>';
   }
 
   /* ---------- 이미지 축소 ---------- */

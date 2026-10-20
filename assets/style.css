@@ -183,6 +183,12 @@ a{color:inherit;text-decoration:none}
 
 /* ---------- 칩/배지 ---------- */
 .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
+/* 옆으로 더 있다는 것을 옅은 페이드로 알린다 */
+.chipwrap{position:relative;flex:1;min-width:0}
+.chipwrap::after{
+  content:'';position:absolute;right:0;top:0;bottom:6px;width:28px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--bg))
+}
 .chips::-webkit-scrollbar{display:none}
 .chip{
   padding:9px 15px;border-radius:999px;border:1px solid var(--line);
@@ -230,6 +236,15 @@ a{color:inherit;text-decoration:none}
   box-shadow:0 0 0 1px var(--line-2)
 }
 .avatar.sm{width:38px;height:38px;font-size:18px}
+/* 그린 한 계열 4단계 — 사람은 구분되고 화면 색은 늘지 않는다 */
+.avatar.av0{background:#E7F2DC;color:#3F7A2A}
+.avatar.av1{background:#D9EBC9;color:#36691F}
+.avatar.av2{background:#EFF6E6;color:#4E8C36}
+.avatar.av3{background:#CFE4BB;color:#2F5C1B}
+html[data-theme="dark"] .avatar.av0{background:#2C3B25;color:#A6D986}
+html[data-theme="dark"] .avatar.av1{background:#34462B;color:#B7E39B}
+html[data-theme="dark"] .avatar.av2{background:#263320;color:#96CD76}
+html[data-theme="dark"] .avatar.av3{background:#3C5131;color:#C6EBAD}
 .avatar.lg{width:84px;height:84px;font-size:40px}
 
 /* 참여왕 배너 */
@@ -355,7 +370,7 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 /* 하단 탭 바로 위, 오른쪽에 뜬다 */
 .fab{
   /* 넓은 화면에서도 앱 기둥(480px) 안쪽에 붙어 있게 */
-  position:fixed;right:max(18px, calc(50vw - 222px));bottom:92px;z-index:51;
+  position:fixed;right:max(18px, calc(50vw - 222px));bottom:104px;z-index:51;
   width:52px;height:52px;border-radius:19px;border:none;cursor:pointer;
   display:grid;place-items:center;
   background:var(--brand);color:#fff;box-shadow:var(--shadow-pop);

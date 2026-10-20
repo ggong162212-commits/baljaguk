@@ -37,6 +37,7 @@ window.Community = (function () {
   async function start(me) {
     ME = me;
     try { AM_ADMIN = await DB.isAdmin(); } catch (e) { AM_ADMIN = false; }
+    try { window.__settings = await DB.settings.get(); } catch (e) { }
 
     $('#footLink').hidden = true;
 
@@ -49,9 +50,7 @@ window.Community = (function () {
       b.addEventListener('click', () => go(b.dataset.tab)));
     bar.hidden = false;
 
-    const fab = $('#fab');
-    fab.innerHTML = ic('plus');
-    fab.onclick = () => writeSheet();
+    $('#fab').innerHTML = ic('plus');
 
     go('home');
   }
@@ -59,7 +58,12 @@ window.Community = (function () {
   function go(tab) {
     cur = tab;
     $$('#tabbar [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
-    $('#fab').hidden = tab !== 'home';
+    /* 홈에서는 후기 쓰기, 투표 탭에서는 투표 만들기 (운영진만) */
+    const fab = $('#fab');
+    const showFab = tab === 'home' || (tab === 'poll' && AM_ADMIN);
+    fab.hidden = !showFab;
+    fab.setAttribute('aria-label', tab === 'poll' ? '투표 만들기' : '글쓰기');
+    fab.onclick = tab === 'poll' ? pollSheet : writeSheet;
     window.scrollTo(0, 0);
     if (tab === 'home') return renderHome(true);
     if (tab === 'vol') return renderVol();
@@ -93,7 +97,7 @@ window.Community = (function () {
     paint(
       '<div id="pin"></div>' +
       '<div class="titlerow">' +
-      '<div class="chips" id="chips" style="flex:1;min-width:0"></div>' +
+      '<div class="chipwrap"><div class="chips" id="chips"></div></div>' +
       '<button class="iconbtn sq" type="button" id="wallBtn" aria-label="사진 모아보기">' +
       ic('grid') + '</button></div>' +
       '<div id="list">' + loading() + '</div>' +
@@ -299,12 +303,11 @@ window.Community = (function () {
         '<span>' + EMOJI[k] + '</span><span class="n">' + counts[k] + '</span></button>').join('') +
       '<button class="react add" type="button" data-pick="' + esc(p.id) + '" aria-label="반응 달기">' +
       ic('plus') + '</button>' +
+      '</div>' +
       (total
-        ? '<button class="react add" type="button" data-who="' + esc(p.id) + '" ' +
-        'aria-label="누가 반응했는지 보기">' + ic('users') +
-        '<span class="n">' + total + '</span></button>'
-        : '') +
-      '</div>';
+        ? '<div class="mut" style="font-size:11.5px;margin-top:6px">' +
+          '반응을 길게 누르면 누가 눌렀는지 볼 수 있어요</div>'
+        : '');
   }
 
   /* ---------- 댓글 (카드 안에서 바로) ---------- */
@@ -349,11 +352,11 @@ window.Community = (function () {
 
       if ((b = hit('data-react'))) { pop(b); return hitReaction(b.dataset.react, b.dataset.k); }
       if ((b = hit('data-pick'))) return pickReaction(b.dataset.pick);
-      if ((b = hit('data-who'))) return whoSheet(b.dataset.who);
       if ((b = hit('data-menu'))) return postMenu(b.dataset.menu);
       if ((b = hit('data-open'))) return openPost(b.dataset.open);
       if ((b = hit('data-cmenu'))) return feedCommentMenu(b.dataset.cmenu);
-      if ((b = hit('data-vote'))) return toast('투표는 다음 단계에서 열려요');
+      if ((b = hit('data-vote'))) return castVote(b);
+      if ((b = hit('data-close'))) return closePoll(b.dataset.close);
     });
 
     /* 반응을 길게 누르면 누가 눌렀는지 */
@@ -671,7 +674,7 @@ window.Community = (function () {
 
         (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
         photoStrip(p) +
-        ((p.photos || []).length && p.insta_ok
+        ((p.photos || []).length && p.insta_ok && (p.mine || AM_ADMIN)
           ? '<div class="mut" style="font-size:11.5px;margin-top:7px">' +
             '인스타그램 사용에 동의한 사진이에요</div>'
           : '') +
@@ -810,15 +813,22 @@ window.Community = (function () {
       (q.options || []).map(o => {
         const pct = total ? Math.round(o.votes / total * 100) : 0;
         return '<button class="opt' + (o.mine ? ' mine' : '') + '" type="button" ' +
-          'data-vote="' + esc(p.id) + '" data-opt="' + esc(o.id) + '"' + (closed ? ' disabled' : '') + '>' +
+          'data-vote="' + esc(p.id) + '" data-opt="' + esc(o.id) + '" ' +
+          'data-multi="' + (q.multi ? '1' : '') + '" data-anon="' + (q.anonymous ? '1' : '') + '"' +
+          (closed ? ' disabled' : '') + '>' +
           '<span class="fillbar" style="width:' + pct + '%"></span>' +
           '<span class="lb"><b>' + esc(o.label) + '</b>' +
           '<span class="mut sm">' + num(o.votes || 0) + '명 · ' + pct + '%</span></span></button>';
       }).join('') +
-      '<div class="mut" style="font-size:11.5px;margin-top:6px">' +
+      '<div class="row between" style="margin-top:7px;gap:8px">' +
+      '<span class="mut" style="font-size:11.5px">' +
       (closed ? '마감됐어요' : (q.closes_at ? fmtDate(q.closes_at) + ' 마감' : '진행 중')) +
-      (q.multi ? ' · 여러 개 고를 수 있어요' : '') +
-      (q.anonymous ? ' · 익명' : '') + '</div></div>';
+      ' · ' + num(total) + '명 참여' +
+      (q.multi ? ' · 여러 개' : '') +
+      (q.anonymous ? ' · 익명' : '') + '</span>' +
+      (!closed && (p.mine || AM_ADMIN)
+        ? '<button class="linkbtn" type="button" data-close="' + esc(p.id) + '">일찍 마감</button>'
+        : '') + '</div></div>';
   }
 
   async function renderPolls() {
@@ -829,6 +839,8 @@ window.Community = (function () {
     try { res = await DB.community.feed({ type: 'poll', limit: 30 }); }
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
     const rows = res.rows || [];
+    /* 카드의 동작(투표·반응·댓글)이 F.rows 를 보고 돌아간다 */
+    F.rows = rows;
     if (!rows.length) return paint(
       '<div class="card center" style="padding:28px 22px">' +
       illus('emptyPoll') +
@@ -836,6 +848,125 @@ window.Community = (function () {
     paint(rows.map(postCard).join(''));
     bindOnce();
     loadPhotos($('#view'));
+  }
+
+  /* ---------- 투표하기 ---------- */
+  /* 누르면 화면부터 바로 바꾸고, 실패하면 되돌린다 */
+  async function castVote(btn) {
+    const postId = btn.dataset.vote, optId = btn.dataset.opt;
+    const multi = !!btn.dataset.multi;
+    const row = findRow(postId);
+    if (!row || !row.poll) return;
+
+    const before = JSON.parse(JSON.stringify(row.poll.options));
+    const opt = row.poll.options.filter(o => o.id === optId)[0];
+    if (!opt) return;
+    const turningOn = !opt.mine;
+
+    if (!multi) {
+      row.poll.options.forEach(o => {
+        if (o.mine && o.id !== optId) { o.mine = false; o.votes = Math.max(0, o.votes - 1); }
+      });
+    }
+    opt.mine = turningOn;
+    opt.votes = Math.max(0, opt.votes + (turningOn ? 1 : -1));
+    redrawPoll(postId);
+
+    try { await DB.community.vote(postId, optId, multi); }
+    catch (e) {
+      row.poll.options = before;
+      redrawPoll(postId);
+      toast(e.message || '투표하지 못했어요', 'err');
+    }
+  }
+
+  function redrawPoll(postId) {
+    const row = findRow(postId);
+    const card = $('#view').querySelector('[data-post="' + postId + '"]');
+    if (!row || !card) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = postCard(row);
+    card.replaceWith(wrap.firstChild);
+    loadPhotos($('#view'));
+  }
+
+  async function closePoll(postId) {
+    if (!await confirmSheet('투표를 지금 마감할까요?', '마감하면 더 이상 바꿀 수 없어요.', '마감', false)) return;
+    try {
+      await DB.community.closePoll(postId);
+      const row = findRow(postId);
+      if (row && row.poll) row.poll.closed_at = new Date().toISOString();
+      redrawPoll(postId);
+      toast('마감했어요', 'ok');
+    } catch (e) { toast(e.message || '마감하지 못했어요', 'err'); }
+  }
+
+  /* ---------- 투표 만들기 (운영진만) ---------- */
+  function pollSheet() {
+    let count = 2;
+    const optRow = i =>
+      '<label class="field" style="margin-bottom:8px"><span class="lb">선택지 ' + (i + 1) + '</span>' +
+      '<input class="input" data-opt-in="' + i + '" placeholder="예: 토요일 오전"></label>';
+
+    const ov = sheet({
+      title: '투표 만들기',
+      body:
+        '<label class="field"><span class="lb">무엇을 물어볼까요</span>' +
+        '<input class="input" id="pq" placeholder="예: 다음 봉사는 언제가 좋을까요?"></label>' +
+        '<div id="pOpts">' + optRow(0) + optRow(1) + '</div>' +
+        '<button class="btn ghost sm block" type="button" id="pAdd">선택지 더하기</button>' +
+        '<label class="field" style="margin-top:12px"><span class="lb">언제까지 받을까요</span>' +
+        '<input class="input" type="datetime-local" id="pEnd"></label>' +
+        '<button type="button" class="check" id="pMulti" style="width:100%;text-align:left;margin-bottom:8px">' +
+        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+        '<span class="sm" style="font-weight:700">여러 개 고를 수 있게</span></button>' +
+        '<button type="button" class="check" id="pAnon" style="width:100%;text-align:left">' +
+        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+        '<span class="grow"><span class="sm" style="font-weight:700">익명으로</span>' +
+        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+        '누가 무엇을 골랐는지 아무도 못 봐요</span></span></button>' +
+        '<div class="sp"></div>' +
+        '<button class="btn primary lg block" type="button" id="pSave">올리기</button>'
+    });
+
+    [ov.querySelector('#pMulti'), ov.querySelector('#pAnon')].forEach(b =>
+      b.addEventListener('click', () => b.classList.toggle('on')));
+
+    ov.querySelector('#pAdd').onclick = () => {
+      if (count >= 6) return toast('선택지는 6개까지예요', 'err');
+      ov.querySelector('#pOpts').insertAdjacentHTML('beforeend', optRow(count));
+      count += 1;
+      if (count >= 6) ov.querySelector('#pAdd').hidden = true;
+    };
+
+    ov.querySelector('#pSave').onclick = async () => {
+      const q = ov.querySelector('#pq').value.trim();
+      if (!q) return toast('질문을 적어주세요', 'err');
+      const opts = Array.prototype.slice.call(ov.querySelectorAll('[data-opt-in]'))
+        .map(el => el.value.trim()).filter(Boolean);
+      if (opts.length < 2) return toast('선택지를 두 개 이상 적어주세요', 'err');
+      const endRaw = ov.querySelector('#pEnd').value;
+
+      const btn = ov.querySelector('#pSave');
+      btn.disabled = true; btn.textContent = '올리는 중…';
+      try {
+        await DB.community.createPost({
+          type: 'poll', body: '',
+          poll: {
+            question: q, options: opts,
+            multi: ov.querySelector('#pMulti').classList.contains('on'),
+            anonymous: ov.querySelector('#pAnon').classList.contains('on'),
+            closes_at: endRaw ? new Date(endRaw).toISOString() : null
+          }
+        });
+        closeSheet();
+        toast('올렸어요', 'ok');
+        renderPolls();
+      } catch (e) {
+        toast(e.message || '올리지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '올리기';
+      }
+    };
   }
 
   /* ============================================================
@@ -868,20 +999,24 @@ window.Community = (function () {
     $('#headTitle').textContent = '나';
     $('#headLead').textContent = ME.name + '님의 발자국이에요.';
     paint(
-      '<div class="card mecard" style="text-align:center;padding:30px 22px">' +
-      '<span class="big" style="width:72px;height:72px;border-radius:26px;display:grid;' +
-      'place-items:center;margin:0 auto;font-family:var(--font-title);font-size:30px;' +
-      'background:var(--brand-soft);color:var(--brand-deep)">' +
-      esc(String(ME.name).slice(0, 1)) + '</span>' +
-      '<h3 style="margin-top:14px;font-size:19px">' + esc(ME.name) +
-      (ME.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</h3>' +
-      '</div>' +
+      '<div class="card" style="padding:14px 16px">' +
+      '<div class="row" style="gap:12px">' + avatar(ME) +
+      '<div class="grow"><div style="font-weight:700;font-size:16px">' + esc(ME.name) +
+      (ME.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
+      '<div class="mut" style="font-size:12px;margin-top:2px">' +
+      esc(genLabel()) + '</div></div></div></div>' +
       '<div id="act">' + loading() + '</div>' +
       (AM_ADMIN ? '<a class="btn soft block" href="admin.html">운영진 화면으로</a>' : '') +
       '<div class="linkline"><a href="guide.html">사용법 보기 →</a></div>' +
       '<button class="btn ghost block sm" id="out">로그아웃</button>');
     $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
     await loadActivity();
+  }
+
+  /* 기수는 동아리 설정에 있다. 가입일은 G단계에서 me() 를 넓히면 같이 보여준다 */
+  function genLabel() {
+    const g = (window.__settings && window.__settings.generation) || '';
+    return g ? String(g) + ' 구성원' : '발자국 구성원';
   }
 
   /* 화면을 먼저 띄우고 기록은 뒤따라 채운다 */

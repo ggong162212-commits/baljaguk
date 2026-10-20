@@ -822,6 +822,8 @@
     return d;
   }
   const myDemoId = () => localStorage.getItem('baljaguk.demoMe') || '';
+  const pollClosed = q => !!(q && (q.closed_at ||
+    (q.closes_at && Date.parse(q.closes_at) < Date.now())));
   function demoMember(id) {
     const m = (demoRead().members || []).find(x => x.id === id);
     return m ? { id: m.id, name: m.name, role: m.role, photo: m.photo_path || null } : null;
@@ -1107,6 +1109,68 @@
       }
       return await rest('rpc/reaction_who', {
         method: 'POST', body: { p_post: postId, p_kind: kind }
+      }) || [];
+    },
+
+    /* ---------- 투표 ---------- */
+    /* 마감 전까지만 바꿀 수 있다. 하나만 고르는 투표면 기존 표를 치우고 넣는다 */
+
+    async vote(postId, optionId, multi) {
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        if (!meId) throw new Error('로그인이 풀렸어요');
+        const q = d.polls.find(x => x.post_id === postId);
+        if (pollClosed(q)) throw new Error('마감된 투표예요');
+        const mine = d.poll_votes.filter(v => v.post_id === postId && v.member_id === meId);
+        const had = mine.some(v => v.option_id === optionId);
+        d.poll_votes = d.poll_votes.filter(v =>
+          !(v.post_id === postId && v.member_id === meId && (!multi || v.option_id === optionId)));
+        if (!had) d.poll_votes.push({
+          post_id: postId, option_id: optionId, member_id: meId,
+          created_at: new Date().toISOString()
+        });
+        demoWrite(d);
+        return !had;
+      }
+      const meId = await DB.community.myId();
+      const base = 'poll_votes?post_id=eq.' + enc(postId) + '&member_id=eq.' + enc(meId);
+      const mine = await rest(base + '&select=option_id');
+      const had = (mine || []).some(v => v.option_id === optionId);
+      /* 하나만 고르는 투표면 내 표를 모두 치운다 */
+      await rest(base + (multi ? '&option_id=eq.' + enc(optionId) : ''),
+        { method: 'DELETE', prefer: 'return=minimal' });
+      if (!had) {
+        await rest('poll_votes', {
+          method: 'POST', prefer: 'return=minimal',
+          body: { post_id: postId, option_id: optionId, member_id: meId }
+        });
+      }
+      return !had;
+    },
+
+    /* 만든 사람이나 운영진이 일찍 마감 */
+    async closePoll(postId) {
+      if (!HAS_SB) {
+        const d = cdemo(), q = d.polls.find(x => x.post_id === postId);
+        if (q) { q.closed_at = new Date().toISOString(); demoWrite(d); }
+        return true;
+      }
+      await rest('polls?post_id=eq.' + enc(postId), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { closed_at: new Date().toISOString() }
+      });
+      return true;
+    },
+
+    /* 익명이 아닐 때만 — 누가 이 선택지를 골랐나 (이름만) */
+    async pollWho(optionId) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return d.poll_votes.filter(v => v.option_id === optionId)
+          .map(v => (demoMember(v.member_id) || {}).name).filter(Boolean).sort();
+      }
+      return await rest('rpc/poll_who', {
+        method: 'POST', body: { p_option: optionId }
       }) || [];
     },
 
