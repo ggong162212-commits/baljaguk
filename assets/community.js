@@ -701,130 +701,154 @@ window.Community = (function () {
       const a = await DB.myActivity();
       acts = (a && a.records) || [];
     } catch (e) { /* 못 불러와도 직접 입력으로 쓸 수 있다 */ }
-
     const places = placeList();
-    const ov = sheet({
+
+    UI.wizard({
       title: '봉사 후기 쓰기',
-      body:
-        '<label class="field"><span class="lb">어느 봉사인가요</span>' +
-        '<select class="input" id="wEv">' +
-        acts.map((r, i) =>
-          '<option value="' + i + '">' + fmtDate(r.date) +
-          (r.place ? ' · ' + esc(r.place) : '') + '</option>').join('') +
-        '<option value="own">직접 입력</option></select></label>' +
+      doneLabel: '올리기',
+      steps: [
+        {
+          key: 'when', short: '봉사',
+          q: '어느 봉사였나요?',
+          hint: acts.length
+            ? '다녀온 봉사에서 고르면 날짜와 보호소가 같이 들어가요.'
+            : '아직 확정된 봉사가 없어서 직접 적어주세요.',
+          body: '<label class="field"><select class="input" id="wEv">' +
+            acts.map((r, i) => '<option value="' + i + '">' + fmtDate(r.date) +
+              (r.place ? ' · ' + esc(r.place) : '') + '</option>').join('') +
+            '<option value="own">직접 입력</option></select></label>' +
+            '<div id="wOwn" hidden><div class="grid2">' +
+            '<label class="field"><span class="lb">날짜</span>' +
+            '<input class="input" type="date" id="wDate"></label>' +
+            '<label class="field"><span class="lb">보호소</span>' +
+            '<select class="input" id="wPlace">' +
+            places.map(p => '<option>' + esc(p) + '</option>').join('') +
+            '</select></label></div></div>',
+          after: r => {
+            const sel = r.querySelector('#wEv'), own = r.querySelector('#wOwn');
+            const sync = () => { own.hidden = sel.value !== 'own'; };
+            sel.addEventListener('change', sync);
+            if (!acts.length) sel.value = 'own';
+            if (preEvent) {
+              const i = acts.findIndex(x => x.event_id === preEvent);
+              if (i >= 0) sel.value = String(i);
+            }
+            sync();
+          },
+          read: r => {
+            const sel = r.querySelector('#wEv');
+            if (sel.value === 'own') {
+              return {
+                own: true,
+                date: r.querySelector('#wDate').value || '',
+                place: r.querySelector('#wPlace').value || '',
+                event_id: null
+              };
+            }
+            const x = acts[Number(sel.value)] || {};
+            return { own: false, date: x.date, place: x.place, event_id: x.event_id || null };
+          },
+          fill: (r, v) => {
+            const sel = r.querySelector('#wEv');
+            if (v.own) {
+              sel.value = 'own';
+              r.querySelector('#wOwn').hidden = false;
+              r.querySelector('#wDate').value = v.date || '';
+              if (v.place) r.querySelector('#wPlace').value = v.place;
+            } else {
+              const i = acts.findIndex(x => x.event_id === v.event_id && x.date === v.date);
+              if (i >= 0) sel.value = String(i);
+            }
+          },
+          valid: v => v.date ? '' : '날짜를 골라주세요',
+          sum: v => fmtDate(v.date) + (v.place ? ' · ' + v.place : '')
+        },
+        {
+          key: 'photos', short: '사진',
+          q: '사진이 있나요?',
+          hint: '없어도 괜찮아요. 다섯 장까지 넣을 수 있어요.',
+          body: '<div class="dropzone" id="wDrop" tabindex="0" role="button" aria-label="사진 고르기">' +
+            '<div id="wIdle"><div class="big">' + ic('image') + '</div>' +
+            '<div class="sm mut" style="margin-top:4px">눌러서 고르세요. 알아서 줄여서 올려요</div></div>' +
+            '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap;justify-content:center"></div>' +
+            '</div>' +
+            '<input type="file" id="wPhotos" accept="image/*" multiple hidden>' +
+            '<button type="button" class="check" id="wInsta" style="margin-top:12px;width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">' +
+            '발자국 인스타그램에 올려도 괜찮아요</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
+            '다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.<br>' +
+            '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>',
+          after: (r, vals) => {
+            const file = r.querySelector('#wPhotos');
+            const drop = r.querySelector('#wDrop');
+            const idle = r.querySelector('#wIdle');
+            const thumbs = r.querySelector('#wThumbs');
+            const insta = r.querySelector('#wInsta');
+            r.__shots = (vals.photos && vals.photos.list) || [];
 
-        '<div id="wOwn" hidden>' +
-        '<div class="grid2">' +
-        '<label class="field"><span class="lb">날짜</span>' +
-        '<input class="input" type="date" id="wDate"></label>' +
-        '<label class="field"><span class="lb">보호소</span>' +
-        '<select class="input" id="wPlace">' +
-        places.map(p => '<option>' + esc(p) + '</option>').join('') +
-        '</select></label></div></div>' +
-
-        '<div class="field"><span class="lb">사진 ' +
-        '<span class="mut" style="font-weight:400">(최대 5장)</span></span>' +
-        '<div class="dropzone" id="wDrop" tabindex="0" role="button" aria-label="사진 고르기">' +
-        '<div id="wIdle"><div class="big">' + ic('image') + '</div>' +
-        '<div class="sm mut" style="margin-top:4px">눌러서 사진을 고르세요. 알아서 줄여서 올려요</div></div>' +
-        '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap;justify-content:center"></div>' +
-        '</div>' +
-        '<input type="file" id="wPhotos" accept="image/*" multiple hidden>' +
-        '<button type="button" class="btn ghost sm block" id="wClear" ' +
-        'style="margin-top:8px" hidden>사진 지우기</button></div>' +
-
-        /* 인스타 사용 동의 — 안 고르면 기본은 '안 됨'이다 */
-        '<button type="button" class="check" id="wInsta" style="margin-top:8px;width:100%;text-align:left">' +
-        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
-        '<span class="grow"><span class="sm" style="font-weight:700">' +
-        '발자국 인스타그램에 올려도 괜찮아요</span>' +
-        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
-        '다른 부원 얼굴이 나오면 그 부원에게도 물어봐 주세요.<br>' +
-        '고르지 않으면 커뮤니티 안에서만 보여요</span></span></button>' +
-
-        '<label class="field" style="margin-top:12px"><span class="lb">어떤 하루였나요</span>' +
-        '<textarea class="input" id="wBody" rows="5" placeholder="오늘 만난 아이들, 기억에 남는 순간…"></textarea></label>' +
-
-        '<button class="btn primary lg block" type="button" id="wSave">올리기</button>'
-    });
-
-    const insta = ov.querySelector('#wInsta');
-    insta.addEventListener('click', () => insta.classList.toggle('on'));
-
-    const sel = ov.querySelector('#wEv');
-    const own = ov.querySelector('#wOwn');
-    if (!acts.length) { sel.value = 'own'; own.hidden = false; }
-    /* 지난 봉사 줄에서 들어왔으면 그 봉사를 미리 골라 둔다 */
-    if (preEvent) {
-      const i = acts.findIndex(r => r.event_id === preEvent);
-      if (i >= 0) sel.value = String(i);
-    }
-    sel.addEventListener('change', () => { own.hidden = sel.value !== 'own'; });
-
-    /* 사진은 올리기 전에 줄인다. 줄이면서 위치정보도 떨어져 나간다 */
-    let shots = [];
-    const file = ov.querySelector('#wPhotos');
-    const drop = ov.querySelector('#wDrop');
-    const idle = ov.querySelector('#wIdle');
-    const thumbs = ov.querySelector('#wThumbs');
-    const clear = ov.querySelector('#wClear');
-
-    drop.addEventListener('click', () => file.click());
-    drop.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
-    });
-    clear.addEventListener('click', e => {
-      e.stopPropagation();
-      shots = []; file.value = '';
-      thumbs.innerHTML = ''; idle.hidden = false; clear.hidden = true;
-    });
-
-    file.addEventListener('change', async e => {
-      const files = Array.prototype.slice.call(e.target.files || []).slice(0, 5);
-      if (!files.length) return;
-      shots = [];
-      idle.hidden = true;
-      thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
-      for (let i = 0; i < files.length; i++) {
-        try { shots.push(await resizeImage(files[i], 1600, .82)); }
-        catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
-      }
-      if (!shots.length) { idle.hidden = false; thumbs.innerHTML = ''; return; }
-      thumbs.innerHTML = shots.map(s =>
-        '<img src="' + s + '" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:11px">').join('') +
-        '<div class="sm mut" style="width:100%;margin-top:6px">' + shots.length + '장 · 다시 눌러 바꿀 수 있어요</div>';
-      clear.hidden = false;
-    });
-
-    ov.querySelector('#wSave').onclick = async () => {
-      const body = ov.querySelector('#wBody').value.trim();
-      let date = null, place = null, eventId = null;
-      if (sel.value === 'own') {
-        date = ov.querySelector('#wDate').value || null;
-        place = ov.querySelector('#wPlace').value || null;
-        if (!date) return toast('날짜를 골라주세요', 'err');
-      } else {
-        const r = acts[Number(sel.value)];
-        if (r) { date = r.date; place = r.place; eventId = r.event_id || null; }
-      }
-      if (!body && !shots.length) return toast('글이나 사진을 넣어주세요', 'err');
-
-      const btn = ov.querySelector('#wSave');
-      btn.disabled = true; btn.textContent = '올리는 중…';
-      try {
+            const paintThumbs = () => {
+              if (!r.__shots.length) { idle.hidden = false; thumbs.innerHTML = ''; return; }
+              idle.hidden = true;
+              thumbs.innerHTML = r.__shots.map(src =>
+                '<img src="' + src + '" alt="" style="width:54px;height:54px;object-fit:cover;' +
+                'border-radius:11px">').join('') +
+                '<div class="sm mut" style="width:100%;margin-top:6px">' +
+                r.__shots.length + '장 · 다시 눌러 바꿀 수 있어요</div>';
+            };
+            paintThumbs();
+            insta.addEventListener('click', () => insta.classList.toggle('on'));
+            drop.addEventListener('click', () => file.click());
+            drop.addEventListener('keydown', e => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
+            });
+            file.addEventListener('change', async e => {
+              const fs = Array.prototype.slice.call(e.target.files || []).slice(0, 5);
+              if (!fs.length) return;
+              idle.hidden = true;
+              thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중…</span>';
+              const out = [];
+              for (let i = 0; i < fs.length; i++) {
+                try { out.push(await resizeImage(fs[i], 1600, .82)); }
+                catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
+              }
+              r.__shots = out;
+              paintThumbs();
+            });
+          },
+          read: r => ({
+            list: r.__shots || [],
+            insta: r.querySelector('#wInsta').classList.contains('on')
+          }),
+          fill: (r, v) => { if (v.insta) r.querySelector('#wInsta').classList.add('on'); },
+          sum: v => v.list.length ? v.list.length + '장' + (v.insta ? ' · 인스타 동의' : '') : '없음'
+        },
+        {
+          key: 'body', short: '글',
+          q: '어떤 하루였나요?',
+          hint: '짧아도 좋아요. 기억에 남는 순간 하나면 충분해요.',
+          body: '<label class="field"><textarea class="input" id="wBody" rows="5" ' +
+            'placeholder="오늘 만난 아이들, 기억에 남는 순간…"></textarea></label>',
+          read: r => r.querySelector('#wBody').value.trim(),
+          fill: (r, v) => { r.querySelector('#wBody').value = v; },
+          sum: v => cut(v, 20)
+        }
+      ],
+      done: async v => {
+        if (!v.body && !v.photos.list.length) throw new Error('글이나 사진을 넣어주세요');
         await DB.community.createPost({
-          type: 'review', event_id: eventId, date, place, body, photos: shots,
-          insta_ok: insta.classList.contains('on')
+          type: 'review', event_id: v.when.event_id,
+          date: v.when.date, place: v.when.place,
+          body: v.body, photos: v.photos.list,
+          insta_ok: v.photos.insta
         });
         closeSheet();
         cheer && cheer();
-        toast('올렸어요!', 'ok');
+        toast('후기 고마워요', 'ok');
         renderHome(true);
-      } catch (e) {
-        toast(e.message || '올리지 못했어요', 'err');
-        btn.disabled = false; btn.textContent = '올리기';
       }
-    };
+    });
   }
 
   /* ============================================================

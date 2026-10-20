@@ -617,6 +617,8 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .wiz-dots i.done{background:var(--brand-soft)}
 .wiz-dots i.on{background:var(--brand-deep);width:28px;height:6px;border-radius:3px}
 .wiz-step{flex:none;font-size:12px;font-weight:700;color:var(--ink-3)}
+/* 한 칸만 묻는 화면의 큰 입력칸 */
+.input.lgin{font-size:18px;padding:15px 16px;font-weight:600}
 /* 질문은 본문 서체로 — 로고 서체는 로고에만 */
 .wiz-q{
   font-family:var(--font-body, inherit);

@@ -34,6 +34,8 @@
 
   const paint = html => { $('#view').innerHTML = html; };
 
+  const draw0 = () => draw();
+
   async function draw() {
     /* 로그인하다 튕긴 경우 — 카카오가 보내준 이유를 그대로 보여준다 */
     const why = DB.authError();
@@ -76,64 +78,112 @@
     $('#go').onclick = () => DB.kakaoLogin(backHere());
   }
 
-  /* ---------- ② 로그인했지만 아직 명부와 안 이어짐 ---------- */
+  /* ---------- ② 로그인했지만 아직 명부와 안 이어짐 ----------
+     묻는 게 둘뿐이어도 한 번에 하나씩 묻는다. 처음 들어오는 사람이라 부담을 줄인다. */
   function paintClaim() {
+    $('#headTitle').textContent = '본인 확인';
     $('#headLead').textContent = '거의 다 됐어요. 한 단계만 남았습니다.';
     const nick = DB.authNickname();
-    paint(
-      steps(1) +
-      '<div class="card">' +
-      '<div class="row" style="gap:8px;color:var(--brand-deep);font-weight:700;font-size:13.5px">' +
-      ic('check') + '<span>카카오 로그인 완료' + (nick ? ' — ' + esc(nick) + '님' : '') + '</span></div>' +
-      '<div class="divider"></div>' +
-      '<h3>본인 확인</h3>' +
-      '<div class="sub">카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인할게요.</div>' +
-      '<div class="sp"></div>' +
-      '<label class="field"><span class="lb">이름</span>' +
-      '<input class="input" id="nm" autocomplete="name" placeholder="홍길동"></label>' +
-      '<label class="field"><span class="lb">휴대폰 뒤 4자리</span>' +
-      '<input class="input" id="p4" inputmode="numeric" maxlength="4" placeholder="3051"></label>' +
-      '<button class="btn primary lg block" id="ok">확인하고 시작하기</button>' +
-      '<div class="sm mut" style="margin-top:12px;line-height:1.6">' +
-      '한 번 이어지면 다른 카카오 계정은 그 이름을 쓸 수 없어요.<br>' +
-      '안 되면 운영진에게 명부의 번호가 맞는지 물어봐주세요.</div>' +
-      '</div>' +
-      '<button class="btn ghost block sm" id="out">다른 카카오 계정으로 로그인</button>');
+    const form = { name: '', last4: '' };
+    let at = 0;
 
-    const nm = $('#nm'), p4 = $('#p4'), ok = $('#ok');
-    p4.addEventListener('input', () => { p4.value = p4.value.replace(/[^0-9]/g, '').slice(0, 4); });
-    nm.addEventListener('keydown', e => { if (e.key === 'Enter') p4.focus(); });
-    p4.addEventListener('keydown', e => { if (e.key === 'Enter') ok.click(); });
-    $('#out').onclick = () => { DB.memberLogout(); draw(); };
+    function draw() {
+      const q = at === 0
+        ? {
+          title: '이름을 알려주세요',
+          hint: '명부에 적힌 이름 그대로 적어주세요.',
+          field: '<input class="input lgin" id="nm" autocomplete="name" ' +
+            'placeholder="홍길동" value="' + esc(form.name) + '">'
+        }
+        : {
+          title: '휴대폰 뒤 4자리는요?',
+          hint: '동아리에 적어낸 번호의 마지막 네 자리예요.',
+          field: '<input class="input lgin" id="p4" inputmode="numeric" maxlength="4" ' +
+            'placeholder="3051" value="' + esc(form.last4) + '">'
+        };
 
-    ok.onclick = async () => {
-      const name = nm.value.trim(), last4 = p4.value.trim();
-      if (!name) return toast('이름을 넣어주세요', 'err');
-      if (last4.length !== 4) return toast('휴대폰 뒤 4자리를 넣어주세요', 'err');
-      ok.disabled = true; ok.textContent = '확인 중…';
+      paint(
+        '<div class="card" style="padding:20px 18px">' +
+        '<div class="row" style="gap:7px;color:var(--brand-deep);font-weight:700;font-size:13px">' +
+        ic('check') + '<span>카카오 로그인 완료' + (nick ? ' — ' + esc(nick) + '님' : '') + '</span></div>' +
+
+        '<div class="wiz-prog" style="margin:16px 0 14px">' +
+        '<div class="wiz-dots">' +
+        '<i class="' + (at === 0 ? 'on' : 'done') + '"></i>' +
+        '<i class="' + (at === 1 ? 'on' : '') + '"></i></div>' +
+        '<span class="wiz-step">' + (at + 1) + '/2</span></div>' +
+
+        (at === 1 && form.name
+          ? '<div class="wiz-sum"><button class="it" type="button" id="goName">' +
+            '<span class="k">이름</span><span class="v">' + esc(form.name) + '</span></button></div>'
+          : '') +
+
+        '<h3 class="wiz-q">' + q.title + '</h3>' +
+        '<p class="wiz-hint">' + q.hint + '</p>' +
+        '<label class="field">' + q.field + '</label>' +
+
+        '<div class="sm mut" style="margin-top:4px;line-height:1.6">' +
+        (at === 1
+          ? '다섯 번 틀리면 한 시간 동안 쉬어야 해요.'
+          : '카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인해요.') +
+        '</div>' +
+        '<div class="sp"></div>' +
+        '<div class="row" style="gap:8px">' +
+        (at === 1 ? '<button class="btn ghost" type="button" id="back">이전</button>' : '') +
+        '<button class="btn primary lg grow" type="button" id="go">' +
+        (at === 0 ? '다음' : '확인하고 시작하기') + '</button></div>' +
+        '</div>' +
+        '<button class="btn ghost block sm" id="out">다른 카카오 계정으로 로그인</button>');
+
+      const input = $(at === 0 ? '#nm' : '#p4');
+      setTimeout(() => input && input.focus(), 60);
+      if (at === 1) input.addEventListener('input', () => {
+        input.value = input.value.replace(/[^0-9]/g, '').slice(0, 4);
+      });
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
+
+      const bk = $('#back'); if (bk) bk.onclick = () => { at = 0; draw(); };
+      const gn = $('#goName'); if (gn) gn.onclick = () => { at = 0; draw(); };
+      $('#out').onclick = () => { DB.memberLogout(); draw0(); };
+      $('#go').onclick = submit;
+    }
+
+    async function submit() {
+      const input = $(at === 0 ? '#nm' : '#p4');
+      const v = input.value.trim();
+      if (at === 0) {
+        if (!v) return toast('이름을 적어주세요', 'err');
+        form.name = v; at = 1; return draw();
+      }
+      if (v.length !== 4) return toast('뒤 4자리를 적어주세요', 'err');
+      form.last4 = v;
+
+      const btn = $('#go');
+      btn.disabled = true; btn.textContent = '확인 중…';
       try {
-        const r = await DB.claimMember(name, last4);
+        const r = await DB.claimMember(form.name, form.last4);
         if (r && r.ok) {
           UI.cheer && UI.cheer();
           toast('반가워요, ' + r.name + '님!', 'ok');
-          return draw();
+          return draw0();
         }
         toast(({
           nomatch: '명부에서 못 찾았어요. 이름과 뒤 4자리를 다시 봐주세요',
           many: '같은 이름이 둘 이상이에요. 운영진에게 말씀해주세요',
           taken: '그 이름은 이미 다른 카카오 계정과 이어져 있어요',
-          locked: '여러 번 틀렸어요. 1시간 뒤에 다시 해주세요',
+          locked: '여러 번 틀렸어요. 한 시간 뒤에 다시 해주세요',
           nologin: '로그인이 풀렸어요. 다시 로그인해주세요'
         }[(r && r.why) || ''] || '확인하지 못했어요'), 'err');
       } catch (e) {
         toast(e.message || '확인하지 못했어요', 'err');
       } finally {
-        ok.disabled = false; ok.textContent = '확인하고 시작하기';
+        btn.disabled = false;
+        btn.textContent = '확인하고 시작하기';
       }
-    };
-  }
+    }
 
-  /* ---------- ③ 졸업·탈퇴 ---------- */
+    draw();
+  }
   function paintLeft(me) {
     $('#headLead').textContent = '';
     paint('<div class="card mecard">' +
