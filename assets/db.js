@@ -63,7 +63,86 @@
       sv('최민재', '수원역', '여러 보호소를 경험해볼 수 있어서 기대돼요.', 'maybe'),
       sv('정예린', '홍대입구역', '매번 같이 봉사하던 사람들과 못 만나게 될까 봐 아쉬워요.', 'yes')
     ];
+    /* ---------- 커뮤니티 예시 ----------
+       체험 모드로 처음 들어온 사람이 빈 화면을 보지 않게,
+       매뉴얼 캡처가 늘 같은 모습이게 — 네 가지만 담백하게 둔다. */
+    const ago = (m) => new Date(Date.now() - m * 60000).toISOString();
+    const me0 = members[0].id;
+    const m1 = (members[1] || members[0]).id;
+    const m2 = (members[2] || members[0]).id;
+
+    const cAnimals = [
+      { id: 'seed-an1', place: '금파하우스', name: '단비', adopted_at: null,
+        created_at: ago(9000) },
+      { id: 'seed-an2', place: '금파하우스', name: '보리', adopted_at: null,
+        created_at: ago(9000) },
+      { id: 'seed-an3', place: '천사들의 보금자리', name: '코코', adopted_at: null,
+        created_at: ago(9000) }
+    ];
+
+    const cPosts = [
+      { id: 'seed-notice', created_at: ago(180), author_id: me0, type: 'notice',
+        event_id: null, place: null, date: null,
+        body: '11월 정기모임은 11/8(토) 오후 2시, 학생회관 3층이에요. 다 같이 봐요!',
+        pinned: true, hidden: false, edited_at: null, insta_ok: false,
+        is_question: false, best_comment_id: null, solved_at: null },
+
+      { id: 'seed-q', created_at: ago(300), author_id: m1, type: 'free',
+        event_id: null, place: null, date: null,
+        body: '처음 봉사 가는데 뭐 입고 가야 하나요?',
+        pinned: false, hidden: false, edited_at: null, insta_ok: false,
+        is_question: true, best_comment_id: 'seed-a1', solved_at: ago(240) },
+
+      { id: 'seed-review', created_at: ago(600), author_id: m2, type: 'review',
+        event_id: null, place: '금파하우스', date: today(),
+        body: '단비가 오늘 산책을 잘 따라와줬어요. 다음에 또 보고 싶어요!',
+        pinned: false, hidden: false, edited_at: null, insta_ok: true,
+        is_question: false, best_comment_id: null, solved_at: null },
+
+      { id: 'seed-free', created_at: ago(900), author_id: me0, type: 'free',
+        event_id: null, place: null, date: null,
+        body: '다음 간식 사러 갈 건데 뭐가 좋을까요?',
+        pinned: false, hidden: false, edited_at: null, insta_ok: false,
+        is_question: false, best_comment_id: null, solved_at: null }
+    ];
+
+    const cComments = [
+      { id: 'seed-a1', created_at: ago(280), post_id: 'seed-q', parent_id: null,
+        author_id: m2, body: '편한 운동복이면 돼요. 목장갑은 보호소에 있어요!',
+        hidden: false, edited_at: null },
+      { id: 'seed-a2', created_at: ago(260), post_id: 'seed-q', parent_id: null,
+        author_id: me0, body: '신발은 더러워져도 되는 걸로 신으세요',
+        hidden: false, edited_at: null }
+    ];
+
+    const cOpts = [
+      { id: 'seed-o1', post_id: 'seed-free', label: '수제 육포', sort: 0 },
+      { id: 'seed-o2', post_id: 'seed-free', label: '치즈 스틱', sort: 1 },
+      { id: 'seed-o3', post_id: 'seed-free', label: '단호박 큐브', sort: 2 }
+    ];
+
     return {
+      posts: cPosts,
+      comments: cComments,
+      post_photos: [],
+      reactions: [
+        { id: 'seed-r1', post_id: 'seed-review', member_id: m1, kind: 'heart',
+          created_at: ago(500) }
+      ],
+      polls: [{
+        post_id: 'seed-free', question: '다음 간식 뭐가 좋을까요?',
+        multi: false, anonymous: false, closes_at: null, closed_at: null,
+        reveal_at: null, revealed_at: null, answer_option_id: null
+      }],
+      poll_options: cOpts,
+      poll_votes: [
+        { id: 'seed-v1', post_id: 'seed-free', option_id: 'seed-o2', member_id: m1,
+          created_at: ago(800) },
+        { id: 'seed-v2', post_id: 'seed-free', option_id: 'seed-o1', member_id: m2,
+          created_at: ago(700) }
+      ],
+      animals: cAnimals,
+      post_animals: [{ post_id: 'seed-review', animal_id: 'seed-an1' }],
       campaigns: [camp], donations: dons, survey_responses: survey,
       settings: Object.assign({ id: 1, form_open: true, place: '천보금 보호소', places: [
         { name: '천사들의 보금자리', area: '', address: '', credit: 2, unit: 'kg' },

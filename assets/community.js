@@ -754,12 +754,12 @@ window.Community = (function () {
 
     box.innerHTML =
       '<div class="card askcard">' +
-      illus('emptyFeed', 'sm') +
-      '<h3>' + whenWord(r.date) + ' ' + esc(r.place || '') + ' 봉사 어땠어요?</h3>' +
-      '<p class="mut sm">짧아도 좋아요. 기억에 남는 순간 하나면 충분해요.</p>' +
-      '<button class="btn primary lg block" type="button" data-ask="' + esc(r.event_id) + '">' +
-      '후기 남기기</button>' +
-      '<button class="linkbtn" type="button" data-askno="' + esc(r.event_id) + '">괜찮아요</button>' +
+      '<span class="paw">' + ic('paw') + '</span>' +
+      '<span class="tx">' + whenWord(r.date) + ' ' + esc(r.place || '') +
+      ' 봉사 어땠어요?</span>' +
+      '<button class="go" type="button" data-ask="' + esc(r.event_id) + '">후기 쓰기</button>' +
+      '<button class="no" type="button" data-askno="' + esc(r.event_id) + '" ' +
+      'aria-label="괜찮아요">✕</button>' +
       '</div>';
   }
 
@@ -1076,6 +1076,17 @@ window.Community = (function () {
     });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
       view.addEventListener(ev, () => { if (hold && hold !== 'done') clearTimeout(hold); }));
+
+    /* 내려서 읽을 때는 + 버튼이 작아진다 — 칩 줄과 격자 아이콘을 가리지 않게 */
+    let lastY = 0;
+    view.addEventListener('scroll', () => {
+      const fab = $('#fab');
+      if (!fab) return;
+      const y = view.scrollTop;
+      if (y > 120 && y > lastY) fab.classList.add('small');
+      else if (y < lastY || y <= 120) fab.classList.remove('small');
+      lastY = y;
+    }, { passive: true });
 
     /* 사진을 넘기면 아래 점도 같이 움직인다 */
     view.addEventListener('scroll', e => {

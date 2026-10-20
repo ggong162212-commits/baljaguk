@@ -893,6 +893,11 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .linkdot.on{color:var(--brand-deep);font-weight:700}
 .linkdot.on::before{background:var(--brand)}
 
+/* 스크롤을 내리면 + 버튼이 작아진다 — 칩 줄과 격자 아이콘을 가리지 않게 */
+.fab.small{width:46px;height:46px}
+.fab.small span,.fab.small .lb{display:none}
+.fab{transition:width .18s,height .18s}
+
 /* 공지 — 한 줄로 접어 두고 누르면 펼친다 */
 .pinrow{width:100%;display:flex;align-items:center;gap:9px;background:var(--gold-soft);
   border:none;border-radius:16px;padding:12px 14px;margin-bottom:7px;cursor:pointer;
@@ -921,11 +926,19 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .item .sub > *{flex:none}
 
 /* 후기 남기기 권유 — 나에게만 보이는 카드 */
-.askcard{text-align:center;padding:22px 20px 18px;margin-bottom:12px}
-.askcard h3{margin-top:10px;font-size:16px;line-height:1.45}
-.askcard p{margin-top:6px}
-.askcard .btn{margin-top:14px}
-.askcard .linkbtn{margin-top:9px;font-size:12.5px;color:var(--ink-3)}
+/* 후기 권유 — 한 줄로. 첫 화면에서 피드를 가리지 않게 */
+.askcard{display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px;
+  min-height:64px}
+.askcard .paw{flex:none;width:32px;height:32px;border-radius:11px;display:grid;
+  place-items:center;background:var(--brand-soft);color:var(--brand-deep)}
+.askcard .paw svg{width:17px;height:17px}
+.askcard .tx{flex:1;min-width:0;font-size:13.5px;font-weight:600;line-height:1.45;
+  color:var(--ink)}
+.askcard .go{flex:none;min-height:0;padding:9px 13px;border-radius:999px;border:none;
+  background:var(--brand);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer}
+.askcard .no{flex:none;width:26px;height:26px;min-height:0;border-radius:50%;border:none;
+  background:none;color:var(--ink-3);font-size:14px;cursor:pointer;display:grid;
+  place-items:center;padding:0}
 
 /* 오늘 만난 친구 — 발바닥 이름표 */
 .animals{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
@@ -1016,7 +1029,8 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .qtop{display:flex;gap:10px;align-items:flex-start}
 .qmark{flex:none;width:24px;height:24px;border-radius:50%;background:var(--brand);
   color:#fff;font-size:13px;font-weight:800;display:grid;place-items:center;margin-top:1px}
-.qt{margin:0;font-size:16px;font-weight:700;line-height:1.5;color:var(--ink);
+.qt{margin:0;font-family:var(--font-body);font-size:16px;font-weight:700;
+  line-height:1.5;color:var(--ink);
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .qmeta{display:flex;align-items:center;gap:9px;margin-top:9px;margin-left:34px;
   font-size:13px;color:var(--ink-3);line-height:1.5}
