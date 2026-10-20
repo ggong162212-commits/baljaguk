@@ -679,11 +679,20 @@
     async saveAttendance(eventId, rows) {
       const cur = (await DB.attendance.list()).filter(a => a.event_id === eventId);
       const keep = new Set(rows.map(r => r.member_id));
-      for (const a of cur) if (!keep.has(a.member_id)) await DB.attendance.remove(a.id);
+      let removed = 0;
+      for (const a of cur) if (!keep.has(a.member_id)) { await DB.attendance.remove(a.id); removed += 1; }
       for (const r of rows) {
         const ex = cur.find(a => a.member_id === r.member_id);
         if (ex) { if (Number(ex.hours) !== Number(r.hours)) await DB.attendance.update(ex.id, { hours: Number(r.hours) || 0 }); }
         else await DB.attendance.create({ event_id: eventId, member_id: r.member_id, hours: Number(r.hours) || 0 });
+      }
+      /* 체험 모드도 실서버 트리거와 같게 — 누가 빠지면 대기자가 올라간다.
+         (확정됐거나 지난 봉사는 promoteWait 안에서 막는다) */
+      if (!HAS_SB && removed) {
+        const d = cdemo();
+        let moved = false;
+        for (let i = 0; i < removed; i++) { if (promoteWait(d, eventId)) moved = true; else break; }
+        if (moved) demoWrite(d);
       }
     },
 
@@ -1202,6 +1211,41 @@
       return await rest('rpc/poll_who', {
         method: 'POST', body: { p_option: optionId }
       }) || [];
+    },
+
+    /* ---------- 봉사 탭 한 번에 ----------
+       일정마다 따로 묻던 것을 하나로 모았다 */
+    async volBoard() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const today = DB.today();
+        const posts = d.posts || [];
+        const wl = d.event_waitlist || [];
+        const soon = (d.events || []).filter(e => String(e.date) >= today)
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+          .map(e => {
+            const mineW = wl.filter(w => w.event_id === e.id)
+              .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+            const idx = mineW.findIndex(w => w.member_id === me);
+            return {
+              id: e.id, date: e.date, title: e.title, place: e.place,
+              start_time: e.start_time, capacity: e.capacity,
+              taken: (d.attendance || []).filter(a => a.event_id === e.id).length,
+              mine: (d.attendance || []).some(a => a.event_id === e.id && a.member_id === me),
+              wait_pos: idx >= 0 ? idx + 1 : null
+            };
+          });
+        const past = (d.events || []).filter(e => String(e.date) < today)
+          .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 12)
+          .map(e => ({
+            id: e.id, date: e.date, place: e.place,
+            confirmed: !!e.confirmed_at,
+            reviews: posts.filter(p => p.type === 'review' && p.event_id === e.id && !p.hidden).length,
+            went: (d.attendance || []).some(a => a.event_id === e.id && a.member_id === me)
+          }));
+        return { soon, past };
+      }
+      return await rest('rpc/vol_board', { method: 'POST', body: { p_days: 120 } });
     },
 
     /* ---------- 대기 신청 ---------- */

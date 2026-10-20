@@ -532,6 +532,7 @@ window.Community = (function () {
       if ((b = hit('data-close'))) return closePoll(b.dataset.close);
       if ((b = hit('data-signup'))) return doSignup(b.dataset.signup, false);
       if ((b = hit('data-cancel'))) return doSignup(b.dataset.cancel, true);
+      if ((b = hit('data-retry'))) return go(cur);
       if ((b = hit('data-wjoin'))) return doWait(b.dataset.wjoin, false);
       if ((b = hit('data-wleave'))) return doWait(b.dataset.wleave, true);
       if ((b = hit('data-past'))) return openPast(b.dataset.past);
@@ -1255,77 +1256,58 @@ window.Community = (function () {
     paint('<div id="soon">' + loading(1) + '</div><div id="past"></div>' +
       '<div id="shelters"></div>');
 
-    let evs = [];
-    try { evs = await DB.events.list(); } catch (e) {
+    let board = null;
+    try { board = await DB.community.volBoard(); } catch (e) { }
+    if (!board) {
       return paint('<div class="card center" style="padding:28px 22px">' + illus('error') +
         '<h3 style="margin-top:12px;font-size:16px">일정을 불러오지 못했어요</h3>' +
-        '<div style="margin-top:14px"><button class="btn primary" type="button" id="rt">다시 시도</button></div></div>');
+        '<div style="margin-top:14px">' +
+        '<button class="btn primary" type="button" data-retry>다시 시도</button></div></div>');
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const soon = evs.filter(e => String(e.date) >= today)
-      .sort((x, y) => String(x.date).localeCompare(String(y.date)));
-    const past = evs.filter(e => String(e.date) < today)
-      .sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 12);
-
-    /* 신청 현황은 일정마다, 내 신청 여부는 id 로 한 번에 */
-    const info = {};
-    for (let i = 0; i < soon.length; i++) {
-      try { info[soon[i].id] = await DB.eventPublic(soon[i].id); } catch (e) { }
-    }
-    let mineIds = [], waits = [];
-    try { mineIds = await DB.community.mySignups(); } catch (e) { }
-    try { waits = await DB.community.myWaitlist(); } catch (e) { }
-    const waitOf = id => (waits.filter(w => w.event_id === id)[0] || null);
+    const soon = board.soon || [];
+    const past = board.past || [];
 
     $('#soon').innerHTML = soon.length
       ? '<div class="section-title">' + ic('calendar') + '<span>다가오는 봉사</span></div>' +
-        soon.map(e => volCard(e, info[e.id], mineIds.indexOf(e.id) >= 0, waitOf(e.id))).join('')
+        soon.map(volCard).join('')
       : '<div class="card center" style="padding:26px 22px">' + illus('emptyFeed', 'sm') +
         '<h3 style="margin-top:10px;font-size:16px">다가오는 봉사가 없어요</h3>' +
         '<p class="mut sm" style="margin-top:6px">일정이 올라오면 여기에 보여요.</p></div>';
 
-    /* 지난 봉사에 후기가 몇 개 달렸는지 */
-    let reviews = [];
-    try {
-      const r = await DB.community.feed({ type: 'review', limit: 50 });
-      reviews = (r && r.rows) || [];
-    } catch (e) { }
-    const cnt = id => reviews.filter(x => x.event_id === id).length;
-
-    paintShelters(reviews);
-
     $('#past').innerHTML = past.length
       ? '<div class="section-title" style="margin-top:16px">' + ic('clock') + '<span>지난 봉사</span></div>' +
-        '<div class="card" style="padding:4px 16px">' + past.map(e => {
-          const n = cnt(e.id);
-          const went = mineIds.indexOf(e.id) >= 0;
-          return '<button class="pastrow" type="button" data-past="' + esc(e.id) + '">' +
-            '<span class="nm">' + fmtDate(e.date) +
-            (e.place ? ' · ' + esc(e.place) : '') +
-            (e.confirmed_at ? '' : ' <span class="badge">확정 전</span>') + '</span>' +
-            (went && !n
-              ? '<span class="go">후기 쓰기</span>'
-              : '<span class="rt">후기 ' + n + '개</span>') + '</button>';
-        }).join('') +
+        '<div class="card" style="padding:4px 16px">' + past.map(e =>
+          '<button class="pastrow" type="button" data-past="' + esc(e.id) + '">' +
+          '<span class="nm">' + fmtDate(e.date) +
+          (e.place ? ' · ' + esc(e.place) : '') +
+          (e.confirmed ? '' : ' <span class="badge">확정 전</span>') + '</span>' +
+          (e.went && !e.reviews
+            ? '<span class="go">후기 쓰기</span>'
+            : '<span class="rt">후기 ' + e.reviews + '개</span>') + '</button>').join('') +
         '</div>'
       : '';
+
+    paintShelters();
   }
 
   /* ---------- 보호소 안내 ---------- */
-  function paintShelters(reviews) {
+  async function paintShelters() {
     const box = $('#shelters');
     if (!box) return;
     const list = placeInfo();
     if (!list.length) { box.innerHTML = ''; return; }
 
-    const recent = p => (reviews || [])
-      .filter(r => r.place === p.name).slice(0, 3);
+    let reviews = [];
+    try {
+      const r = await DB.community.feed({ type: 'review', limit: 50 });
+      reviews = (r && r.rows) || [];
+    } catch (e) { }
 
     box.innerHTML =
       '<div class="section-title" style="margin-top:16px">' + ic('home') + '<span>보호소 안내</span></div>' +
       list.map(p => {
-        const rs = recent(p);
+        const rs = reviews.filter(r => r.place === p.name).slice(0, 3);
         return '<div class="card" style="margin-bottom:12px">' +
           '<div class="row between" style="align-items:flex-start;gap:10px">' +
           '<div class="grow"><div style="font-weight:700;font-size:15px">' + esc(p.name) + '</div>' +
@@ -1360,9 +1342,11 @@ window.Community = (function () {
       }).join('');
   }
 
-  function volCard(e, pub, mine, wait) {
-    const taken = (pub && Number(pub.taken)) || 0;
+  function volCard(e) {
+    const taken = Number(e.taken) || 0;
     const cap = Number(e.capacity) || 0;
+    const mine = !!e.mine;
+    const wait = e.wait_pos ? { pos: e.wait_pos } : null;
     const full = cap > 0 && taken >= cap && !mine;
 
     return '<div class="card" data-ev="' + esc(e.id) + '" style="margin-bottom:12px">' +
@@ -1392,24 +1376,6 @@ window.Community = (function () {
           '자리가 나면 먼저 신청한 분부터 올라가요</div>'
         : '') +
       '</div></div>';
-  }
-
-  /* 누르면 바로 바뀌고, 안 되면 쉬운 말로 알린다 */
-  const SIGNUP_MSG = {
-    dup: '이미 신청하셨어요', full: '자리가 다 찼어요',
-    closed: '아직 신청을 받지 않아요', before: '아직 신청 기간이 아니에요',
-    nomatch: '로그인이 풀렸어요. 다시 들어와주세요',
-    noevent: '없는 일정이에요'
-  };
-
-  async function doWait(id, leave) {
-    try {
-      const r = leave ? await DB.community.waitLeave(id) : await DB.community.waitJoin(id);
-      if (r === 'notfull') { return doSignup(id, false); }
-      if (r !== 'ok') throw new Error(SIGNUP_MSG[r] || '처리하지 못했어요');
-      toast(leave ? '대기를 취소했어요' : '대기 신청했어요', 'ok');
-      renderVol();
-    } catch (e) { toast(e.message || '처리하지 못했어요', 'err'); renderVol(); }
   }
 
   /* 지난 봉사를 누르면 그 봉사 후기로, 안 썼으면 쓰러 간다 */

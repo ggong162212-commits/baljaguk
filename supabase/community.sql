@@ -830,3 +830,57 @@ $$;
 
 revoke all on function my_news(int) from public, anon;
 grant execute on function my_news(int) to authenticated;
+
+
+-- ------------------------------------------------------------
+-- 20) 봉사 탭을 한 번에 — 일정마다 따로 묻지 않는다
+--     다가오는 일정 · 신청 인원 · 내 신청 · 내 대기 순번을 한 번에 준다.
+-- ------------------------------------------------------------
+create or replace function vol_board(p_days int default 120)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+with me_ as (select my_member_id() as id),
+soon as (
+  select e.*,
+         (select count(*)::int from attendance a where a.event_id = e.id) as taken,
+         exists (select 1 from attendance a
+                  where a.event_id = e.id and a.member_id = (select id from me_)) as mine,
+         (select w.pos from (
+            select event_id, member_id,
+                   row_number() over (partition by event_id order by created_at) as pos
+              from event_waitlist) w
+           where w.event_id = e.id and w.member_id = (select id from me_)) as wait_pos
+    from events e
+   where e.date >= current_date
+     and e.date <= current_date + coalesce(p_days, 120)
+),
+past as (
+  select e.id, e.date, e.place, e.title, e.confirmed_at,
+         (select count(*)::int from posts p
+           where p.type = 'review' and p.event_id = e.id and not p.hidden) as reviews,
+         exists (select 1 from attendance a
+                  where a.event_id = e.id and a.member_id = (select id from me_)) as went
+    from events e
+   where e.date < current_date
+   order by e.date desc limit 12
+)
+select case when not is_member() then null else
+  json_build_object(
+    'soon', (select coalesce(json_agg(json_build_object(
+               'id', id, 'date', date, 'title', title, 'place', place,
+               'start_time', start_time, 'capacity', capacity,
+               'taken', taken, 'mine', mine, 'wait_pos', wait_pos)
+               order by date), '[]'::json) from soon),
+    'past', (select coalesce(json_agg(json_build_object(
+               'id', id, 'date', date, 'place', place,
+               'confirmed', confirmed_at is not null,
+               'reviews', reviews, 'went', went)
+               order by date desc), '[]'::json) from past)
+  )
+end;
+$$;
+
+revoke all on function vol_board(int) from public, anon;
+grant execute on function vol_board(int) to authenticated;
