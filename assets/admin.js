@@ -329,7 +329,6 @@
           : '') +
         '<div class="divider"></div>' +
         '<div style="display:grid;gap:8px">' +
-        '<a class="btn soft block" href="me.html">커뮤니티로</a>' +
         '<button class="btn ghost block" type="button" id="apTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html">' + ic('clipboard') + '<span>사용법</span></a>' +

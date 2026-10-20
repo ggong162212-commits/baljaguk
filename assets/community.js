@@ -142,7 +142,6 @@ window.Community = (function () {
         '<button class="btn ghost block" type="button" id="pfTheme">' +
         ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html">' + ic('clipboard') + '<span>사용법</span></a>' +
-        (AM_ADMIN ? '<a class="btn soft block" href="admin.html">운영진 화면으로</a>' : '') +
         '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
         '</div>'
     });
@@ -1466,10 +1465,7 @@ window.Community = (function () {
       esc(genLabel()) + '</div></div></div></div>' +
       '<div id="news"></div>' +
       '<div id="act">' + loading(1) + '</div>' +
-      (AM_ADMIN ? '<a class="btn soft block" href="admin.html">운영진 화면으로</a>' : '') +
-      '<div class="linkline"><a href="guide.html">사용법 보기 →</a></div>' +
-      '<button class="btn ghost block sm" id="out">로그아웃</button>');
-    $('#out').onclick = () => { DB.memberLogout(); location.reload(); };
+      '');
     loadNews();
     await loadActivity();
   }
