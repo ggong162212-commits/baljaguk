@@ -322,7 +322,7 @@ window.Community = (function () {
     } catch (e) { }
     ov.querySelector('#plList').innerHTML = list.length
       ? list.map(p =>
-        '<button class="row56" type="button" data-pick="' + esc(p.name) + '">' +
+        '<button class="row56" type="button" data-place="' + esc(p.name) + '">' +
         '<span class="ic" style="width:38px;height:38px;border-radius:13px;display:grid;' +
         'place-items:center;background:var(--brand-soft);color:var(--brand-deep)">' +
         ic('home') + '</span>' +
@@ -332,8 +332,8 @@ window.Community = (function () {
         '</button>').join('')
       : '<div class="mut sm">봉사지가 아직 없어요</div>';
 
-    ov.querySelectorAll('[data-pick]').forEach(b => b.onclick = async () => {
-      F.kind = 'place'; F.place = b.dataset.pick;
+    ov.querySelectorAll('[data-place]').forEach(b => b.onclick = async () => {
+      F.kind = 'place'; F.place = b.dataset.place;
       saveFilter({ kind: F.kind, place: F.place });
       closeSheet();
       await renderHome(true);

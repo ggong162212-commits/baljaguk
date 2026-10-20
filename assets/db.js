@@ -935,6 +935,8 @@
           .filter(p => !o.type || p.type === o.type)
           /* 공식 투표는 투표 탭에만 */
           .filter(p => o.type || p.type !== 'poll')
+          /* 맨 위에 고정된 공지는 목록에 또 넣지 않는다 */
+          .filter(p => !(p.type === 'notice' && p.pinned))
           .filter(p => !o.place || p.place === o.place)
           .filter(p => !o.cursor || String(p.created_at) < String(o.cursor))
           .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))

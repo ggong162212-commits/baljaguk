@@ -310,6 +310,8 @@ pick as (
      and (p_place  is null or p.place = p_place)
      /* 공식 투표는 투표 탭에만. 피드에는 글 속 투표만 보인다 */
      and (p_type is not null or p.type <> 'poll')
+     /* 맨 위에 고정된 공지는 바로 위에 이미 보인다 — 목록에 또 넣지 않는다 */
+     and not (p.type = 'notice' and p.pinned)
      and (not p.hidden
           or p.author_id = (select id from me_)
           or is_admin())
