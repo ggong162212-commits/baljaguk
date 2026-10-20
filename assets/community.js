@@ -1135,75 +1135,6 @@ window.Community = (function () {
   }
 
   /* 후기 쓰기 단계 — 오늘 만난 친구 고르기 */
-  function animalStep(getPlace) {
-    return {
-      key: 'animals', short: '만난 친구',
-      q: '오늘 만난 친구가 있나요?',
-      hint: '이름을 고르면 나중에 그 아이 이야기만 모아 볼 수 있어요.',
-      body: '<div id="anList" class="mut sm">' + paws() + '</div>' +
-        '<div class="row" style="gap:6px;margin-top:10px">' +
-        '<input class="input grow" id="anNew" placeholder="목록에 없으면 여기에 이름을">' +
-        '<button type="button" class="btn ghost" id="anAdd">더하기</button></div>',
-
-      after: async (r, vals) => {
-        const place = (typeof getPlace === 'function' && getPlace(vals)) || '';
-        r.__picked = (vals.animals || []).slice();
-
-        const paint = (list) => {
-          const box = r.querySelector('#anList');
-          if (!list.length) {
-            box.innerHTML = '<div class="mut sm">아직 등록된 친구가 없어요. ' +
-              '아래에 이름을 적어 더해주세요.</div>';
-            return;
-          }
-          box.innerHTML = '<div class="row" style="gap:7px;flex-wrap:wrap">' +
-            list.map(a =>
-              '<button type="button" class="apaw pick' +
-              (r.__picked.some(x => x.id === a.id) ? ' on' : '') + '" ' +
-              'data-pick-an="' + esc(a.id) + '" data-an-name="' + esc(a.name) + '">' +
-              ic('paw') + '<span>' + esc(a.name) + '</span>' +
-              (a.adopted ? '<span class="adopted">입양</span>' : '') +
-              '</button>').join('') + '</div>';
-
-          box.querySelectorAll('[data-pick-an]').forEach(b => b.onclick = () => {
-            const id = b.dataset.pickAn, nm = b.dataset.anName;
-            const i = r.__picked.findIndex(x => String(x.id) === String(id));
-            if (i >= 0) r.__picked.splice(i, 1);
-            else r.__picked.push({ id: id, name: nm });
-            b.classList.toggle('on');
-          });
-        };
-
-        let list = [];
-        try { list = await DB.community.animalsAt(place) || []; } catch (e) { }
-        r.__all = list;
-        paint(list);
-
-        const add = async () => {
-          const nm = r.querySelector('#anNew').value.trim();
-          if (!nm) return;
-          if (!place) { toast('먼저 보호소를 골라주세요', 'err'); return; }
-          try {
-            const a = await DB.community.animalAdd(place, nm);
-            if (a && !r.__all.some(x => x.id === a.id)) {
-              r.__all.push({ id: a.id, name: a.name, adopted: false, posts: 0 });
-            }
-            if (a) r.__picked.push({ id: a.id, name: a.name });
-            r.querySelector('#anNew').value = '';
-            paint(r.__all);
-          } catch (e) { toast(e.message || '더하지 못했어요', 'err'); }
-        };
-        r.querySelector('#anAdd').onclick = add;
-        r.querySelector('#anNew').addEventListener('keydown', e => {
-          if (e.key === 'Enter') { e.preventDefault(); add(); }
-        });
-      },
-
-      read: r => r.__picked || [],
-      sum: v => v.length ? v.map(a => a.name).join(' · ') : '없음'
-    };
-  }
-
   /* ---------- 글쓰기 ----------
      먼저 어떤 글인지 고르고, 고른 것에 맞는 단계만 묻는다.
      후기는 봉사·사진·글·설문, 자유글은 사진·글·설문. */
@@ -1246,135 +1177,260 @@ window.Community = (function () {
       'T' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
-  /* 설문·퀴즈 넣기 — 후기·자유글·공지가 같이 쓴다. 넣지 않아도 넘어간다.
-     퀴즈는 같은 구조에 정답과 발표 시각만 더한 것이다. */
-  function pollStep() {
+  /* ---------- 「더하기」 ----------
+     후기를 쓰는 데 꼭 필요한 건 봉사·사진·글 셋뿐이다.
+     만난 친구와 설문·퀴즈는 글 아래 칩으로 두고, 누를 때만 그 자리에서 펼친다.
+     안 누르면 그냥 올라간다. */
+
+  /* 만난 친구 고르기를 담는 칸 */
+  function mountAnimals(box, getPlace, picked) {
+    box.innerHTML = '<div id="anList" class="mut sm">' + paws() + '</div>' +
+      '<div class="row" style="gap:6px;margin-top:10px">' +
+      '<input class="input grow" id="anNew" placeholder="목록에 없으면 여기에 이름을">' +
+      '<button type="button" class="btn ghost" id="anAdd">더하기</button></div>';
+
+    const state = { picked: (picked || []).slice(), all: [] };
+
+    const paint = () => {
+      const list = state.all;
+      const el = box.querySelector('#anList');
+      if (!list.length) {
+        el.innerHTML = '<div class="mut sm">아직 등록된 친구가 없어요. ' +
+          '아래에 이름을 적어 더해주세요.</div>';
+        return;
+      }
+      el.innerHTML = '<div class="row" style="gap:7px;flex-wrap:wrap">' +
+        list.map(a =>
+          '<button type="button" class="apaw pick' +
+          (state.picked.some(x => String(x.id) === String(a.id)) ? ' on' : '') + '" ' +
+          'data-pick-an="' + esc(a.id) + '" data-an-name="' + esc(a.name) + '">' +
+          ic('paw') + '<span>' + esc(a.name) + '</span>' +
+          (a.adopted ? '<span class="adopted">입양</span>' : '') +
+          '</button>').join('') + '</div>';
+
+      el.querySelectorAll('[data-pick-an]').forEach(b => b.onclick = () => {
+        const id = b.dataset.pickAn, nm = b.dataset.anName;
+        const i = state.picked.findIndex(x => String(x.id) === String(id));
+        if (i >= 0) state.picked.splice(i, 1);
+        else state.picked.push({ id: id, name: nm });
+        b.classList.toggle('on');
+        if (state.onChange) state.onChange(state.picked);
+      });
+    };
+
+    (async () => {
+      try { state.all = await DB.community.animalsAt(getPlace()) || []; } catch (e) { }
+      paint();
+    })();
+
+    const add = async () => {
+      const nm = box.querySelector('#anNew').value.trim();
+      if (!nm) return;
+      const place = getPlace();
+      if (!place) return toast('먼저 봉사를 골라주세요', 'err');
+      try {
+        const a = await DB.community.animalAdd(place, nm);
+        if (a && !state.all.some(x => String(x.id) === String(a.id))) {
+          state.all.push({ id: a.id, name: a.name, adopted: false, posts: 0 });
+        }
+        if (a) state.picked.push({ id: a.id, name: a.name });
+        box.querySelector('#anNew').value = '';
+        paint();
+        if (state.onChange) state.onChange(state.picked);
+      } catch (e) { toast(e.message || '더하지 못했어요', 'err'); }
+    };
+    box.querySelector('#anAdd').onclick = add;
+    box.querySelector('#anNew').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); add(); }
+    });
+
+    return state;
+  }
+
+  /* 설문·퀴즈를 담는 칸 */
+  function mountPoll(box, saved) {
+    box.innerHTML =
+      '<div class="seg" id="pKind" style="margin-bottom:12px">' +
+      '<button type="button" data-k="none" class="on">안 넣기</button>' +
+      '<button type="button" data-k="poll">설문</button>' +
+      '<button type="button" data-k="quiz">퀴즈</button></div>' +
+
+      '<div id="pBox" hidden>' +
+      '<label class="field"><span class="lb" id="pQL">무엇을 물어볼까요?</span>' +
+      '<input class="input" id="pQ" placeholder="다음엔 어디로 갈까요?"></label>' +
+      '<div class="lb" style="margin-bottom:6px" id="pOL">고를 것</div>' +
+      '<div id="pOpts" style="display:grid;gap:7px"></div>' +
+      '<button type="button" class="btn ghost sm block" id="pAdd" style="margin-top:8px">' +
+      '하나 더 넣기</button>' +
+      '<div id="pPollOnly">' +
+      '<button type="button" class="check" id="pMulti" style="width:100%;text-align:left;margin-top:10px">' +
+      '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+      '<span class="grow"><span class="sm">여러 개 고를 수 있게</span></span></button></div>' +
+      '<div id="pQuizOnly" hidden>' +
+      '<div class="pill-note" style="margin-top:12px">' +
+      '정답은 발표 전까지 아무에게도 안 보여요. 고른 사람도 자기 답만 보여요.</div>' +
+      '<label class="field" style="margin-top:12px"><span class="lb">정답 발표 시간</span>' +
+      '<input class="input" type="datetime-local" id="pWhen"></label>' +
+      '</div></div>';
+
+    const seg = box.querySelector('#pKind');
+    const wrap = box.querySelector('#pBox');
+    const opts = box.querySelector('#pOpts');
+    const quizOnly = box.querySelector('#pQuizOnly');
+    const pollOnly = box.querySelector('#pPollOnly');
+    const st = { kind: (saved && saved.kind) || 'none' };
+
+    const addOpt = (val, isAns) => {
+      if (opts.children.length >= 6) return;
+      const i = opts.children.length;
+      const w = document.createElement('div');
+      w.className = 'row';
+      w.style.gap = '6px';
+      w.innerHTML =
+        '<button type="button" class="ansdot' + (isAns ? ' on' : '') + '" data-ans ' +
+        'aria-label="정답으로 고르기" title="정답">' + ic('check') + '</button>' +
+        '<input class="input grow" placeholder="' + (i + 1) + '번" value="' + esc(val || '') + '">' +
+        (i >= 2 ? '<button type="button" class="btn ghost sm" data-del>✕</button>' : '');
+      opts.appendChild(w);
+      w.querySelector('[data-ans]').onclick = () => {
+        opts.querySelectorAll('[data-ans]').forEach(d => d.classList.remove('on'));
+        w.querySelector('[data-ans]').classList.add('on');
+      };
+      const del = w.querySelector('[data-del]');
+      if (del) del.onclick = () => { w.remove(); if (st.onChange) st.onChange(); };
+      sync();
+    };
+
+    function sync() {
+      wrap.hidden = st.kind === 'none';
+      quizOnly.hidden = st.kind !== 'quiz';
+      pollOnly.hidden = st.kind === 'quiz';
+      opts.querySelectorAll('[data-ans]').forEach(d => { d.hidden = st.kind !== 'quiz'; });
+      box.querySelector('#pQL').textContent =
+        st.kind === 'quiz' ? '무엇을 맞혀볼까요?' : '무엇을 물어볼까요?';
+      box.querySelector('#pQ').placeholder =
+        st.kind === 'quiz' ? '이 친구 이름은 뭘까요?' : '다음엔 어디로 갈까요?';
+      box.querySelector('#pOL').textContent =
+        st.kind === 'quiz' ? '고를 것 — 정답 하나를 눌러주세요' : '고를 것';
+      seg.querySelectorAll('[data-k]').forEach(b =>
+        b.classList.toggle('on', b.dataset.k === st.kind));
+      if (st.onChange) st.onChange();
+    }
+
+    const seed = (saved && saved.options && saved.options.length) ? saved.options : ['', ''];
+    seed.forEach((o, i) => addOpt(typeof o === 'string' ? o : o.label,
+      saved && saved.answer != null && saved.answer === i));
+    box.querySelector('#pAdd').onclick = () => addOpt('', false);
+    seg.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { st.kind = b.dataset.k; sync(); });
+    box.querySelector('#pMulti').onclick = e => e.currentTarget.classList.toggle('on');
+    box.querySelector('#pWhen').value = (saved && saved.when) || defaultReveal();
+    if (saved && saved.question) box.querySelector('#pQ').value = saved.question;
+    if (saved && saved.multi) box.querySelector('#pMulti').classList.add('on');
+    sync();
+
+    st.read = () => {
+      if (st.kind === 'none') return null;
+      const rows = Array.prototype.slice.call(opts.querySelectorAll('.row'));
+      const options = rows.map(w => w.querySelector('input').value.trim());
+      let answer = null;
+      rows.forEach((w, i) => {
+        if (w.querySelector('[data-ans]').classList.contains('on')) answer = i;
+      });
+      return {
+        kind: st.kind,
+        question: box.querySelector('#pQ').value.trim(),
+        multi: st.kind === 'poll' && box.querySelector('#pMulti').classList.contains('on'),
+        options: options,
+        answer: st.kind === 'quiz' ? answer : null,
+        when: st.kind === 'quiz' ? box.querySelector('#pWhen').value : null
+      };
+    };
+    return st;
+  }
+
+  /* 글 단계 — 여기서 올린다. 더하기 칩 둘이 아래에 붙는다. */
+  function bodyStep(o) {
+    const opt = o || {};
     return {
-      key: 'poll', short: '설문',
-      q: '설문이나 퀴즈를 넣을까요?',
-      hint: '안 넣어도 괜찮아요. 넣으면 글 안에서 바로 누를 수 있어요.',
-      body: '<div class="seg" id="pKind" style="margin-bottom:12px">' +
-        '<button type="button" data-k="none" class="on">안 넣기</button>' +
-        '<button type="button" data-k="poll">설문</button>' +
-        '<button type="button" data-k="quiz">퀴즈</button></div>' +
+      key: 'body', short: '글',
+      q: opt.q || '어떤 하루였나요?',
+      hint: opt.hint || '짧아도 좋아요. 기억에 남는 순간 하나면 충분해요.',
+      body: '<label class="field"><textarea class="input" id="wBody" rows="5" ' +
+        'placeholder="' + esc(opt.ph || '오늘 만난 아이들, 기억에 남는 순간…') + '"></textarea></label>' +
 
-        '<div id="pBox" hidden>' +
-        '<label class="field"><span class="lb" id="pQL">무엇을 물어볼까요?</span>' +
-        '<input class="input" id="pQ" placeholder="다음엔 어디로 갈까요?"></label>' +
-
-        '<div class="lb" style="margin-bottom:6px" id="pOL">고를 것</div>' +
-        '<div id="pOpts" style="display:grid;gap:7px"></div>' +
-        '<button type="button" class="btn ghost sm block" id="pAdd" style="margin-top:8px">' +
-        '하나 더 넣기</button>' +
-
-        '<div id="pPollOnly">' +
-        '<button type="button" class="check" id="pMulti" style="width:100%;text-align:left;margin-top:10px">' +
-        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
-        '<span class="grow"><span class="sm">여러 개 고를 수 있게</span></span></button></div>' +
-
-        '<div id="pQuizOnly" hidden>' +
-        '<div class="pill-note" style="margin-top:12px">' +
-        '정답은 발표 전까지 아무에게도 안 보여요. 고른 사람도 자기 답만 보여요.</div>' +
-        '<label class="field" style="margin-top:12px"><span class="lb">정답 발표 시간</span>' +
-        '<input class="input" type="datetime-local" id="pWhen"></label>' +
-        '</div></div>',
+        '<div class="addrow">' +
+        (opt.animals
+          ? '<button type="button" class="addchip" data-ex="an">' + ic('paw') +
+            '<span class="t">만난 친구</span><span class="v"></span></button>'
+          : '') +
+        '<button type="button" class="addchip" data-ex="poll">' + ic('clipboard') +
+        '<span class="t">설문 · 퀴즈</span><span class="v"></span></button>' +
+        '</div>' +
+        '<div class="expand" id="exAn" hidden></div>' +
+        '<div class="expand" id="exPoll" hidden></div>',
 
       after: (r, vals) => {
-        const seg = r.querySelector('#pKind'), box = r.querySelector('#pBox');
-        const opts = r.querySelector('#pOpts');
-        const quizOnly = r.querySelector('#pQuizOnly'), pollOnly = r.querySelector('#pPollOnly');
-        const saved = vals.poll || {};
-        let kind = saved.kind || 'none';
+        r.__an = null; r.__poll = null;
 
-        /* 퀴즈는 선택지마다 「정답」 고르기가 하나씩 붙는다 */
-        const addOpt = (val, isAns) => {
-          if (opts.children.length >= 6) return;
-          const i = opts.children.length;
-          const w = document.createElement('div');
-          w.className = 'row';
-          w.style.gap = '6px';
-          w.innerHTML =
-            '<button type="button" class="ansdot' + (isAns ? ' on' : '') + '" data-ans ' +
-            'aria-label="정답으로 고르기" title="정답">' + ic('check') + '</button>' +
-            '<input class="input grow" placeholder="' + (i + 1) + '번" value="' + esc(val || '') + '">' +
-            (i >= 2 ? '<button type="button" class="btn ghost sm" data-del>✕</button>' : '');
-          opts.appendChild(w);
-          w.querySelector('[data-ans]').onclick = () => {
-            opts.querySelectorAll('[data-ans]').forEach(d => d.classList.remove('on'));
-            w.querySelector('[data-ans]').classList.add('on');
-          };
-          const del = w.querySelector('[data-del]');
-          if (del) del.onclick = () => w.remove();
-          syncKind();
+        const chip = k => r.querySelector('[data-ex="' + k + '"]');
+        const setV = (k, text) => {
+          const c = chip(k); if (!c) return;
+          c.querySelector('.v').textContent = text || '';
+          c.classList.toggle('on', !!text);
         };
 
-        function syncKind() {
-          box.hidden = kind === 'none';
-          quizOnly.hidden = kind !== 'quiz';
-          pollOnly.hidden = kind === 'quiz';
-          opts.querySelectorAll('[data-ans]').forEach(d => { d.hidden = kind !== 'quiz'; });
-          r.querySelector('#pQL').textContent =
-            kind === 'quiz' ? '무엇을 맞혀볼까요?' : '무엇을 물어볼까요?';
-          r.querySelector('#pQ').placeholder =
-            kind === 'quiz' ? '이 친구 이름은 뭘까요?' : '다음엔 어디로 갈까요?';
-          r.querySelector('#pOL').textContent =
-            kind === 'quiz' ? '고를 것 — 정답 하나를 눌러주세요' : '고를 것';
-          seg.querySelectorAll('[data-k]').forEach(b =>
-            b.classList.toggle('on', b.dataset.k === kind));
-        }
+        const anBox = r.querySelector('#exAn');
+        const pollBox = r.querySelector('#exPoll');
 
-        const seed = saved.options && saved.options.length ? saved.options : ['', ''];
-        seed.forEach((o, i) => addOpt(typeof o === 'string' ? o : o.label,
-          saved.answer != null && saved.answer === i));
-        r.querySelector('#pAdd').onclick = () => addOpt('', false);
+        const openEx = (k) => {
+          const box = k === 'an' ? anBox : pollBox;
+          const other = k === 'an' ? pollBox : anBox;
+          other.hidden = true;
+          box.hidden = !box.hidden;
+          if (box.hidden) return;
 
-        seg.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
-          kind = b.dataset.k; syncKind();
-        });
-        r.querySelector('#pMulti').onclick = e => e.currentTarget.classList.toggle('on');
-        r.querySelector('#pWhen').value = saved.when || defaultReveal();
-        if (saved.question) r.querySelector('#pQ').value = saved.question;
-        if (saved.multi) r.querySelector('#pMulti').classList.add('on');
-        syncKind();
-      },
-
-      read: r => {
-        const on = r.querySelector('#pKind [data-k].on');
-        const kind = on ? on.dataset.k : 'none';
-        if (kind === 'none') return null;
-        const rows = Array.prototype.slice.call(r.querySelectorAll('#pOpts .row'));
-        const options = rows.map(w => w.querySelector('input').value.trim());
-        let answer = null;
-        rows.forEach((w, i) => {
-          if (w.querySelector('[data-ans]').classList.contains('on')) answer = i;
-        });
-        return {
-          kind: kind,
-          question: r.querySelector('#pQ').value.trim(),
-          multi: kind === 'poll' && r.querySelector('#pMulti').classList.contains('on'),
-          options: options,
-          answer: kind === 'quiz' ? answer : null,
-          when: kind === 'quiz' ? r.querySelector('#pWhen').value : null
+          if (k === 'an' && !r.__an) {
+            r.__an = mountAnimals(box, () => opt.place ? opt.place(vals) : '', vals.__an || []);
+            r.__an.onChange = list =>
+              setV('an', list.length ? list.map(a => a.name).join(' · ') : '');
+          }
+          if (k === 'poll' && !r.__poll) {
+            r.__poll = mountPoll(box, vals.__poll || null);
+            r.__poll.onChange = () => {
+              const v = r.__poll.read();
+              setV('poll', v ? (v.kind === 'quiz' ? '퀴즈' : '설문') : '');
+            };
+          }
         };
+
+        r.querySelectorAll('[data-ex]').forEach(b =>
+          b.onclick = () => openEx(b.dataset.ex));
+
+        if (vals.body && vals.body.text) r.querySelector('#wBody').value = vals.body.text;
       },
+
+      read: r => ({
+        text: r.querySelector('#wBody').value.trim(),
+        animals: r.__an ? r.__an.picked : [],
+        poll: r.__poll ? r.__poll.read() : null
+      }),
 
       valid: v => {
-        if (!v) return '';
-        if (!v.question) return v.kind === 'quiz' ? '무엇을 맞혀볼지 적어주세요' : '무엇을 물어볼지 적어주세요';
-        const filled = v.options.filter(Boolean);
+        const p = v.poll;
+        if (!p) return '';
+        if (!p.question) return p.kind === 'quiz' ? '무엇을 맞혀볼지 적어주세요' : '무엇을 물어볼지 적어주세요';
+        const filled = p.options.filter(Boolean);
         if (filled.length < 2) return '고를 것을 두 개 넘게 적어주세요';
-        if (filled.length !== v.options.length) return '빈 칸을 채우거나 지워주세요';
-        if (v.kind === 'quiz') {
-          if (v.answer == null) return '정답 하나를 눌러주세요';
-          if (!v.when) return '발표 시간을 골라주세요';
-          if (new Date(v.when).getTime() <= Date.now()) return '발표 시간은 지금보다 뒤여야 해요';
+        if (filled.length !== p.options.length) return '빈 칸을 채우거나 지워주세요';
+        if (p.kind === 'quiz') {
+          if (p.answer == null) return '정답 하나를 눌러주세요';
+          if (!p.when) return '발표 시간을 골라주세요';
+          if (new Date(p.when).getTime() <= Date.now()) return '발표 시간은 지금보다 뒤여야 해요';
         }
         return '';
       },
 
-      sum: v => !v ? '없음'
-        : (v.kind === 'quiz' ? '퀴즈 · ' : '설문 · ') +
-          cut(v.question, 14) + ' · ' + v.options.filter(Boolean).length + '개'
+      sum: v => cut(v.text, 20)
     };
   }
 
@@ -1536,24 +1592,19 @@ window.Community = (function () {
       steps: [
         photoStep(false,
           '없어도 괜찮아요. 퀴즈를 낼 거면 이 친구 사진을 올리면 더 재밌어요.'),
-        {
-          key: 'body', short: '글',
+        bodyStep({
           q: '무슨 이야기인가요?',
           hint: '일상도, 궁금한 것도 좋아요.',
-          body: '<label class="field"><textarea class="input" id="wBody" rows="5" ' +
-            'placeholder="오늘 있었던 일, 궁금한 것…"></textarea></label>',
-          read: r => r.querySelector('#wBody').value.trim(),
-          fill: (r, v) => { r.querySelector('#wBody').value = v; },
-          sum: v => cut(v, 20)
-        },
-        pollStep()
+          ph: '오늘 있었던 일, 궁금한 것…'
+        })
       ],
       done: async v => {
-        if (!v.body && !v.photos.list.length && !v.poll) {
+        if (!v.body.text && !v.photos.list.length && !v.body.poll) {
           throw new Error('글이나 사진을 넣어주세요');
         }
         await DB.community.createPost({
-          type: 'free', body: v.body, photos: v.photos.list, poll: pollPayload(v.poll)
+          type: 'free', body: v.body.text, photos: v.photos.list,
+          poll: pollPayload(v.body.poll)
         });
         closeSheet();
         cheer && cheer();
@@ -1598,12 +1649,11 @@ window.Community = (function () {
           read: r => r.querySelector('#nPin').classList.contains('on'),
           fill: (r, v) => { r.querySelector('#nPin').classList.toggle('on', !!v); },
           sum: v => v ? '고정함' : '고정 안 함'
-        },
-        pollStep()
+        }
       ],
       done: async v => {
         await DB.community.createPost({
-          type: 'notice', body: v.body, pinned: v.pin, poll: pollPayload(v.poll)
+          type: 'notice', body: v.body, pinned: v.pin
         });
         closeSheet();
         toast('공지를 올렸어요', 'ok');
@@ -1623,11 +1673,24 @@ window.Community = (function () {
     } catch (e) { /* 못 불러와도 직접 입력으로 쓸 수 있다 */ }
     const places = placeList();
 
-    UI.wizard({
-      title: '봉사 후기 쓰기',
-      doneLabel: '올리기',
-      steps: [
-        {
+    /* 홈 권유 카드나 「나」 탭에서 들어왔으면 어느 봉사인지 이미 안다.
+       그 단계는 건너뛰고 사진부터 묻는다. */
+    let fixed = null;
+    if (preEvent) {
+      const hit = acts.filter(x => String(x.event_id) === String(preEvent))[0];
+      if (hit) {
+        fixed = { own: false, date: hit.date, place: hit.place, event_id: hit.event_id };
+      } else {
+        try {
+          const r = await DB.community.reviewPrompt();
+          if (r && String(r.event_id) === String(preEvent)) {
+            fixed = { own: false, date: r.date, place: r.place, event_id: r.event_id };
+          }
+        } catch (e) { }
+      }
+    }
+
+    const whenStep = {
           key: 'when', short: '봉사',
           q: '어느 봉사였나요?',
           hint: acts.length
@@ -1682,29 +1745,28 @@ window.Community = (function () {
           },
           valid: v => v.date ? '' : '날짜를 골라주세요',
           sum: v => fmtDate(v.date) + (v.place ? ' · ' + v.place : '')
-        },
-        animalStep(v => (v.when && v.when.place) || ''),
+    };
+
+    UI.wizard({
+      title: '봉사 후기 쓰기',
+      doneLabel: '올리기',
+      steps: [
+        ...(fixed ? [] : [whenStep]),
         photoStep(true),
-        {
-          key: 'body', short: '글',
-          q: '어떤 하루였나요?',
-          hint: '짧아도 좋아요. 기억에 남는 순간 하나면 충분해요.',
-          body: '<label class="field"><textarea class="input" id="wBody" rows="5" ' +
-            'placeholder="오늘 만난 아이들, 기억에 남는 순간…"></textarea></label>',
-          read: r => r.querySelector('#wBody').value.trim(),
-          fill: (r, v) => { r.querySelector('#wBody').value = v; },
-          sum: v => cut(v, 20)
-        },
-        pollStep()
+        bodyStep({
+          animals: true,
+          place: v => (fixed ? fixed.place : (v.when && v.when.place)) || ''
+        })
       ],
       done: async v => {
-        if (!v.body && !v.photos.list.length) throw new Error('글이나 사진을 넣어주세요');
+        if (!v.body.text && !v.photos.list.length) throw new Error('글이나 사진을 넣어주세요');
+        const when = fixed || v.when;
         await DB.community.createPost({
-          type: 'review', event_id: v.when.event_id,
-          date: v.when.date, place: v.when.place,
-          body: v.body, photos: v.photos.list,
-          insta_ok: v.photos.insta, poll: pollPayload(v.poll),
-          animals: (v.animals || []).map(a => a.id)
+          type: 'review', event_id: when.event_id,
+          date: when.date, place: when.place,
+          body: v.body.text, photos: v.photos.list,
+          insta_ok: v.photos.insta, poll: pollPayload(v.body.poll),
+          animals: (v.body.animals || []).map(a => a.id)
         });
         closeSheet();
         cheer && cheer();
