@@ -604,7 +604,11 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   background:var(--surface);
   padding-bottom:max(0px, env(safe-area-inset-bottom))
 }
-.sheet .sheet-foot .btn{width:100%}
+.sheet .sheet-foot > .btn{width:100%}
+.sheet .sheet-foot .row{display:flex;gap:8px;align-items:stretch}
+.sheet .sheet-foot .row .btn{width:auto}
+.sheet .sheet-foot .row .btn.grow{flex:1}
+.sheet .sheet-foot .row .btn.ghost{flex:none;min-width:84px}
 /* 단계형 입력 */
 .wiz-dots{display:flex;gap:6px;justify-content:center;margin:-6px 0 14px}
 .wiz-dots i{width:7px;height:7px;border-radius:50%;background:var(--line);transition:.2s}

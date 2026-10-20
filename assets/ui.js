@@ -119,6 +119,79 @@
     } catch (e) { toast('복사하지 못했어요. 길게 눌러 복사해주세요', 'err'); return false; }
   }
 
+  /* ---------- 단계형 입력 ----------
+     질문이 여러 개면 한 번에 하나씩 묻는다. 고른 값은 위에 요약으로 남는다.
+     steps: [{ q, hint, body, read(root), valid(v), sum(v), skip(vals) }]
+     done(values) 로 끝난다. */
+  function wizard(opts) {
+    const steps = (opts.steps || []).slice();
+    const vals = {};
+    let i = 0;
+
+    const live = () => steps.filter(st => !(st.skip && st.skip(vals)));
+    const ov = sheet({
+      title: opts.title || '',
+      body: '<div class="wiz-dots" id="wzDots"></div>' +
+        '<div class="wiz-sum" id="wzSum"></div>' +
+        '<h3 class="wiz-q" id="wzQ"></h3>' +
+        '<p class="wiz-hint" id="wzHint"></p>' +
+        '<div id="wzBody"></div>',
+      foot: '<div class="row" style="gap:8px">' +
+        '<button class="btn ghost" type="button" id="wzBack" hidden>이전</button>' +
+        '<button class="btn primary lg grow" type="button" id="wzNext">다음</button></div>'
+    });
+
+    const $$$ = sel => ov.querySelector(sel);
+
+    function paint() {
+      const list = live();
+      const st = list[i];
+      if (!st) return;
+      $$$('#wzDots').innerHTML = list.map((x, n) =>
+        '<i' + (n <= i ? ' class="on"' : '') + '></i>').join('');
+      $$$('#wzSum').innerHTML = list.slice(0, i).map(x =>
+        (x.sum && vals[x.key] !== undefined && String(vals[x.key]).trim())
+          ? '<div class="it"><span class="k">' + esc(x.short || '') + '</span>' +
+            '<span class="v">' + esc(x.sum(vals[x.key])) + '</span></div>'
+          : '').join('');
+      $$$('#wzQ').textContent = st.q || '';
+      $$$('#wzHint').textContent = st.hint || '';
+      $$$('#wzHint').hidden = !st.hint;
+      $$$('#wzBody').innerHTML = typeof st.body === 'function' ? st.body(vals) : (st.body || '');
+      if (st.after) st.after($$$('#wzBody'), vals);
+      /* 단계를 넘기면 질문이 맨 위에 보이게 */
+      const bodyEl = ov.querySelector('.sheet-body');
+      if (bodyEl) bodyEl.scrollTop = 0;
+      $$$('#wzBack').hidden = i === 0;
+      $$$('#wzNext').textContent = i === list.length - 1 ? (opts.doneLabel || '올리기') : '다음';
+      const first = $$$('#wzBody').querySelector('input,textarea,select');
+      if (first && !first.type.match(/file|date/)) setTimeout(() => first.focus(), 60);
+    }
+
+    $$$('#wzBack').onclick = () => { if (i > 0) { i -= 1; paint(); } };
+    $$$('#wzNext').onclick = async () => {
+      const list = live();
+      const st = list[i];
+      const v = st.read ? st.read($$$('#wzBody')) : null;
+      if (st.valid) {
+        const bad = st.valid(v);
+        if (bad) return toast(bad, 'err');
+      }
+      vals[st.key] = v;
+      if (i < list.length - 1) { i += 1; return paint(); }
+      const btn = $$$('#wzNext');
+      btn.disabled = true; btn.textContent = '올리는 중…';
+      try { await opts.done(vals); }
+      catch (e) {
+        toast((e && e.message) || '올리지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = opts.doneLabel || '올리기';
+      }
+    };
+
+    paint();
+    return ov;
+  }
+
   /* ---------- 포맷 ---------- */
   const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
   const num = n => (Number(n) || 0).toLocaleString('ko-KR');
@@ -275,7 +348,7 @@
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
-    copy, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
+    copy, wizard, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
     resizeImage, cropSquare, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
   };
 })();

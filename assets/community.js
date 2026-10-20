@@ -1079,16 +1079,9 @@ window.Community = (function () {
     } catch (e) { toast(e.message || '마감하지 못했어요', 'err'); }
   }
 
-  /* ---------- 투표 만들기 (운영진만) ---------- */
+  /* ---------- 투표 만들기 (운영진만) ----------
+     질문이 다섯 개라 한 번에 하나씩 묻는다 */
   function pollSheet() {
-    let count = 2;
-    const EG = ['예: 토요일 오전', '예: 일요일 오후', '예: 둘 다 괜찮아요',
-      '예: 평일 저녁', '예: 이번엔 어려워요', '예: 아직 모르겠어요'];
-    const optRow = i =>
-      '<label class="field" style="margin-bottom:8px"><span class="lb">선택지 ' + (i + 1) + '</span>' +
-      '<input class="input" data-opt-in="' + i + '" placeholder="' + EG[i % EG.length] + '"></label>';
-
-    /* 비워 두면 마감 없는 투표가 된다. 3일 뒤 저녁 9시를 기본으로 */
     const dflt = (function () {
       const t = new Date(Date.now() + 3 * 864e5);
       t.setHours(21, 0, 0, 0);
@@ -1096,66 +1089,91 @@ window.Community = (function () {
       return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) +
         'T' + p2(t.getHours()) + ':' + p2(t.getMinutes());
     })();
+    const EG = ['예: 토요일 오전', '예: 일요일 오후', '예: 둘 다 괜찮아요',
+      '예: 평일 저녁', '예: 이번엔 어려워요', '예: 아직 모르겠어요'];
 
-    const ov = sheet({
+    UI.wizard({
       title: '투표 만들기',
-      body:
-        '<label class="field"><span class="lb">무엇을 물어볼까요</span>' +
-        '<input class="input" id="pq" placeholder="예: 다음 봉사는 언제가 좋을까요?"></label>' +
-        '<div id="pOpts">' + optRow(0) + optRow(1) + '</div>' +
-        '<button class="btn ghost sm block" type="button" id="pAdd">선택지 더하기</button>' +
-        '<label class="field" style="margin-top:12px"><span class="lb">언제까지 받을까요</span>' +
-        '<input class="input" type="datetime-local" id="pEnd" value="' + dflt + '"></label>' +
-        '<button type="button" class="check" id="pMulti" style="width:100%;text-align:left;margin-bottom:8px">' +
-        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
-        '<span class="sm" style="font-weight:700">여러 개 고를 수 있게</span></button>' +
-        '<button type="button" class="check" id="pAnon" style="width:100%;text-align:left">' +
-        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
-        '<span class="grow"><span class="sm" style="font-weight:700">익명으로</span>' +
-        '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
-        '누가 무엇을 골랐는지 아무도 못 봐요</span></span></button>' +
-        '<div class="sp"></div>' +
-        '<button class="btn primary lg block" type="button" id="pSave">올리기</button>'
-    });
-
-    [ov.querySelector('#pMulti'), ov.querySelector('#pAnon')].forEach(b =>
-      b.addEventListener('click', () => b.classList.toggle('on')));
-
-    ov.querySelector('#pAdd').onclick = () => {
-      if (count >= 6) return toast('선택지는 6개까지예요', 'err');
-      ov.querySelector('#pOpts').insertAdjacentHTML('beforeend', optRow(count));
-      count += 1;
-      if (count >= 6) ov.querySelector('#pAdd').hidden = true;
-    };
-
-    ov.querySelector('#pSave').onclick = async () => {
-      const q = ov.querySelector('#pq').value.trim();
-      if (!q) return toast('질문을 적어주세요', 'err');
-      const opts = Array.prototype.slice.call(ov.querySelectorAll('[data-opt-in]'))
-        .map(el => el.value.trim()).filter(Boolean);
-      if (opts.length < 2) return toast('선택지를 두 개 이상 적어주세요', 'err');
-      const endRaw = ov.querySelector('#pEnd').value;
-
-      const btn = ov.querySelector('#pSave');
-      btn.disabled = true; btn.textContent = '올리는 중…';
-      try {
+      doneLabel: '올리기',
+      steps: [
+        {
+          key: 'q', short: '질문',
+          q: '무엇을 물어볼까요?',
+          hint: '짧고 분명하게 적을수록 답이 잘 모여요.',
+          body: '<label class="field"><input class="input" id="wq" ' +
+            'placeholder="예: 다음 봉사는 언제가 좋을까요?"></label>',
+          read: r => r.querySelector('#wq').value.trim(),
+          valid: v => v ? '' : '질문을 적어주세요',
+          sum: v => v
+        },
+        {
+          key: 'opts', short: '선택지',
+          q: '고를 수 있는 것을 적어주세요',
+          hint: '두 개부터 여섯 개까지 넣을 수 있어요.',
+          body: '<div id="wOpts">' +
+            [0, 1].map(n => '<label class="field" style="margin-bottom:8px">' +
+              '<input class="input" data-o="' + n + '" placeholder="' + EG[n] + '"></label>').join('') +
+            '</div><button class="btn ghost sm block" type="button" id="wAdd">하나 더</button>',
+          after: root => {
+            let n = 2;
+            root.querySelector('#wAdd').onclick = () => {
+              if (n >= 6) return toast('여섯 개까지예요', 'err');
+              root.querySelector('#wOpts').insertAdjacentHTML('beforeend',
+                '<label class="field" style="margin-bottom:8px">' +
+                '<input class="input" data-o="' + n + '" placeholder="' + EG[n] + '"></label>');
+              n += 1;
+              if (n >= 6) root.querySelector('#wAdd').hidden = true;
+            };
+          },
+          read: r => Array.prototype.slice.call(r.querySelectorAll('[data-o]'))
+            .map(el => el.value.trim()).filter(Boolean),
+          valid: v => v.length >= 2 ? '' : '두 개 이상 적어주세요',
+          sum: v => v.join(' · ')
+        },
+        {
+          key: 'ends', short: '마감',
+          q: '언제까지 받을까요?',
+          hint: '마감이 지나면 아무도 바꿀 수 없어요.',
+          body: '<label class="field"><input class="input" type="datetime-local" ' +
+            'id="we" value="' + dflt + '"></label>',
+          read: r => r.querySelector('#we').value,
+          sum: v => v ? fmtDate(v) : '없음'
+        },
+        {
+          key: 'how', short: '방식',
+          q: '어떻게 고르게 할까요?',
+          hint: '그냥 두면 하나만 고르고, 누가 골랐는지 볼 수 있어요.',
+          body: '<button type="button" class="check" data-c="multi" style="width:100%;text-align:left;margin-bottom:8px">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="sm" style="font-weight:700">여러 개 고를 수 있게</span></button>' +
+            '<button type="button" class="check" data-c="anon" style="width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">익명으로</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+            '누가 무엇을 골랐는지 아무도 못 봐요</span></span></button>',
+          after: root => root.querySelectorAll('[data-c]').forEach(b =>
+            b.addEventListener('click', () => b.classList.toggle('on'))),
+          read: r => ({
+            multi: r.querySelector('[data-c="multi"]').classList.contains('on'),
+            anon: r.querySelector('[data-c="anon"]').classList.contains('on')
+          }),
+          sum: v => (v.multi ? '여러 개' : '하나만') + (v.anon ? ' · 익명' : '')
+        }
+      ],
+      done: async v => {
         await DB.community.createPost({
           type: 'poll', body: '',
           poll: {
-            question: q, options: opts,
-            multi: ov.querySelector('#pMulti').classList.contains('on'),
-            anonymous: ov.querySelector('#pAnon').classList.contains('on'),
-            closes_at: endRaw ? new Date(endRaw).toISOString() : null
+            question: v.q, options: v.opts,
+            multi: v.how.multi, anonymous: v.how.anon,
+            closes_at: v.ends ? new Date(v.ends).toISOString() : null
           }
         });
         closeSheet();
         toast('올렸어요', 'ok');
         renderPolls();
-      } catch (e) {
-        toast(e.message || '올리지 못했어요', 'err');
-        btn.disabled = false; btn.textContent = '올리기';
       }
-    };
+    });
   }
 
   /* ============================================================
