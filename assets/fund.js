@@ -78,10 +78,12 @@
     const map = new Map();
     (data.entries || []).forEach(r => {
       nameList(r).forEach(n => {
-        if (!map.has(n)) map.set(n, { name: n, times: 0, amount: 0, rows: [], places: new Set() });
+        if (!map.has(n)) map.set(n, { name: n, times: 0, amount: 0, kg: 0, rows: [], places: new Set() });
         const h = map.get(n);
         h.times += 1;
-        h.amount += int(r.per);              // 한 사람 몫은 1인당 금액
+        /* 원과 사료를 한 숫자에 더하면 「66원」처럼 나온다 — 따로 센다 */
+        if (r.unit === 'kg') h.kg += int(r.per);
+        else h.amount += int(r.per);
         h.rows.push(r);
         h.places.add(r.place);
       });
@@ -336,13 +338,17 @@
       '<div class="mecard">' +
       '<div class="row between" style="align-items:flex-start">' +
       '<div><div class="sm" style="color:var(--brand-deep);font-weight:700">' + esc(hit.name) + ' 님</div>' +
-      '<div class="money" style="font-size:24px;color:var(--brand-deep);margin-top:2px">' + won(hit.amount) + '</div>' +
-      '<div class="sm" style="margin-top:2px">' + hit.times + '번 다녀와서 쌓은 후원금이에요</div></div>' +
+      '<div class="money" style="font-size:24px;color:var(--brand-deep);margin-top:2px">' +
+      (hit.amount ? won(hit.amount) : '') +
+      (hit.amount && hit.kg ? '<span style="font-size:15px;color:var(--ink-3)"> · </span>' : '') +
+      (hit.kg ? credit(hit.kg, 'kg') : '') +
+      (!hit.amount && !hit.kg ? won(0) : '') + '</div>' +
+      '<div class="sm" style="margin-top:2px">' + hit.times + '번 다녀와서 쌓았어요</div></div>' +
       '<span style="color:var(--brand-deep)">' + ic('heart') + '</span></div>' +
       '<div class="divider"></div>' +
       hit.rows.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(r =>
         '<div class="kv"><span class="k">' + fmtDate(r.date) + ' · ' + esc(r.place) + '</span>' +
-        '<span class="v">' + won(int(r.per)) + '</span></div>').join('') +
+        '<span class="v">' + credit(int(r.per), r.unit) + '</span></div>').join('') +
       '<div class="sp"></div>' +
       '<button class="btn soft block sm" id="meShare">공유하기</button>' +
       '</div><div class="sp"></div>';
@@ -350,7 +356,9 @@
     const btn = $('#meShare');
     if (btn) btn.onclick = async () => {
       const url = location.origin + location.pathname + '?name=' + encodeURIComponent(hit.name);
-      const text = hit.name + ' 님이 ' + hit.times + '번 봉사에 다녀와서 ' + won(hit.amount) + '을 모았어요 🐾';
+      const got = [hit.amount ? won(hit.amount) : '', hit.kg ? credit(hit.kg, 'kg') : '']
+        .filter(Boolean).join(' · ') || won(0);
+      const text = hit.name + ' 님이 ' + hit.times + '번 봉사에 다녀와서 ' + got + '을 모았어요 🐾';
       if (navigator.share) {
         try { await navigator.share({ title: '발자국 후원금 현황', text, url }); return; }
         catch (e) { if (e && e.name === 'AbortError') return; }

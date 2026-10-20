@@ -2,7 +2,7 @@
    운영진 관리 화면
    ============================================================ */
 (function () {
-  const { $, $$, toast, sheet, closeSheet, confirmSheet, copy, won, num, esc,
+  const { $, $$, toast, sheet, closeSheet, confirmSheet, copy, won, credit, num, esc,
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
@@ -2456,7 +2456,8 @@
       .map(e => {
         const people = S.att.filter(a => a.event_id === e.id).length;
         const per = Number(e.credit_per_person);
-        return { ev: e, place: e.place, people, per, amount: people * per };
+        const unit = e.credit_unit || 'won';
+        return { ev: e, place: e.place, people, per, unit, amount: people * per };
       })
       .filter(r => r.people > 0)
       .sort((a, b) => String(b.ev.date).localeCompare(String(a.ev.date)));
@@ -2464,12 +2465,17 @@
 
   function creditByPlace() {
     const map = new Map();
-    const get = k => {
-      if (!map.has(k)) map.set(k, { place: k, saved: 0, paid: 0, rows: [], pays: [] });
+    /* 원과 사료를 한 숫자에 더하면 「66원」처럼 나온다 — 단위까지 묶는다 */
+    const get = (place, unit) => {
+      const k = place + ' ' + unit;
+      if (!map.has(k)) map.set(k, { place, unit, saved: 0, paid: 0, rows: [], pays: [] });
       return map.get(k);
     };
-    creditEntries().forEach(r => { const g = get(r.place); g.saved += r.amount; g.rows.push(r); });
-    S.pays.forEach(p => { const g = get(p.place); g.paid += Number(p.amount) || 0; g.pays.push(p); });
+    creditEntries().forEach(r => { const g = get(r.place, r.unit); g.saved += r.amount; g.rows.push(r); });
+    S.pays.forEach(p => {
+      const g = get(p.place, p.unit || 'won');
+      g.paid += Number(p.amount) || 0; g.pays.push(p);
+    });
     return Array.from(map.values())
       .map(g => Object.assign(g, { left: g.saved - g.paid }))
       .sort((a, b) => b.left - a.left || a.place.localeCompare(b.place, 'ko'));
@@ -2482,8 +2488,9 @@
 
   function creditPanel() {
     const groups = creditByPlace();
-    const saved = groups.reduce((t, g) => t + g.saved, 0);
-    const paid = groups.reduce((t, g) => t + g.paid, 0);
+    const sum = (u, k) => groups.filter(g => g.unit === u).reduce((t, g) => t + g[k], 0);
+    const saved = sum('won', 'saved'), paid = sum('won', 'paid');
+    const savedKg = sum('kg', 'saved'), paidKg = sum('kg', 'paid');
     const miss = creditMissing();
 
     return '<div class="section-title">' + ic('paw') + '<span>보호소 적립금</span></div>' +
@@ -2491,6 +2498,14 @@
       '<div class="mut sm">아직 전달 안 한 적립금</div>' +
       '<div class="money" style="font-size:34px;color:var(--brand-deep);margin-top:2px">' + won(saved - paid) + '</div>' +
       '<div class="sm mut" style="margin-top:6px">쌓임 ' + won(saved) + ' · 전달 ' + won(paid) + '</div>' +
+      (savedKg || paidKg
+        ? '<div class="divider" style="margin:12px 0"></div>' +
+          '<div class="mut sm">아직 전달 안 한 사료</div>' +
+          '<div class="money" style="font-size:26px;color:var(--brand-deep);margin-top:2px">' +
+          credit(savedKg - paidKg, 'kg') + '</div>' +
+          '<div class="sm mut" style="margin-top:6px">쌓임 ' + credit(savedKg, 'kg') +
+          ' · 전달 ' + credit(paidKg, 'kg') + '</div>'
+        : '') +
       '<div class="sm mut" style="margin-top:10px;line-height:1.5">봉사를 확정하면 참여 인원만큼 자동으로 쌓여요</div>' +
       (miss.length
         ? '<div class="pill-note" style="margin-top:12px">이 기능을 켜기 전에 확정한 봉사가 ' +
@@ -2509,12 +2524,12 @@
       '</div>' +
       (groups.length
         ? '<div class="list">' + groups.map(g =>
-          '<div class="item" data-credit="' + esc(g.place) + '" tabindex="0" role="button">' +
+          '<div class="item" data-credit="' + esc(g.place) + '" data-unit="' + esc(g.unit) + '" tabindex="0" role="button">' +
           '<span class="ic green" style="width:38px;height:38px;border-radius:13px;display:grid;place-items:center">' +
           ic('heart') + '</span>' +
           '<div class="grow"><div class="nm">' + esc(g.place) + '</div>' +
-          '<div class="sub"><span>적립 ' + won(g.saved) + '</span><span>전달 ' + won(g.paid) + '</span></div></div>' +
-          '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + won(g.left) + '</div>' +
+          '<div class="sub"><span>적립 ' + credit(g.saved, g.unit) + '</span><span>전달 ' + credit(g.paid, g.unit) + '</span></div></div>' +
+          '<div style="text-align:right"><div class="money" style="color:var(--brand-deep)">' + credit(g.left, g.unit) + '</div>' +
           '<div class="mut sm">남음</div></div></div>').join('') + '</div>'
         : '<div class="card empty" style="padding:26px 20px">' +
           '<div style="display:flex;justify-content:center;color:var(--ink-3)">' + ic('paw') + '</div>' +
@@ -2555,22 +2570,22 @@
         '공지 문구를 복사했어요');
     };
     $$('#donatePanel [data-credit]').forEach(el => {
-      const open = () => creditSheet(el.dataset.credit);
+      const open = () => creditSheet(el.dataset.credit, el.dataset.unit);
       el.addEventListener('click', open);
       el.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
     });
   }
 
-  function creditSheet(place) {
-    const g = creditByPlace().find(x => x.place === place);
+  function creditSheet(place, unit) {
+    const g = creditByPlace().find(x => x.place === place && (!unit || x.unit === unit));
     if (!g) return;
     const ov = sheet({
       title: place + ' 적립금',
       body:
         '<div class="acct" style="margin:0 0 16px"><div class="row between" style="align-items:flex-end">' +
         '<div><div class="sm mut">아직 전달 안 한 금액</div>' +
-        '<div class="money" style="font-size:24px;color:var(--brand-deep)">' + won(g.left) + '</div></div>' +
-        '<div class="sm mut" style="text-align:right">적립 ' + won(g.saved) + '<br>전달 ' + won(g.paid) + '</div>' +
+        '<div class="money" style="font-size:24px;color:var(--brand-deep)">' + credit(g.left, g.unit) + '</div></div>' +
+        '<div class="sm mut" style="text-align:right">적립 ' + credit(g.saved, g.unit) + '<br>전달 ' + credit(g.paid, g.unit) + '</div>' +
         '</div></div>' +
 
         '<div class="row between" style="margin-bottom:8px"><b class="sm">적립 내역 ' + g.rows.length + '건</b>' +
@@ -2578,7 +2593,7 @@
         (g.rows.length
           ? '<div class="card flat" style="padding:4px 12px">' + g.rows.map(r =>
             '<div class="kv"><span class="k">' + fmtDate(r.ev.date) + '</span>' +
-            '<span class="v">' + r.people + '명 × ' + num(r.per) + '원 = ' + won(r.amount) + '</span></div>').join('') +
+            '<span class="v">' + r.people + '명 × ' + credit(r.per, r.unit) + ' = ' + credit(r.amount, r.unit) + '</span></div>').join('') +
             '</div>'
           : '<div class="mut sm">아직 적립된 봉사가 없어요</div>') +
 
@@ -2587,7 +2602,7 @@
         (g.pays.length
           ? '<div class="list">' + g.pays.map(p =>
             '<div class="item" data-pay="' + p.id + '" tabindex="0" role="button">' +
-            '<div class="grow"><div class="nm">' + won(p.amount) + '</div>' +
+            '<div class="grow"><div class="nm">' + credit(p.amount, p.unit || g.unit) + '</div>' +
             '<div class="sub"><span>' + fmtDate(p.date) + '</span>' +
             (p.memo ? '<span>' + esc(p.memo) + '</span>' : '') +
             (p.has_photo ? '<span style="color:var(--brand-deep)">사진</span>' : '') + '</div></div>' +

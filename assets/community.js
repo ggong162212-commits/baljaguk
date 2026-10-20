@@ -1022,9 +1022,23 @@ window.Community = (function () {
     delegated = true;
     const view = $('#view');
 
+    /* 좌우로 밀어 사진을 넘기면 그건 클릭이 아니다.
+       10px 넘게 움직였으면 누른 것으로 치지 않는다.
+       (실서버 폰에서 사진을 넘기려 하면 사진 뷰어가 열렸다 — 2026-10-20) */
+    let downX = 0, downY = 0, moved = false;
+    view.addEventListener('pointerdown', e => {
+      downX = e.clientX; downY = e.clientY; moved = false;
+    }, { passive: true });
+    view.addEventListener('pointermove', e => {
+      if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) moved = true;
+    }, { passive: true });
+
     view.addEventListener('click', async e => {
       const hit = sel => e.target.closest('[' + sel + ']');
       let b;
+
+      /* 민 것이면 열지 않는다 */
+      if (moved) { moved = false; return; }
 
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);

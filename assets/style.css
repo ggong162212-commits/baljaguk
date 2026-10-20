@@ -460,11 +460,17 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 /* 사진 넘겨 보기 — 옆으로 밀면 한 장씩 */
 .shots{
   display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x mandatory;
-  margin:11px -16px 0;padding:0 16px;scrollbar-width:none
+  margin:11px -16px 0;padding:0 16px;scrollbar-width:none;
+  /* 폰에서 좌우로 미는 걸 브라우저가 먼저 가져가게 둔다 */
+  touch-action:pan-x pan-y;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain
 }
 .shots::-webkit-scrollbar{display:none}
 .shots img{
   width:100%;flex:none;scroll-snap-align:center;
+  /* 사진을 끌어 옮기려는 몸짓으로 잡히지 않게 */
+  -webkit-user-drag:none;user-select:none;
   aspect-ratio:1/1;object-fit:cover;border-radius:15px;background:var(--surface-2)
 }
 .dots{display:flex;justify-content:center;gap:5px;margin-top:8px}
@@ -879,7 +885,7 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .shotview-x svg{width:19px;height:19px}
 .shotview-n{color:#fff;font-size:13px;font-weight:700;opacity:.9}
 .shotview-track{flex:1;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;
-  -webkit-overflow-scrolling:touch}
+  -webkit-overflow-scrolling:touch;touch-action:pan-x pan-y;overscroll-behavior:contain}
 .shotview-track::-webkit-scrollbar{display:none}
 .shotview-cell{flex:0 0 100%;scroll-snap-align:center;display:grid;place-items:center;overflow:hidden}
 .shotview-cell img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .18s}
