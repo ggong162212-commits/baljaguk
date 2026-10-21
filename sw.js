@@ -41,9 +41,15 @@ self.addEventListener('notificationclick', event => {
     for (const c of all) {
       if (c.url.indexOf(self.registration.scope) === 0) {
         /* 주소가 #post=… 만 다르면 navigate 로는 화면이 안 바뀐다.
-           열려 있는 창에 직접 알려 주고, 그래도 안 되면 navigate 로 넘긴다. */
-        try { c.postMessage({ type: 'goto', url: url }); } catch (e) { }
-        try { await c.navigate(full); } catch (e) { }
+           그래서 열린 창에 직접 알려 준다.
+           **둘 다 하면** 글이 두 번 열리거나 페이지가 다시 로드된다 —
+           같은 페이지면 알려 주기만, 다른 페이지일 때만 navigate. */
+        const samePage = c.url.split('#')[0] === full.split('#')[0];
+        if (samePage) {
+          try { c.postMessage({ type: 'goto', url: url }); } catch (e) { }
+        } else {
+          try { await c.navigate(full); } catch (e) { }
+        }
         return c.focus();
       }
     }

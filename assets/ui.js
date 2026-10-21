@@ -431,11 +431,30 @@
     setTimeout(() => box.remove(), 3400);
   }
 
+  /* 글자 입력칸에서 엔터를 받을 때 — 한글 조합 중이면 흘려보낸다.
+     ------------------------------------------------------------
+     한글은 자음·모음을 조합하는 중에도 엔터가 들어온다.
+     그대로 받으면 마지막 글자가 덜 들어간 채 보내진다 —
+     본인 확인 이름이 「선고으」로 넘어가 실패하고,
+     다섯 번 틀리면 한 시간 잠긴다. 댓글은 마지막 글자가 남거나
+     두 번 보내진다. */
+  function onEnter(el, fn) {
+    if (!el) return;
+    el.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      /* 조합 중 — 아직 글자가 다 안 들어왔다 */
+      if (e.isComposing || e.keyCode === 229) return;
+      if (e.shiftKey) return;            /* 줄 바꾸기는 그대로 */
+      e.preventDefault();
+      fn(e);
+    });
+  }
+
   function debounce(fn, ms) { let t; return function () { clearTimeout(t); const a = arguments; t = setTimeout(() => fn.apply(null, a), ms || 200); }; }
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
     copy, wizard, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
-    resizeImage, cropSquare, downloadCSV, cheer, debounce, toLocalInput, fromLocalInput
+    resizeImage, cropSquare, downloadCSV, cheer, debounce, onEnter, toLocalInput, fromLocalInput
   };
 })();

@@ -762,7 +762,8 @@ window.Community = (function () {
     if (!res) return;
 
     /* 발표 시각이 지난 퀴즈가 있으면 먼저 처리하고 다시 그린다 */
-    if (first && await sweepQuizzes(res.rows)) return renderHome(true);
+    /* 퀴즈 발표는 pg_cron(push_tick) 이 5분마다 한다 —
+       보는 사람 화면이 쓰기와 알림까지 하면 두 곳이 같은 일을 한다 */
 
     if (first) paintReviewAsk();
 
@@ -1011,14 +1012,17 @@ window.Community = (function () {
 
       /* 키보드가 올라오면 이 줄이 그 바로 위에 보이게 */
       inp.addEventListener('focus', () => {
+        /* 쓰는 동안 + 버튼을 숨긴다 — 「게시」를 가린다 */
+        const fab = $('#fab'); if (fab) fab.classList.add('typing');
         setTimeout(() => {
           try { inp.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { }
         }, 220);
       });
-
-      inp.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); post(); }
+      inp.addEventListener('blur', () => {
+        const fab = $('#fab'); if (fab) fab.classList.remove('typing');
       });
+
+      UI.onEnter(inp, post);
       if (send) send.onclick = post;
 
       async function post() {
@@ -1263,6 +1267,48 @@ window.Community = (function () {
     return ov;
   }
 
+  /* 공지 모아 보기 — 맨 위에 고정된 것이 세 개 넘으면 여기서 다 본다 */
+  async function noticesSheet() {
+    const ov = sheet({
+      title: '공지',
+      body: '<div id="ntList" class="mut sm">불러오는 중…</div>'
+    });
+    let rows = null;
+    try {
+      const res = await DB.community.feed({ type: 'notice', limit: 40 });
+      /* 맨 위에 고정된 공지는 목록(rows)에 안 섞인다 —
+         pinned 로 따로 와서, 둘을 합쳐야 다 보인다 */
+      const byId = {};
+      (res.rows || []).forEach(r => { byId[r.id] = r; });
+      (res.pinned || []).forEach(r => { if (!byId[r.id]) byId[r.id] = r; });
+      rows = Object.keys(byId).map(k => byId[k])
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    } catch (e) { console.warn('[발자국] 공지를 못 받아왔어요:', e); }
+
+    const box = ov.querySelector('#ntList');
+    if (!box) return;
+    if (rows === null) {
+      box.innerHTML = '<div class="card center" style="padding:20px">' +
+        '<div class="sm">불러오지 못했어요</div></div>';
+      return;
+    }
+    if (!rows.length) {
+      box.innerHTML = '<div class="mut sm">아직 공지가 없어요</div>';
+      return;
+    }
+    box.innerHTML = rows.map(p =>
+      '<button class="noticerow" type="button" data-open="' + esc(p.id) + '">' +
+      '<span class="ic">' + ic('pin') + '</span>' +
+      '<span class="grow">' +
+      '<span class="tx">' + esc(cut(p.body, 70)) + '</span>' +
+      '<span class="at">' + esc((p.author && p.author.name) || '운영진') +
+      ' · ' + relTime(p.created_at) + '</span></span></button>').join('');
+    box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => {
+      closeSheet();
+      setTimeout(() => openPost(b.dataset.open), 180);
+    });
+  }
+
   /* 글 안의 @이름 을 초록으로 */
   function hl(text) {
     return esc(String(text || '')).replace(/@([^\s@.,!?]{1,12})/g,
@@ -1434,9 +1480,7 @@ window.Community = (function () {
       }
     };
 
-    inp.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send.onclick(); }
-    });
+    UI.onEnter(inp, () => send.onclick());
 
     /* 키보드가 올라오면 입력줄을 그 위로 */
     if (window.visualViewport) {
@@ -1466,7 +1510,7 @@ window.Community = (function () {
 
   function openShots(postId, start) {
     const p = findRow(postId);
-    if (!p || !(p.photos || []).length) return;
+    if (!p || !(p.photos || []).length) return missWarn('사진', postId);
     const n = p.photos.length;
     let at = Math.max(0, Math.min(n - 1, Number(start) || 0));
 
@@ -1762,6 +1806,8 @@ window.Community = (function () {
       if ((b = hit('data-animal'))) return animalSheet(b.dataset.animal, b.dataset.aname);
       if ((b = hit('data-checkin'))) return checkinSheet(b.dataset.checkin);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
+      /* 「공지 N개 모두 보기」 — 그리기만 하고 읽는 코드가 없었다 */
+      if (hit('data-notices')) return noticesSheet();
       if ((b = hit('data-best'))) return markBest(b.dataset.best, b.dataset.bc);
       if (hit('data-myans')) return myAnswersSheet();
       if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
@@ -1981,7 +2027,7 @@ window.Community = (function () {
       input.value = input.value.replace(/[^0-9]/g, '').slice(0, 6);
     });
     input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') ov.querySelector('#ciGo').click();
+      if (e.key === 'Enter' && !e.isComposing) ov.querySelector('#ciGo').click();
     });
 
     ov.querySelector('#ciGo').onclick = async () => {
@@ -2373,7 +2419,7 @@ window.Community = (function () {
     };
     box.querySelector('#anAdd').onclick = add;
     box.querySelector('#anNew').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); add(); }
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); add(); }
     });
 
     return state;
@@ -2545,6 +2591,7 @@ window.Community = (function () {
         if (vals.body && vals.body.text) r.querySelector('#wBody').value = vals.body.text;
 
         /* @ 로 사람 부르기 — 봉사 후기면 같이 간 사람을 맨 위에 */
+        if (opt.whenPicked) { try { opt.whenPicked(vals); } catch (e) { } }
         r.__ment = attachMention(
           r.querySelector('#wBody'), r.querySelector('#wMenu'),
           { firstIds: opt.firstIds || [] });
@@ -2916,8 +2963,18 @@ window.Community = (function () {
         bodyStep({
           animals: true,
           place: v => (fixed ? fixed.place : (v.when && v.when.place)) || '',
-          /* @ 목록 맨 위에 같이 간 사람 */
-          firstIds: goIds
+          /* @ 목록 맨 위에 같이 간 사람.
+             + 로 시작하면 봉사를 고른 뒤에야 알 수 있어 그때 채운다. */
+          firstIds: goIds,
+          whenPicked: v => {
+            const ev = (v.when && v.when.event_id) || (fixed && fixed.event_id);
+            if (!ev || goIds.__for === ev) return;
+            goIds.__for = ev;
+            DB.community.eventPeople(ev).then(who => {
+              goIds.length = 0;
+              (who || []).forEach(x => { if (x.id !== ME.id) goIds.push(x.id); });
+            }).catch(() => { });
+          }
         })
       ],
       done: async v => {
@@ -2944,16 +3001,23 @@ window.Community = (function () {
      ============================================================ */
   async function openPost(id) {
     let p = findRow(id);
+    let gone = false;
     /* 맨 위에 고정된 공지는 목록(F.rows)에 없고 F.pins 에 따로 온다.
        그래서 「글로 열기」를 눌러도 아무 일이 없었다 — 공지를 따로 받아온다. */
     if (!p) {
+      /* 화면이 가진 건 첫 20개뿐이다 — 오래된 글은 하나만 받아온다.
+         (알림을 눌렀는데 「글을 찾지 못했어요」가 나던 것) */
       try {
-        const res = await DB.community.feed({ type: 'notice', limit: 40 });
-        (res.rows || []).forEach(r => { if (!findRow(r.id)) F.rows.push(r); });
-        p = findRow(id);
-      } catch (e) { /* 못 받아오면 아래에서 알린다 */ }
+        const one = await DB.community.postOne(id);
+        if (one && one.id) { F.rows.push(one); p = one; }
+        else gone = true;    /* 서버가 아무것도 안 줬다 = 지워진 글 */
+      } catch (e) { console.warn('[발자국] 글을 못 받아왔어요:', e); }
     }
-    if (!p) { toast('글을 찾지 못했어요', 'err'); return; }
+    if (!p) {
+      /* 지워진 글과 「못 받아온 것」은 다르다 */
+      toast(gone ? '지워진 글이에요' : '지금은 열 수 없어요. 잠시 뒤 다시 해주세요', 'err');
+      return;
+    }
     const who = p.author || { name: '?' };
 
     const ov = sheet({
@@ -3044,7 +3108,7 @@ window.Community = (function () {
     };
     ov.querySelector('#dSend').onclick = send;
     ov.querySelector('#dIn').addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); send(); }
+      if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); send(); }
     });
 
     draw();
@@ -3137,20 +3201,6 @@ window.Community = (function () {
 
   /* 예약 시각이 지난 퀴즈를 피드를 열 때 발표한다.
      E단계에 pg_cron 이 들어오면 이 자리는 없어도 된다. */
-  async function sweepQuizzes(rows) {
-    const due = (rows || []).filter(p => {
-      const q = p.poll;
-      return q && q.quiz && !q.revealed && q.reveal_at &&
-        Date.parse(q.reveal_at) <= Date.now();
-    });
-    if (!due.length) return false;
-    let any = false;
-    for (const p of due) {
-      try { const r = await DB.community.revealQuiz(p.id); if (r && r.ok && !r.already) any = true; }
-      catch (e) { console.warn('[발자국] 퀴즈 발표를 못 했어요:', p.id, e); }
-    }
-    return any;
-  }
 
   /* ============================================================
      사진 모아보기
@@ -3419,7 +3469,14 @@ window.Community = (function () {
     const postId = btn.dataset.vote, optId = btn.dataset.opt;
     const multi = !!btn.dataset.multi;
     const row = findRow(postId);
-    if (!row || !row.poll) return;
+    if (!row || !row.poll) return missWarn('설문', postId);
+
+    /* 마감된 뒤에 누르면 서버에서 「지우기만」 되어 응답이 사라졌다.
+       누르기 전에 막는다. */
+    const q = row.poll;
+    if (q.closed_at || (q.closes_at && Date.parse(q.closes_at) < Date.now()) || q.revealed) {
+      return toast('마감됐어요', 'err');
+    }
 
     const before = JSON.parse(JSON.stringify(row.poll.options));
     const opt = row.poll.options.filter(o => o.id === optId)[0];
@@ -3435,8 +3492,14 @@ window.Community = (function () {
     opt.votes = Math.max(0, opt.votes + (turningOn ? 1 : -1));
     redrawPoll(postId);
 
-    try { await DB.community.vote(postId, optId, multi); }
-    catch (e) {
+    try {
+      const r = await DB.community.vote(postId, optId, multi);
+      if (r && r.ok === false) {
+        row.poll.options = before;
+        redrawPoll(postId);
+        return toast(r.why === 'closed' ? '마감됐어요' : '응답하지 못했어요', 'err');
+      }
+    } catch (e) {
       row.poll.options = before;
       redrawPoll(postId);
       toast(e.message || '응답하지 못했어요', 'err');

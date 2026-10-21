@@ -296,7 +296,7 @@
         '<div id="edResult" style="margin-top:14px"></div>'
     });
     const find = ov.querySelector('#edFind');
-    ov.querySelector('#edName').addEventListener('keydown', e => { if (e.key === 'Enter') find.click(); });
+    UI.onEnter(ov.querySelector('#edName'), () => find.click());
     find.onclick = async () => {
       const nm = ov.querySelector('#edName').value.trim();
       if (!nm) return toast('이름을 적어주세요', 'err');

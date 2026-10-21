@@ -9,7 +9,9 @@
   const SKEY = 'baljaguk.session';
   const DKEY = 'baljaguk.demo';
   const uid = () => 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-  const today = () => new Date().toISOString().slice(0, 10);
+  /* 한국 날짜. toISOString 은 UTC 라서 0~9시에 「오늘」이 어제가 된다.
+     그 시간에 승인한 가입일이 하루 밀리고, 현장 출석이 안 됐다. */
+  const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
 
   /* ---------------- 체험 모드 저장소 ---------------- */
   function seed() {
@@ -207,6 +209,20 @@
       session = j; localStorage.setItem(SKEY, JSON.stringify(j)); return true;
     } catch (e) { session = null; localStorage.removeItem(SKEY); return false; }
   }
+  /* 서버가 주는 말을 사람 말로.
+     트리거가 던지는 한글은 그대로 둔다 — 그게 더 정확하다. */
+  function sayWhy(status, msg) {
+    const m = String(msg || '');
+    if (/[가-힣]/.test(m)) return m;
+    if (/row-level security|permission denied/i.test(m) || status === 403) return '권한이 없어요';
+    if (/duplicate key|already exists/i.test(m) || status === 409) return '이미 처리됐어요';
+    if (/JWT|not authenticated/i.test(m) || status === 401) return '다시 로그인해 주세요';
+    if (/foreign key/i.test(m)) return '없어진 것 같아요. 새로고침 해주세요';
+    if (/check constraint|violates/i.test(m)) return '넣을 수 없는 값이에요';
+    if (status === 404) return '찾지 못했어요';
+    return '잠시 뒤 다시 해 주세요';
+  }
+
   async function rest(path, opts, retry) {
     opts = opts || {};
     const h = {
@@ -215,18 +231,31 @@
       'Content-Type': 'application/json'
     };
     if (opts.prefer) h.Prefer = opts.prefer;
-    const r = await fetch(C.SUPABASE_URL + '/rest/v1/' + path, { method: opts.method || 'GET', headers: h, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    let r;
+    try {
+      r = await fetch(C.SUPABASE_URL + '/rest/v1/' + path, { method: opts.method || 'GET', headers: h, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    } catch (netErr) {
+      console.warn('[발자국] 서버에 닿지 못했어요:', netErr);
+      const e = new Error('인터넷 연결을 확인해 주세요');
+      e.code = 'offline';
+      throw e;
+    }
     if (r.status === 401 && !retry && session) { if (await refresh()) return rest(path, opts, true); }
     const txt = await r.text();
     let j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = null; }
     if (!r.ok) {
       const msg = (j && (j.message || j.hint)) || ('요청 실패 (' + r.status + ')');
-      const err = new Error(msg); err.status = r.status;
-      /* 로그인이 풀린 것인지 알아보게 표시를 단다 —
-         화면이 「0명」처럼 보이지 않게 하려고 (2026-10-21) */
+      /* 영어 원문을 사람 화면에 그대로 띄우지 않는다 —
+         「new row violates row-level security policy」 같은 글.
+         원문은 콘솔에만 남긴다. */
+      const err = new Error(sayWhy(r.status, msg));
+      err.status = r.status;
+      err.raw = msg;
+      /* 로그인이 풀린 것인지 알아보게 표시를 단다 */
       if (r.status === 401 || r.status === 403 || /permission denied|JWT/i.test(msg)) {
         err.code = 'noauth';
       }
+      if (msg !== err.message) console.warn('[발자국] 서버가 보낸 말:', msg);
       throw err;
     }
     return j;
@@ -1285,6 +1314,17 @@
       });
     },
 
+    /* 글 하나만 받아오기 — 알림으로 오래된 글을 열 때.
+       화면이 가진 피드(첫 20개)에 없으면 이걸로 받는다. */
+    async postOne(id) {
+      if (!HAS_SB) {
+        const d = cdemo(), meId = myDemoId();
+        const p = (d.posts || []).find(x => x.id === id);
+        return p ? demoPostRow(d, p, meId) : null;
+      }
+      return await rest('rpc/post_one', { method: 'POST', body: { p_id: id } });
+    },
+
     /* ---------- 글 ---------- */
     /* 사진은 이미 줄여둔 dataURL 배열로 받는다 */
     async createPost(v) {
@@ -1617,35 +1657,29 @@
 
     async vote(postId, optionId, multi) {
       if (!HAS_SB) {
-        const d = cdemo(), meId = myDemoId();
-        if (!meId) throw new Error('로그인이 풀렸어요');
-        const q = d.polls.find(x => x.post_id === postId);
-        if (pollClosed(q)) throw new Error('마감된 설문이에요');
-        const mine = d.poll_votes.filter(v => v.post_id === postId && v.member_id === meId);
-        const had = mine.some(v => v.option_id === optionId);
-        d.poll_votes = d.poll_votes.filter(v =>
-          !(v.post_id === postId && v.member_id === meId && (!multi || v.option_id === optionId)));
-        if (!had) d.poll_votes.push({
-          post_id: postId, option_id: optionId, member_id: meId,
-          created_at: new Date().toISOString()
-        });
+        const d = cdemo(), me = myDemoId();
+        if (!me) return { ok: false, why: 'nomember' };
+        const q = (d.polls || []).find(x => x.post_id === postId);
+        if (!q) return { ok: false, why: 'notfound' };
+        if (pollClosed(q)) return { ok: false, why: 'closed' };
+        d.poll_votes = d.poll_votes || [];
+        const had = d.poll_votes.some(v => v.option_id === optionId && v.member_id === me);
+        if (had) {
+          d.poll_votes = d.poll_votes.filter(v => !(v.option_id === optionId && v.member_id === me));
+        } else {
+          if (!multi && !q.multi) {
+            d.poll_votes = d.poll_votes.filter(v => !(v.post_id === postId && v.member_id === me));
+          }
+          d.poll_votes.push({ post_id: postId, option_id: optionId, member_id: me });
+        }
         demoWrite(d);
-        return !had;
+        return { ok: true, on: !had };
       }
-      const meId = await DB.community.myId();
-      const base = 'poll_votes?post_id=eq.' + enc(postId) + '&member_id=eq.' + enc(meId);
-      const mine = await rest(base + '&select=option_id');
-      const had = (mine || []).some(v => v.option_id === optionId);
-      /* 하나만 고르는 설문이면 내 답을 모두 치운다 */
-      await rest(base + (multi ? '&option_id=eq.' + enc(optionId) : ''),
-        { method: 'DELETE', prefer: 'return=minimal' });
-      if (!had) {
-        await rest('poll_votes', {
-          method: 'POST', prefer: 'return=minimal',
-          body: { post_id: postId, option_id: optionId, member_id: meId }
-        });
-      }
-      return !had;
+      /* 지우고 넣기를 따로 하면 마감 뒤에 「지우기만」 되어
+         내 응답이 서버에서 사라졌다 — 한 번에 끝낸다 */
+      return await rest('rpc/vote_set', {
+        method: 'POST', body: { p_post: postId, p_option: optionId, p_multi: !!multi }
+      });
     },
 
     /* 만든 사람이나 운영진이 일찍 마감 */

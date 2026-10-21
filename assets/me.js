@@ -150,7 +150,8 @@
       if (at === 1) input.addEventListener('input', () => {
         input.value = input.value.replace(/[^0-9]/g, '').slice(0, 4);
       });
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') $('#go').click(); });
+      /* 한글 조합 중 엔터로 「선고으」가 넘어가 잠기던 것 */
+      UI.onEnter(input, () => $('#go').click());
 
       const bk = $('#back'); if (bk) bk.onclick = () => { at = 0; draw(); };
       const gn = $('#goName'); if (gn) gn.onclick = () => { at = 0; draw(); };
