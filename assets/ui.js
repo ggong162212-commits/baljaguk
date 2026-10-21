@@ -14,8 +14,16 @@
   function toggleTheme() {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
-    localStorage.setItem('baljaguk.theme', next);
-    paintThemeButtons();
+    try { localStorage.setItem('baljaguk.theme', next); } catch (e) { }
+    /* 화면 색(theme-color)도 같이 — 폰 상단 띠가 따로 놀지 않게 */
+    try {
+      const m = document.querySelector('meta[name=theme-color]');
+      if (m) m.setAttribute('content', next === 'dark' ? '#191E18' : '#F6F5EC');
+    } catch (e) { }
+    /* ★ 아이콘 바꾸기는 **다음 그림에** 맡긴다.
+       색이 먼저 바뀌고(= CSS 변수만), 아이콘은 그 뒤에 조용히 —
+       한 번에 다 하면 잠깐 멈칫했다 (180~306ms) */
+    requestAnimationFrame(() => paintThemeButtons());
   }
   function paintThemeButtons() {
     const dark = document.documentElement.dataset.theme === 'dark';

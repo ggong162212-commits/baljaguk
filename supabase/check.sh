@@ -101,6 +101,9 @@ fi
 if [ -f "$HERE/fix-16.sql" ]; then
   run "fix-16.sql" "$HERE/fix-16.sql"
 fi
+if [ -f "$HERE/fix-17.sql" ]; then
+  run "fix-17.sql" "$HERE/fix-17.sql"
+fi
 if [ -f "$HERE/fix-praise.sql" ]; then
   run "fix-praise.sql" "$HERE/fix-praise.sql"
 fi

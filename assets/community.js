@@ -196,9 +196,15 @@ window.Community = (function () {
       const id = decodeURIComponent(rawId);
       /* 다른 시트(댓글·글쓰기)가 열려 있으면 먼저 닫는다 —
          그 위로는 못 열어서 아무 일도 안 일어난 것처럼 보였다 */
+      /* 열린 시트가 **있을 때만** 기다린다. 없으면 바로 연다.
+         (전에는 20번에 2~3번 0.3~0.5초가 걸렸다) */
       if (document.querySelector('.overlay')) {
         closeSheet();
-        await new Promise(r => setTimeout(r, 260));
+        /* 시트가 실제로 사라질 때까지만 — 길어야 260ms */
+        for (let i = 0; i < 13; i++) {
+          if (!document.querySelector('.overlay')) break;
+          await new Promise(r => setTimeout(r, 20));
+        }
       }
       /* 오래 걸리면 기다리는 줄 알게 */
       const slow = setTimeout(() => toast('글을 여는 중…'), 400);
@@ -775,13 +781,33 @@ window.Community = (function () {
     fab.setAttribute('aria-label', tab === 'poll' ? '설문 만들기' : '글쓰기');
     fab.onclick = () => (tab === 'poll' ? pollSheet() : writeSheet());
     window.scrollTo(0, 0);
-    if (tab === 'home') return renderHome(true);
-    if (tab === 'vol') return renderVol();
-    if (tab === 'poll') return renderPolls();
-    return renderMe();
+    /* 다 그린 뒤에 warm 을 내린다 — 그리는 중에 로딩 자리가 끼지 않게 */
+    const done = () => { warm = false; };
+    if (tab === 'home') return renderHome(true).then(done, done);
+    if (tab === 'vol') return renderVol().then(done, done);
+    if (tab === 'poll') return renderPolls().then(done, done);
+    return renderMe().then(done, done);
   }
 
   const paint = html => { $('#view').innerHTML = html; };
+
+  /* ★ 돌아온 탭(warm)이면 껍데기를 **다시 그리지 않는다.**
+     예전에는 적어 둔 화면을 보여 준 뒤 곧바로 paint() 로 통째로 갈아엎어
+     「내용 → 로딩 → 내용」 으로 깜빡였다 (나 탭 633ms).
+     필요한 칸이 이미 있으면 그대로 두고 **안쪽만** 바꾼다. */
+  function shell(html, need) {
+    const v = $('#view');
+    if (warm && need.every(id => v.querySelector('#' + id))) return false;
+    v.innerHTML = html;
+    return true;
+  }
+
+  /* 같은 내용이면 건드리지 않는다 — 괜히 다시 그리면 깜빡인다 */
+  function swap(el, html) {
+    if (!el) return;
+    if (el.innerHTML === html) return;
+    el.innerHTML = html;
+  }
   /* 글자 대신 카드 모양으로 — 무엇이 올지 미리 보이게 */
   const skel = n => {
     let out = '';
@@ -883,7 +909,6 @@ window.Community = (function () {
     }
 
     await loadMore(true);
-    warm = false;
   }
 
   /* ---------- 홈 필터 ----------
@@ -1368,8 +1393,15 @@ window.Community = (function () {
     try {
       const rows = await DB.community.comments(id);
       const live = (rows || []).filter(c => !c.hidden);
+      /* ★ 이미 그려 둔 것과 같으면 **다시 그리지 않는다.**
+         댓글 하나 달 때 낙관적으로 한 번, 서버 결과로 또 한 번 —
+         같은 그림을 두 번 그리느라 카드가 두 번 떨렸다 (223ms) */
+      const sig = x => (x.comment_count || 0) + '|' +
+        (x.recent_comments || []).map(c => c.id + ':' + (c.body || '')).join(',');
+      const before = sig(row);
       row.comment_count = live.length;
       row.recent_comments = live.slice(-2);
+      if (sig(row) === before) return;
       paintCards(id);
     } catch (e) {
       console.warn('[발자국] 댓글을 다시 받지 못했어요:', e);
@@ -4431,7 +4463,8 @@ window.Community = (function () {
   async function renderPolls() {
     $('#headTitle').textContent = '설문';
     $('#headLead').textContent = '모두의 생각을 모아요.';
-    paint(loading());
+    /* 돌아온 탭이면 보던 것을 그대로 두고 뒤에서 새로 받는다 */
+    if (!warm) paint(loading());
     let res;
     try { res = await DB.community.feed({ type: 'poll', limit: 30 }); }
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
@@ -4652,7 +4685,8 @@ window.Community = (function () {
   async function renderVol() {
     $('#headTitle').textContent = '봉사';
     $('#headLead').textContent = '다가오는 봉사와 지난 기록이에요.';
-    paint('<div id="soon">' + loading(1) + '</div><div id="past"></div>' +
+    /* 돌아온 탭이면 껍데기를 그대로 둔다 (깜빡임 없이) */
+    shell('<div id="soon">' + loading(1) + '</div><div id="past"></div>' +
       '<div id="shelters"></div>' +
       /* 후원 현황을 봉사 탭 아래에서도 바로 */
       '<button class="item linkrow" type="button" id="fundRow2" style="width:100%">' +
@@ -4660,7 +4694,8 @@ window.Community = (function () {
       ic('heart') + '</span>' +
       '<span class="grow" style="text-align:left"><span class="nm">발자국 후원 현황</span>' +
       '<span class="sub">봉사로 모인 후원금과 사료</span></span>' +
-      ic('chevron') + '</button>');
+      ic('chevron') + '</button>',
+      ['soon', 'past', 'shelters']);
     const fr2 = $('#fundRow2');
     if (fr2) fr2.onclick = fundSheet;
 
@@ -4870,7 +4905,8 @@ window.Community = (function () {
   async function renderMe() {
     $('#headTitle').textContent = '나';
     $('#headLead').textContent = ME.name + '님의 발자국이에요.';
-    paint(
+    /* 돌아온 탭이면 껍데기를 그대로 두고 안쪽만 새로 받는다 */
+    shell(
       '<div class="card" style="padding:14px 16px">' +
       '<div class="row" style="gap:12px">' + avatar(ME) +
       '<div class="grow"><div style="font-weight:700;font-size:16px">' + esc(ME.name) +
@@ -4878,13 +4914,15 @@ window.Community = (function () {
       '<div class="mut" style="font-size:12px;margin-top:2px">' +
       esc(genLabel()) + '</div></div></div></div>' +
       '<div id="news"></div>' +
-      '<div id="act">' + loading(1) + '</div>' +
-      '');
-    loadNews();
-    await loadActivity();
-    if (window.PastVol) PastVol.mount($('#act'), { mine: true, append: true });  /* 내가 간 봉사 (pastvol.js) */
-    if (window.Praise) Praise.mountMe($('#act'));  /* 받은 칭찬 n (praise.js) */
-    if (window.Fame) Fame.mountMe($('#act'));  /* 명예의 전당 ○번째 (fame.js) */
+      '<div id="act">' + loading(1) + '</div>',
+      ['news', 'act']);
+
+    /* 새 소식·활동을 **한꺼번에** 받는다 (예전에는 줄 세웠다) */
+    await Promise.all([loadNews(), loadActivity()]);
+    const box = $('#act');
+    if (window.PastVol) PastVol.mount(box, { mine: true, append: true });  /* 내가 간 봉사 (pastvol.js) */
+    if (window.Praise) Praise.mountMe(box);  /* 받은 칭찬 n (praise.js) */
+    if (window.Fame) Fame.mountMe(box);  /* 명예의 전당 ○번째 (fame.js) */
   }
 
   /* ---------- 새 소식 ----------
