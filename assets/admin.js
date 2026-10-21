@@ -1214,12 +1214,12 @@
           '지우기', true)) return;
         b.disabled = true; b.textContent = '지우는 중…';
         try {
-          const r = await DB.dropLogin(u.nick, u.at);
+          const r = await DB.dropLogin(u.uid);
           if (!r || !r.ok) {
             throw new Error(({
-              linked: '명부와 이어진 계정이라 지울 수 없어요',
-              haswork: '이 계정이 쓴 글이 있어 지우지 않았어요',
-              notone: '그 로그인을 찾지 못했어요. 목록을 새로 받아 주세요'
+              linked: '그 사이에 명부와 이어졌어요 — 지우지 않았어요',
+              nologin: '이미 지워진 로그인이에요',
+              notadmin: '운영진만 할 수 있어요'
             })[(r && r.why) || ''] || '지우지 못했어요');
           }
           toast('지웠어요', 'ok');
@@ -3437,11 +3437,12 @@
         '잇기')) return;
       go.disabled = true; go.textContent = '잇는 중…';
       try {
-        const r = await DB.linkLogin(id, u.nick, u.at);
+        const r = await DB.linkLogin(id, u.uid);
         if (!r || !r.ok) {
           throw new Error(({
             already: '그 구성원은 이미 다른 계정과 이어져 있어요',
-            notone: '그 로그인을 찾지 못했어요. 목록을 새로 받아 주세요',
+            taken: '그 로그인은 그 사이에 다른 구성원과 이어졌어요',
+            nologin: '이미 지워진 로그인이에요',
             nomember: '명부에서 찾지 못했어요'
           })[(r && r.why) || ''] || '잇지 못했어요');
         }

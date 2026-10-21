@@ -1463,25 +1463,23 @@
   /* 명부와 안 이어진 카카오 로그인 (운영진) — 닉네임·날짜만 */
   DB.unlinkedLogins = async function () {
     if (!HAS_SB) {
-      return [{ nick: '체험', at: new Date().toISOString(), last_at: null }];
+      return [{ uid: 'demo-uid', nick: '체험', at: new Date().toISOString(), last_at: null }];
     }
     return await rest('rpc/unlinked_logins', { method: 'POST', body: {} }) || [];
   };
 
   /* 안 이어진 로그인을 그 구성원에게 이어 준다 (운영진) */
-  DB.linkLogin = async function (memberId, nick, at) {
+  DB.linkLogin = async function (memberId, uid) {
     if (!HAS_SB) return { ok: true, name: '체험' };
     return await rest('rpc/link_login', {
-      method: 'POST', body: { p_member: memberId, p_nick: nick || '', p_at: at }
+      method: 'POST', body: { p_member: memberId, p_uid: uid }
     });
   };
 
   /* 안 이어진 로그인을 지운다 (운영진) */
-  DB.dropLogin = async function (nick, at) {
+  DB.dropLogin = async function (uid) {
     if (!HAS_SB) return { ok: true };
-    return await rest('rpc/drop_login', {
-      method: 'POST', body: { p_nick: nick || '', p_at: at }
-    });
+    return await rest('rpc/drop_login', { method: 'POST', body: { p_uid: uid } });
   };
 
   DB.oldVideos = async function (n) {
