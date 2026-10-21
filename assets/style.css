@@ -1,8 +1,10 @@
 /* ============================================================
    발자국 🐾  디자인 시스템
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap');
-@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+/* 글꼴은 **HTML 에서 미리** 받는다 (각 페이지 <head> 의 link).
+   CSS 안의 @import 는 줄을 세운다 —
+   style.css 를 다 받아야 글꼴 주소를 알고, 그제야 글꼴 파일을 받는다.
+   세 번을 차례로 기다리던 것을 한꺼번에 받게 바꿨다. */
 
 :root{
   --bg:#F6F5EC;
@@ -37,7 +39,7 @@
   --shadow-pop:0 14px 40px rgba(58,72,44,.16);
   --tab-h:74px;
   --font-title:'Jua', 'Pretendard Variable', system-ui, sans-serif;
-  --font-body:'Pretendard Variable', 'Gowun Dodum', system-ui, -apple-system, sans-serif;
+  --font-body:'Pretendard Variable', system-ui, -apple-system, sans-serif;
 }
 
 html[data-theme="dark"]{
@@ -1432,6 +1434,20 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .cal .wk span{font-size:12px}
 .amark{font-size:12px}
 .badge-nm{font-size:12px}
+/* 「새 글 n개 ↑」 — 보던 자리를 밀지 않고 위에 띄워만 둔다 */
+.newpill{
+  position:fixed;left:50%;transform:translateX(-50%);
+  top:calc(var(--topbar-h, 56px) + 10px + env(safe-area-inset-top,0));
+  z-index:60;border:none;cursor:pointer;
+  background:var(--brand-deep);color:#fff;font-family:inherit;font-weight:700;
+  font-size:13px;padding:9px 16px;min-height:44px;border-radius:999px;
+  box-shadow:0 6px 18px rgba(0,0,0,.22);
+  animation:newpill-in .22s ease-out
+}
+@keyframes newpill-in{from{opacity:0;transform:translate(-50%,-8px)}
+                      to{opacity:1;transform:translate(-50%,0)}}
+@media (prefers-reduced-motion:reduce){.newpill{animation:none}}
+
 /* ============================================================
    프로필 사진 자르기 — 전체 화면 편집
    ------------------------------------------------------------

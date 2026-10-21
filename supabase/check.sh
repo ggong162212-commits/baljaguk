@@ -77,6 +77,9 @@ fi
 if [ -f "$HERE/fix-9.sql" ]; then
   run "fix-9.sql" "$HERE/fix-9.sql"
 fi
+if [ -f "$HERE/fix-10.sql" ]; then
+  run "fix-10.sql" "$HERE/fix-10.sql"
+fi
 
 # 함수 본문은 만들 때 검사되지 않는다 — 실제로 들여다본다
 if [ -f "$HERE/check-calls.sql" ]; then

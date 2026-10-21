@@ -8,6 +8,12 @@
   const HAS_SB = !!(C.SUPABASE_URL && C.SUPABASE_ANON_KEY);
   const SKEY = 'baljaguk.session';
   const DKEY = 'baljaguk.demo';
+
+  /* 받아 둔 사진 주소 (경로 → {url, until}) 와 지금 받는 중인 것.
+     비공개 보관함이라 볼 때마다 서명을 받아야 하는데, 그릴 때마다
+     다시 받으면 피드 한 번에 수십 번이 된다. */
+  const signCache = new Map();
+  const signFlight = new Map();
   const uid = () => 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   /* 한국 날짜. toISOString 은 UTC 라서 0~9시에 「오늘」이 어제가 된다.
      그 시간에 승인한 가입일이 하루 밀리고, 현장 출석이 안 됐다. */
@@ -883,14 +889,18 @@
       let interval = pollMs || 7000;
       let timer = null;
 
-      const fire = () => { if (!stopped && !document.hidden) onChange(); };
-      const loop = () => { clearInterval(timer); timer = setInterval(fire, interval); };
+      /* info 를 같이 넘긴다 — 무엇이 바뀌었는지 알면
+         화면 전체를 다시 그리지 않고 그 카드만 고칠 수 있다.
+         info 가 null 이면 「뭔가 바뀌었는데 뭔지는 모름」 = 전체 갱신 */
+      const fire = info => { if (!stopped && !document.hidden) onChange(info || null); };
+      const loop = () => { clearInterval(timer); timer = setInterval(() => fire(null), interval); };
       loop();
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) fire(); });
-      window.addEventListener('focus', fire);
+      /* 앱을 다시 보면 놓친 것을 한 번에 받아온다 */
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) fire(null); });
+      window.addEventListener('focus', () => fire(null));
 
       if (!HAS_SB) {
-        window.addEventListener('storage', e => { if (e.key === DKEY) fire(); });
+        window.addEventListener('storage', e => { if (e.key === DKEY) fire(null); });
         return () => { stopped = true; clearInterval(timer); };
       }
 
@@ -925,7 +935,16 @@
         };
         ws.onmessage = (m) => {
           let msg = null; try { msg = JSON.parse(m.data); } catch (e) { return; }
-          if (msg && msg.event === 'postgres_changes') fire();
+          if (!msg || msg.event !== 'postgres_changes') return;
+          /* 무엇이 바뀌었는지까지 넘긴다 */
+          const d = msg.payload && msg.payload.data;
+          if (!d) return fire(null);
+          fire({
+            table: d.table,
+            type: String(d.type || '').toLowerCase(),   /* insert · update · delete */
+            row: d.record || d.old_record || null,
+            old: d.old_record || null
+          });
         };
         const down = () => {
           clearInterval(hb);
@@ -2508,20 +2527,91 @@
       return path;
     },
 
+    /* 보이는 글 몇 개의 **숫자만** 다시 받아온다 — 피드 전체를 다시 안 불러도 되게 */
+    async feedSome(ids) {
+      const list = (ids || []).filter(Boolean).slice(0, 30);
+      if (!list.length) return [];
+      if (!HAS_SB) {
+        const all = await DB.community.feed({ limit: 60 });
+        const rows = (all && all.rows) || all || [];
+        return rows.filter(r => list.indexOf(r.id) >= 0);
+      }
+      return await rest('rpc/feed_some', {
+        method: 'POST', body: { p_ids: list }
+      }) || [];
+    },
+
+    /* ── 사진 주소 — 받아 둔 것은 다시 받지 않는다
+       비공개 보관함이라 볼 때마다 서명을 받아야 하는데,
+       예전에는 **사진 한 장마다 한 번씩, 그릴 때마다 또** 받았다.
+       피드 한 번에 수십 번. 그래서
+         ① 한 시간짜리 서명을 50분 동안 들고 쓴다
+         ② 같은 사진을 동시에 여러 번 찾으면 한 번만 받는다
+         ③ 여러 장은 **한 번에 묶어** 받는다 */
     async photoUrl(path) {
       if (!HAS_SB) return path;               /* 체험 모드는 dataURL 그대로 */
       if (!path) return '';
       if (/^data:/.test(path)) return path;
-      let r;
+
+      const hit = signCache.get(path);
+      if (hit && hit.until > Date.now()) return hit.url;
+      if (signFlight.has(path)) return signFlight.get(path);
+
+      const job = (async () => {
+        try {
+          const r = await storageFetch(
+            C.SUPABASE_URL + '/storage/v1/object/sign/community/' + path, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ expiresIn: 3600 })
+            });
+          const j = await r.json().catch(() => ({}));
+          const url = j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+          if (url) signCache.set(path, { url, until: Date.now() + 50 * 60 * 1000 });
+          return url;
+        } catch (e) { return ''; }
+        finally { signFlight.delete(path); }
+      })();
+      signFlight.set(path, job);
+      return job;
+    },
+
+    /* 여러 장을 한 번에 — 서버에 요청 한 번이면 된다 */
+    async photoUrls(paths) {
+      const list = (paths || []).filter(Boolean);
+      const out = {};
+      if (!list.length) return out;
+      if (!HAS_SB) { list.forEach(x => { out[x] = x; }); return out; }
+
+      const need = [];
+      list.forEach(x => {
+        if (/^data:/.test(x)) { out[x] = x; return; }
+        const hit = signCache.get(x);
+        if (hit && hit.until > Date.now()) { out[x] = hit.url; return; }
+        if (need.indexOf(x) < 0) need.push(x);
+      });
+      if (!need.length) return out;
+
       try {
-        r = await storageFetch(C.SUPABASE_URL + '/storage/v1/object/sign/community/' + path, {
+        const r = await storageFetch(C.SUPABASE_URL + '/storage/v1/object/sign/community', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ expiresIn: 3600 })
+          body: JSON.stringify({ paths: need, expiresIn: 3600 })
         });
-      } catch (e) { return ''; }
-      const j = await r.json().catch(() => ({}));
-      return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+        const rows = await r.json().catch(() => []);
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+          if (!row || !row.signedURL) return;
+          /* 돌려주는 경로는 앞에 / 가 붙어 오기도 한다 */
+          const key = String(row.path || '').replace(/^\//, '');
+          const url = C.SUPABASE_URL + '/storage/v1' + row.signedURL;
+          out[key] = url;
+          signCache.set(key, { url, until: Date.now() + 50 * 60 * 1000 });
+        });
+      } catch (e) {
+        /* 묶어 받기가 안 되면 한 장씩 — 옛 서버에서도 돌게 */
+        await Promise.all(need.map(async x => { out[x] = await DB.community.photoUrl(x); }));
+      }
+      return out;
     },
 
     /* 내 구성원 id — 서버가 정해준다 */

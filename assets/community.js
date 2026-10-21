@@ -112,6 +112,9 @@ window.Community = (function () {
        앱이 막 켜지는 중에 열려다 실패하던 것 */
     appReady = true;
     runDeepLink();
+
+    /* 남이 한 것이 바로 보이게 */
+    startLive();
     /* 알림을 눌렀을 때 서비스워커가 알려 준다 — 주소만 바뀌면 화면이 안 바뀌어서 */
     try {
       navigator.serviceWorker.addEventListener('message', e => {
@@ -202,19 +205,21 @@ window.Community = (function () {
 
   async function loadAvatars(root) {
     const els = Array.prototype.slice.call((root || document).querySelectorAll('[data-avatar]'));
-    for (let i = 0; i < els.length; i++) {
-      const el = els[i], path = el.getAttribute('data-avatar');
+    if (!els.length) return;
+    /* ★ 한 장씩 줄 서서 기다리지 않는다 — 한꺼번에 받는다.
+       같은 사람이 여러 번 나와도 avatarUrl 이 한 번만 받아 온다. */
+    await Promise.all(els.map(async el => {
+      const path = el.getAttribute('data-avatar');
       el.removeAttribute('data-avatar');
       try {
         const url = await DB.community.avatarUrl(path);
-        if (url) {
-          el.style.backgroundImage = 'url("' + url + '")';
-          el.classList.add('has-photo');
-          /* 이니셜을 비운다 — CSS 로만 가리면 색조 규칙에 덮일 수 있다 */
-          el.textContent = '';
-        }
+        if (!url) return;
+        el.style.backgroundImage = 'url("' + url + '")';
+        el.classList.add('has-photo');
+        /* 이니셜을 비운다 — CSS 로만 가리면 색조 규칙에 덮일 수 있다 */
+        el.textContent = '';
       } catch (e) { /* 한 장 실패해도 이니셜로 보인다 */ }
-    }
+    }));
   }
 
   /* ---------- 내 프로필 ---------- */
@@ -677,8 +682,27 @@ window.Community = (function () {
     loadAvatars(btn);
   }
 
+  /* ============================================================
+     탭을 옮길 때 — 이미 본 화면을 바로 보여 주고 뒤에서 갱신
+     ------------------------------------------------------------
+     예전에는 탭을 누를 때마다 뼈대(스켈레톤)로 비웠다가 다시 채웠다.
+     이미 받아 둔 것이 있으면 **그것부터 보여 준다.**
+     새 내용이 오면 조용히 바뀐다. (한 발자국 늦는 느낌 없애기)
+     ============================================================ */
+  const viewCache = {};
+  let warm = false;        /* 지금 화면에 보여 줄 것이 이미 있나 */
+
   function go(tab) {
+    /* 떠나기 전 지금 화면을 적어 둔다 */
+    if (cur && $('#view')) viewCache[cur] = $('#view').innerHTML;
     cur = tab;
+    if (tab !== 'home') { const np = $('#newPill'); if (np) np.remove(); }
+    /* 돌아온 탭이면 곧바로 보여 준다 — 비었다가 채워지지 않게 */
+    warm = false;
+    if (viewCache[tab] && $('#view')) {
+      $('#view').innerHTML = viewCache[tab];
+      warm = true;
+    }
     $$('#tabbar [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
     /* 홈에서는 후기 쓰기, 설문 탭에서는 설문 만들기 (운영진만) */
     const fab = $('#fab');
@@ -706,11 +730,18 @@ window.Community = (function () {
   };
   const paws = () => '<div class="paws" role="status" aria-label="불러오는 중">' +
     '<i>' + ic('paw') + '</i><i>' + ic('paw') + '</i><i>' + ic('paw') + '</i></div>';
-  const loading = n => skel(n) + paws();
+  /* 이미 보여 줄 것이 있으면 뼈대를 그리지 않는다 */
+  const loading = n => warm ? '' : (skel(n) + paws());
 
   /* ============================================================
      홈 — 피드
      ============================================================ */
+  /* 내용이 바뀌었으면 적어 둔 화면을 버린다 */
+  function dropViewCache(tab) {
+    if (tab) delete viewCache[tab];
+    else Object.keys(viewCache).forEach(k => delete viewCache[k]);
+  }
+
   async function renderHome(reset) {
     if (reset) {
       F.rows = []; F.cursor = null; F.done = false;
@@ -2037,29 +2068,41 @@ window.Community = (function () {
     /* 사진 자리가 생기자마자 밀기를 붙인다 — 첫 손가락부터 먹히게 */
     wireSwipe(root);
 
-    /* 영상 — 포스터를 먼저 깔아 자리를 잡고, 보일 때 받아온다 */
+    /* ★ 한 장씩 차례로 기다리지 않는다.
+       예전에는 사진 10장이면 **열 번을 줄 서서** 기다렸다.
+       이제 경로를 모아 한 번에 받고, 받아 둔 것은 바로 쓴다. */
     const vids = Array.prototype.slice.call(root.querySelectorAll('video[data-vpath]'));
-    for (const v of vids) {
-      const path = v.getAttribute('data-vpath');
-      v.removeAttribute('data-vpath');
+    const imgs = Array.prototype.slice.call(root.querySelectorAll('img[data-path]'));
+    if (!vids.length && !imgs.length) { wireSwipe(root); return; }
+
+    const paths = [];
+    vids.forEach(v => {
       const poster = v.getAttribute('data-poster');
       if (poster) { v.poster = poster; v.removeAttribute('data-poster'); }
-      try {
-        const url = await DB.community.photoUrl(path);
-        if (url) v.dataset.vsrc = url;
-      } catch (e) { }
-    }
+      const x = v.getAttribute('data-vpath');
+      if (x) paths.push(x);
+    });
+    imgs.forEach(el => {
+      const x = el.getAttribute('data-path');
+      if (x) paths.push(x);
+    });
+
+    let map = {};
+    try { map = await DB.community.photoUrls(paths); }
+    catch (e) { /* 한 장도 못 받아도 글은 보인다 */ }
+
+    vids.forEach(v => {
+      const x = v.getAttribute('data-vpath');
+      v.removeAttribute('data-vpath');
+      if (x && map[x]) v.dataset.vsrc = map[x];
+    });
     if (vids.length) wireVideos(root);
 
-    const imgs = Array.prototype.slice.call(root.querySelectorAll('img[data-path]'));
-    for (let i = 0; i < imgs.length; i++) {
-      const el = imgs[i], path = el.getAttribute('data-path');
+    imgs.forEach(el => {
+      const x = el.getAttribute('data-path');
       el.removeAttribute('data-path');
-      try {
-        const url = await DB.community.photoUrl(path);
-        if (url) el.src = url;
-      } catch (e) { /* 한 장 실패해도 나머지는 보여준다 */ }
-    }
+      if (x && map[x]) el.src = map[x];
+    });
     wireSwipe(root);
   }
 
@@ -2289,6 +2332,125 @@ window.Community = (function () {
   /* 글을 찾는다. 못 찾으면 **조용히 끝내지 않는다** —
      「대기 신청」이 아무 반응 없던 것과 같은 종류를 막는다.
      부른 쪽에서 챙기지 못하면 missWarn 이 사람에게 알려 준다. */
+  /* ============================================================
+     실시간 — 남이 한 것이 내 화면에 바로 뜨게
+     ------------------------------------------------------------
+     선고은님: 「실시간으로 바로바로 반영되면 좋겠는데 살짝 한 발자국 느려」
+     재 보니 **내 동작은 10~20ms** 로 빠른데, **남이 한 것은 아예 안 떴다** —
+     커뮤니티 화면만 DB.live() 를 안 쓰고 있었다 (운영진·공개 화면은 쓰고 있었다).
+
+     ★ 화면 전체를 다시 불러오지 않는다. 바뀐 **그 카드만** 고친다.
+       새 글은 더 그렇다 — 보던 자리가 밀리면 읽던 글을 놓친다.
+       위에 「새 글 n개」 알약만 띄우고, 누를 때 올려 준다.
+     ============================================================ */
+  let liveStop = null;
+  let newPosts = 0;        /* 아직 안 본 새 글 */
+  let liveQueue = null;    /* 몰아서 처리 — 한꺼번에 오면 한 번만 */
+
+  function startLive() {
+    if (liveStop || !DB.live) return;
+    liveStop = DB.live(onLive);
+  }
+
+  /* 바뀐 소식 하나를 받아 화면을 고친다 (시험에서도 직접 부른다) */
+  function onLive(info) {
+    {
+      /* 뭔지 모르면(폴링·되돌아옴) 보이는 것만 살짝 맞춘다 */
+      if (!info) return softRefresh();
+
+      const t = info.table, row = info.row || {};
+      /* 내가 한 것은 이미 화면에 그려 놨다 — 두 번 그리지 않는다 */
+      if (ME && (row.author_id === ME.id || row.member_id === ME.id)) return;
+
+      if (t === 'comments' && row.post_id) {
+        if (findRow(row.post_id)) refreshComments(row.post_id);
+        return;
+      }
+      if (t === 'reactions' && row.post_id) {
+        if (findRow(row.post_id)) refreshReacts(row.post_id);
+        return;
+      }
+      if (t === 'posts') {
+        if (info.type === 'insert') { newPosts++; paintNewPill(); return; }
+        /* 고치거나 숨긴 글 — 보고 있는 글이면 맞춘다 */
+        if (row.id && findRow(row.id)) softRefresh();
+        return;
+      }
+      if (t === 'attendance' || t === 'event_waitlist' || t === 'events') {
+        if (cur === 'vol') softRefresh();
+        return;
+      }
+      if (t === 'poll_votes' && cur === 'poll') softRefresh();
+    }
+  }
+
+  /* 보이는 것만 조용히 맞춘다 — 자리를 흔들지 않는다 */
+  function softRefresh() {
+    clearTimeout(liveQueue);
+    liveQueue = setTimeout(async () => {
+      /* 뭔가 쓰는 중이면 건드리지 않는다 */
+      const el = document.activeElement;
+      if (el && /INPUT|TEXTAREA/.test(el.tagName)) return;
+      if (document.querySelector('.overlay')) return;
+      if (cur === 'home') await quietFeedPatch();
+      else if (cur === 'vol') await renderVol();
+      else if (cur === 'poll') await renderPolls();
+      else await renderMe();
+    }, 300);
+  }
+
+  /* 피드 — 보이는 글들의 숫자만 서버 값으로 맞춘다 (순서는 안 건드림) */
+  async function quietFeedPatch() {
+    const ids = F.rows.slice(0, 20).map(r => r.id);
+    if (!ids.length) return;
+    try {
+      const fresh = await DB.community.feedSome(ids);
+      (fresh || []).forEach(n => {
+        const row = findRow(n.id);
+        if (!row) return;
+        if (row.comment_count !== n.comment_count) {
+          row.comment_count = n.comment_count;
+          row.recent_comments = n.recent_comments;
+          paintCards(n.id);
+        }
+        const a = JSON.stringify(row.reactions || {});
+        const b = JSON.stringify(n.reactions || {});
+        if (a !== b) { row.reactions = n.reactions; redrawReacts(n.id); }
+      });
+    } catch (e) { /* 조용히 — 다음 번에 다시 */ }
+  }
+
+  async function refreshReacts(id) {
+    const row = findRow(id);
+    if (!row) return;
+    try {
+      const one = await DB.community.postOne(id);
+      if (!one) return;
+      row.reactions = one.reactions;
+      redrawReacts(id);
+    } catch (e) { }
+  }
+
+  /* 「새 글 n개」 — 누르면 그때 올려 준다 */
+  function paintNewPill() {
+    if (cur !== 'home') return;
+    let pill = $('#newPill');
+    if (!pill) {
+      pill = document.createElement('button');
+      pill.id = 'newPill';
+      pill.type = 'button';
+      pill.className = 'newpill';
+      pill.onclick = async () => {
+        newPosts = 0;
+        pill.remove();
+        await renderHome(true);
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+      };
+      document.body.appendChild(pill);
+    }
+    pill.textContent = '새 글 ' + newPosts + '개 ↑';
+  }
+
   function findRow(id) { return F.rows.filter(r => r.id === id)[0]; }
 
   /* 눌렀는데 찾을 게 없을 때 — 아무 일도 안 일어난 것처럼 두지 않는다 */
@@ -2669,6 +2831,7 @@ window.Community = (function () {
         }
         closeSheet();
         toast('고쳤어요', 'ok');
+        dropViewCache();
         renderHome(true);
       } catch (e) {
         toast(e.message || '고치지 못했어요', 'err');
@@ -3348,7 +3511,8 @@ window.Community = (function () {
         await tellMentioned(made, v.body.mentions, v.body.text);
         closeSheet();
         cheer && cheer();
-        toast('올렸어요', 'ok');
+        dropViewCache();
+      toast('올렸어요', 'ok');
         F.kind = 'free'; F.place = '';
         saveFilter({ kind: 'free', place: '' });
         renderHome(true);
@@ -4679,5 +4843,5 @@ window.Community = (function () {
       '</div></div>';
   }
 
-  return { start, __readVideo: readVideo };
+  return { start, __readVideo: readVideo, __live: onLive, __cropPhoto: cropPhoto };
 })();
