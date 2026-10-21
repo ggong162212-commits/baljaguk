@@ -366,6 +366,24 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .check .hr{width:56px;flex:none}
 .check .hr input{width:100%;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);text-align:center;font-size:16px}
 
+/* 프로필을 누르면 크게 — 이름·사진·기수만 */
+.facebtn{
+  border:none;background:none;padding:0;cursor:pointer;line-height:0;flex:none;
+  -webkit-tap-highlight-color:transparent;border-radius:50%
+}
+.peek{text-align:center;padding:4px 0 10px}
+.peek-face{
+  width:70vw;max-width:260px;aspect-ratio:1/1;margin:0 auto 16px;
+  border-radius:50%;display:grid;place-items:center;
+  background:var(--brand-soft);color:var(--brand-deep);
+  font-family:var(--font-title);font-size:19vw;line-height:1;
+  background-size:cover;background-position:center;
+  box-shadow:0 0 0 1px var(--line-2)
+}
+.peek-face.has-photo{color:transparent;font-size:0}
+.peek-name{font-size:19px;font-weight:800;color:var(--ink)}
+.peek-sub{font-size:13px;color:var(--ink-3);margin-top:4px;min-height:18px}
+
 /* 운영진 답장 — 보낸 것·받은 것 둘 다 이 모양 */
 .replybox{
   margin-top:10px;padding:10px 12px;border-radius:12px;

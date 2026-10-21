@@ -911,7 +911,11 @@ window.Community = (function () {
     const long = !!body;
 
     return '<article class="card post" data-post="' + esc(p.id) + '">' +
-      '<div class="who">' + avatar(who) +
+      '<div class="who">' +
+      '<button class="facebtn" type="button" data-peek="' + esc(who.id || '') + '" ' +
+      'data-pname="' + esc(who.name) + '" data-pphoto="' + esc(who.photo || who.photo_path || '') + '" ' +
+      'data-prole="' + esc(who.role || '') + '" aria-label="' + esc(who.name) + ' 프로필">' +
+      avatar(who) + '</button>' +
       '<div class="grow"><div class="nm">' + esc(who.name) +
       (who.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
       '<div class="at">' + relTime(p.created_at) +
@@ -996,6 +1000,8 @@ window.Community = (function () {
       inp.__wired = true;
       const id = inp.dataset.cbar;
       const send = box.querySelector('[data-csend="' + id + '"]');
+      /* @ 로 사람 부르기 — 카드에서 바로 쓸 때도 */
+      const ment = attachMention(inp, box.querySelector('[data-cmenu-for="' + id + '"]'));
 
       const refresh = () => {
         const has = !!inp.value.trim();
@@ -1039,7 +1045,13 @@ window.Community = (function () {
         paintCards(id);
 
         try {
-          await DB.community.addComment(id, v);
+          const made = await DB.community.addComment(id, v);
+          const ids = ment ? ment.ids(v) : [];
+          if (ids.length) {
+            try { await DB.community.mentionAdd(ids, id, (made && made.id) || null, v.slice(0, 120)); }
+            catch (err) { console.warn('[발자국] 언급을 못 적었어요:', err); }
+          }
+          if (ment) ment.clear();
         } catch (e) {
           /* 되돌린다 */
           row.recent_comments = before;
@@ -1192,6 +1204,63 @@ window.Community = (function () {
     } catch (e) {
       console.warn('[발자국] 언급을 못 적었어요:', e);
     }
+  }
+
+  /* ============================================================
+     사람 보기 — 카카오톡처럼 프로필을 누르면 크게
+     ------------------------------------------------------------
+     이름·사진·기수만 보인다.
+     연락처·학번·봉사 기록은 구성원끼리 보이지 않는다.
+     ============================================================ */
+  async function peekPerson(opts) {
+    const o = opts || {};
+    const name = o.name || '?';
+    const ov = sheet({
+      title: '',
+      body:
+        '<div class="peek">' +
+        '<div class="peek-face" id="peekFace"' +
+        (o.photo ? ' data-avatar="' + esc(o.photo) + '"' : '') + '>' +
+        esc(name.slice(0, 1)) + '</div>' +
+        '<div class="peek-name">' + esc(name) +
+        (o.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
+        '<div class="peek-sub" id="peekSub"></div>' +
+        '</div>'
+    });
+    loadAvatars(ov);
+
+    /* 기수는 따로 받아 온다 — 없으면 안 보인다 */
+    if (o.gen) {
+      ov.querySelector('#peekSub').textContent = o.gen + '기';
+    } else if (o.id) {
+      try {
+        const people = await DB.community.mentionPeople(name);
+        const hit = (people || []).find(x => x.id === o.id);
+        if (hit && hit.gen) ov.querySelector('#peekSub').textContent = hit.gen + '기';
+      } catch (e) { }
+    }
+
+    /* 사진을 누르면 크게 — 두 손가락으로 키울 수 있다 */
+    const face = ov.querySelector('#peekFace');
+    if (face && o.photo) {
+      face.style.cursor = 'zoom-in';
+      face.onclick = async () => {
+        let url = '';
+        try { url = await DB.community.avatarUrl(o.photo); } catch (e) { }
+        if (!url) return;
+        const big = document.createElement('div');
+        big.className = 'shotview';
+        big.innerHTML =
+          '<button class="x" type="button" aria-label="닫기">' + ic('x') + '</button>' +
+          '<div class="shotview-track"><img src="' + esc(url) + '" alt="' + esc(name) + '"></div>';
+        document.body.appendChild(big);
+        document.body.style.overflow = 'hidden';
+        const shut = () => { big.remove(); document.body.style.overflow = ''; };
+        big.querySelector('.x').onclick = shut;
+        big.onclick = e => { if (e.target === big) shut(); };
+      };
+    }
+    return ov;
   }
 
   /* 글 안의 @이름 을 초록으로 */
@@ -1613,6 +1682,7 @@ window.Community = (function () {
     return '<div class="cmts" data-cmts="' + esc(p.id) + '">' +
       '<div data-clist="' + esc(p.id) + '">' + list.map(c => commentLine(c, true)).join('') + '</div>' +
       /* 카드에서 바로 쓸 수 있게 입력줄을 늘 둔다 — 누를 필요 없이 */
+      '<div class="mentbox" data-cmenu-for="' + esc(p.id) + '" hidden></div>' +
       '<div class="cbar">' + avatar(ME) +
       '<input class="cbarin" type="text" inputmode="text" ' +
       'data-cbar="' + esc(p.id) + '" placeholder="댓글 달기…" aria-label="댓글 쓰기">' +
@@ -1634,7 +1704,10 @@ window.Community = (function () {
         '</span></div>';
     }
     return '<div class="cline' + (c.parent_id ? ' reply' : '') + '" data-c="' + esc(c.id) + '">' +
-      avatar(who) +
+      '<button class="facebtn" type="button" data-peek="' + esc(who.id || '') + '" ' +
+      'data-pname="' + esc(name) + '" data-pphoto="' + esc(who.photo || who.photo_path || '') + '" ' +
+      'data-prole="' + esc(who.role || '') + '" aria-label="' + esc(name) + ' 프로필">' +
+      avatar(who) + '</button>' +
       '<span class="ctx">' +
       '<b>' + esc(name) + '</b> ' +
       '<span class="tx">' + (c.hidden ? '<span class="mut">운영진이 숨긴 댓글이에요</span>' : hl(c.body)) + '</span>' +
@@ -1709,6 +1782,11 @@ window.Community = (function () {
         return;
       }
       if ((b = hit('data-who'))) return whoSheet(b.dataset.who);
+      /* 프로필을 누르면 크게 — 이름·사진·기수만 */
+      if ((b = hit('data-peek'))) return peekPerson({
+        id: b.dataset.peek, name: b.dataset.pname,
+        photo: b.dataset.pphoto, role: b.dataset.prole
+      });
       if ((b = hit('data-hint'))) {
         try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }
         return renderHome(true);
@@ -2120,9 +2198,13 @@ window.Community = (function () {
       body:
         '<label class="field"><textarea class="input" id="qBody" rows="4" ' +
         'placeholder="궁금한 걸 짧게 물어봐요"></textarea></label>' +
+        '<div id="qMenu" class="mentbox" hidden></div>' +
         '<div class="sheet-foot">' +
         '<button class="btn primary lg block" type="button" id="qGo">질문 올리기</button></div>'
     });
+
+    /* @ 로 사람 부르기 */
+    const qMent = attachMention(ov.querySelector('#qBody'), ov.querySelector('#qMenu'));
 
     ov.querySelector('#qGo').onclick = async () => {
       const btn = ov.querySelector('#qGo');
@@ -2130,7 +2212,8 @@ window.Community = (function () {
       if (!t) return toast('궁금한 걸 적어주세요', 'err');
       btn.disabled = true; btn.textContent = '올리는 중…';
       try {
-        await DB.community.createPost({ type: 'free', body: t, is_question: true });
+        const made = await DB.community.createPost({ type: 'free', body: t, is_question: true });
+        await tellMentioned(made, qMent ? qMent.ids(t) : [], t);
         closeSheet();
         toast('질문을 올렸어요', 'ok');
         F.kind = 'free'; F.place = '';
@@ -2676,6 +2759,7 @@ window.Community = (function () {
 
   /* ---------- 공지 (운영진) ---------- */
   function noticeWizard() {
+    let noticeMentions = [];
     UI.wizard({
       title: '공지 쓰기',
       doneLabel: '올리기',
@@ -2685,8 +2769,17 @@ window.Community = (function () {
           q: '무엇을 알릴까요?',
           hint: '모두에게 보이고, 어떤 필터에서든 맨 위에 붙어요.',
           body: '<label class="field"><textarea class="input" id="nBody" rows="5" ' +
-            'placeholder="11월 정기모임 안내…"></textarea></label>',
-          read: r => r.querySelector('#nBody').value.trim(),
+            'placeholder="11월 정기모임 안내…"></textarea></label>' +
+            '<div id="nMenu" class="mentbox" hidden></div>',
+          after: r => {
+            r.__ment = attachMention(r.querySelector('#nBody'), r.querySelector('#nMenu'));
+          },
+          read: r => {
+            const t = r.querySelector('#nBody').value.trim();
+            /* 부른 사람을 글과 같이 들고 간다 */
+            noticeMentions = r.__ment ? r.__ment.ids(t) : [];
+            return t;
+          },
           fill: (r, v) => { r.querySelector('#nBody').value = v; },
           valid: v => v ? '' : '내용을 적어주세요',
           sum: v => cut(v, 20)
@@ -2710,9 +2803,10 @@ window.Community = (function () {
         }
       ],
       done: async v => {
-        await DB.community.createPost({
+        const made = await DB.community.createPost({
           type: 'notice', body: v.body, pinned: v.pin
         });
+        await tellMentioned(made, noticeMentions, v.body);
         closeSheet();
         toast('공지를 올렸어요', 'ok');
         F.kind = 'all'; F.place = '';
@@ -2886,6 +2980,7 @@ window.Community = (function () {
 
         '<div class="divider"></div>' +
         '<div id="dList" class="mut sm">' + paws() + '</div>' +
+        '<div id="dMenu" class="mentbox" hidden></div>' +
         '<div class="cwrite" style="margin-top:12px">' +
         '<input class="input" type="text" id="dIn" placeholder="댓글 달기…" ' +
         'autocomplete="off" enterkeyhint="send" aria-label="댓글 입력">' +
@@ -2894,6 +2989,8 @@ window.Community = (function () {
 
     loadPhotos(ov);
     loadAvatars(ov);   /* 글 상세에서 프로필 사진이 안 보이던 것 */
+    /* @ 로 사람 부르기 — 질문의 답에도 */
+    const dMent = attachMention(ov.querySelector('#dIn'), ov.querySelector('#dMenu'));
 
     async function draw() {
       let list = [];
@@ -2931,7 +3028,17 @@ window.Community = (function () {
       const v = inp.value.trim();
       if (!v) return;
       inp.disabled = true;
-      try { await DB.community.addComment(id, v); inp.value = ''; await draw(); }
+      try {
+        const made = await DB.community.addComment(id, v);
+        const ids = dMent ? dMent.ids(v) : [];
+        if (ids.length) {
+          try { await DB.community.mentionAdd(ids, id, (made && made.id) || null, v.slice(0, 120)); }
+          catch (err) { console.warn('[발자국] 언급을 못 적었어요:', err); }
+        }
+        if (dMent) dMent.clear();
+        inp.value = '';
+        await draw();
+      }
       catch (e) { toast(e.message || '남기지 못했어요', 'err'); }
       finally { inp.disabled = false; inp.focus(); }
     };
