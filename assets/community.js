@@ -719,6 +719,7 @@ window.Community = (function () {
     paintMoreButton();
     loadPhotos($('#list'));
     wireCbar($('#list'));
+    clipCheck($('#list'));
   }
 
   function paintMoreButton() {
@@ -829,7 +830,9 @@ window.Community = (function () {
 
     /* 인스타 피드처럼 — 사람 줄 → 사진 → 아이콘 줄 → 본문 → 댓글 */
     const body = String(p.body || '');
-    const long = body.length > 70 || body.split('\n').length > 2;
+    /* 두 줄을 넘는지는 그려 봐야 안다 — 일단 접어 두고,
+       그릴 때 실제로 안 넘치면 「더 보기」를 치운다 (clipCheck) */
+    const long = !!body;
 
     return '<article class="card post" data-post="' + esc(p.id) + '">' +
       '<div class="who">' + avatar(who) +
@@ -949,9 +952,10 @@ window.Community = (function () {
         };
         row.recent_comments = before.concat([mine]).slice(-2);
         row.comment_count = beforeN + 1;
-        paintCards(id);
+        /* 먼저 비운다 — 다시 그리면 이 칸은 떨어져 나가 비워도 소용없다 */
         inp.value = '';
         refresh();
+        paintCards(id);
 
         try {
           await DB.community.addComment(id, v);
@@ -981,6 +985,7 @@ window.Community = (function () {
     if (fresh) {
       wireCbar(fresh);
       loadAvatars(fresh);
+      clipCheck(fresh);
       const inp = fresh.querySelector('[data-cbar="' + id + '"]');
       if (inp && text) { inp.value = text; inp.dispatchEvent(new Event('input')); }
     }
@@ -990,6 +995,18 @@ window.Community = (function () {
       const more = acts.parentElement.querySelector('.morecmt[data-cmt="' + id + '"]');
       if (more) more.textContent = '댓글 ' + num(row.comment_count || 0) + '개 모두 보기';
     }
+  }
+
+  /* 본문이 두 줄을 정말 넘는지 보고, 안 넘치면 「더 보기」를 치운다 */
+  function clipCheck(root) {
+    (root || document).querySelectorAll('.bd.clip').forEach(bd => {
+      if (bd.scrollHeight <= bd.clientHeight + 1) {
+        bd.classList.remove('clip');
+        const btn = bd.parentElement &&
+          bd.parentElement.querySelector('.morebd[data-more="' + bd.dataset.body + '"]');
+        if (btn) btn.remove();
+      }
+    });
   }
 
   /* 글 안의 @이름 을 초록으로 */
