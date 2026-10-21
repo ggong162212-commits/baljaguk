@@ -2262,21 +2262,155 @@ window.Community = (function () {
     });
   }
 
-  function editSheet(p) {
+  /* ============================================================
+     글 고치기
+     ------------------------------------------------------------
+     본문만 고칠 수 있던 것을 사진·@태그·만난 친구까지 넓혔다.
+     · 사진: 빼기 · 더하기 · 순서 바꾸기 (뺀 사진은 파일도 지운다)
+     · 설문·퀴즈가 붙어 있고 이미 응답이 있으면 설문은 못 고친다
+     · 공지는 운영진 누구나, 그 밖의 글은 글쓴이만
+     ============================================================ */
+  async function editSheet(p) {
+    const shots = (p.photos || []).slice();     /* 지금 붙어 있는 사진 */
+    const canPhotos = p.type !== 'poll';
+    let voted = false;
+    if (p.poll) {
+      try { voted = await DB.community.pollHasVotes(p.id); } catch (e) { }
+    }
+
     const ov = sheet({
-      title: '글 고치기',
-      body: '<label class="field"><span class="lb">내용</span>' +
-        '<textarea class="input" id="eBody" rows="6">' + esc(p.body || '') + '</textarea></label>' +
-        '<button class="btn primary block" type="button" id="eSave">저장하기</button>'
+      title: p.type === 'notice' ? '공지 고치기' : '글 고치기',
+      body:
+        (p.date || p.place
+          ? '<div class="meta">' + ic('calendar') +
+            (p.date ? fmtDate(p.date) : '') +
+            (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
+          : '') +
+
+        '<label class="field"><span class="lb">내용</span>' +
+        '<textarea class="input" id="eBody" rows="5">' + esc(p.body || '') + '</textarea></label>' +
+        '<div id="eMenu" class="mentbox" hidden></div>' +
+        '<p class="mut" style="font-size:11.5px;margin:-4px 2px 10px">' +
+        '@ 를 치면 사람을 부를 수 있어요</p>' +
+
+        (canPhotos
+          ? '<div class="field"><span class="lb">사진</span>' +
+            '<div id="eShots" class="editshots"></div>' +
+            '<input type="file" id="eFile" accept="image/*" multiple hidden>' +
+            '<button class="btn ghost sm block" type="button" id="eAdd" style="margin-top:8px">' +
+            ic('plus') + '<span>사진 더하기</span></button>' +
+            '<span class="hint">사진을 길게 눌러 끌면 순서가 바뀌어요. 열 장까지.</span></div>'
+          : '') +
+
+        ((p.photos || []).length || canPhotos
+          ? '<button type="button" class="check' + (p.insta_ok ? ' on' : '') + '" id="eInsta" ' +
+            'style="width:100%;text-align:left">' +
+            '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+            '<span class="grow"><span class="sm" style="font-weight:700">인스타그램에 써도 좋아요</span>' +
+            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+            '동아리 계정에 올릴 때 쓸 수 있어요</span></span></button>'
+          : '') +
+
+        (p.poll
+          ? '<p class="mut sm" style="margin-top:12px;line-height:1.6">' +
+            (voted
+              ? '이미 응답이 있어서 설문은 고칠 수 없어요. 본문만 고쳐져요.'
+              : '설문은 글을 지우고 다시 올려야 고칠 수 있어요.') + '</p>'
+          : ''),
+      foot: '<button class="btn primary lg block" type="button" id="eSave">저장하기</button>'
     });
+
+    /* @ 로 사람 부르기 */
+    const ment = attachMention(ov.querySelector('#eBody'), ov.querySelector('#eMenu'));
+
+    /* ---------- 사진 ---------- */
+    function drawShots() {
+      const box = ov.querySelector('#eShots');
+      if (!box) return;
+      box.innerHTML = shots.length
+        ? shots.map((src, i) =>
+            '<div class="eshot" draggable="true" data-i="' + i + '">' +
+            '<img alt="사진 ' + (i + 1) + '"' +
+            (/^data:/.test(src) ? ' src="' + esc(src) + '"' : ' data-path="' + esc(src) + '"') + '>' +
+            '<button class="x" type="button" data-rm="' + i + '" aria-label="이 사진 빼기">' +
+            ic('x') + '</button></div>').join('')
+        : '<div class="mut sm">사진이 없어요</div>';
+      loadPhotos(box);
+
+      box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+        shots.splice(Number(b.dataset.rm), 1);
+        drawShots();
+      });
+
+      /* 길게 눌러 끌면 순서가 바뀐다 */
+      let from = null;
+      box.querySelectorAll('.eshot').forEach(el => {
+        el.addEventListener('dragstart', e => { from = Number(el.dataset.i); });
+        el.addEventListener('dragover', e => e.preventDefault());
+        el.addEventListener('drop', e => {
+          e.preventDefault();
+          const to = Number(el.dataset.i);
+          if (from === null || from === to) return;
+          const moved = shots.splice(from, 1)[0];
+          shots.splice(to, 0, moved);
+          from = null;
+          drawShots();
+        });
+      });
+    }
+    drawShots();
+
+    const addBtn = ov.querySelector('#eAdd');
+    const file = ov.querySelector('#eFile');
+    if (addBtn && file) {
+      addBtn.onclick = () => file.click();
+      file.onchange = async () => {
+        const list = Array.prototype.slice.call(file.files || []);
+        for (const f of list) {
+          if (shots.length >= 10) { toast('사진은 열 장까지예요', 'err'); break; }
+          try { shots.push(await resizeImage(f, 1280)); }
+          catch (e) { toast('사진을 읽지 못했어요', 'err'); }
+        }
+        file.value = '';
+        drawShots();
+      };
+    }
+
+    const insta = ov.querySelector('#eInsta');
+    if (insta) insta.onclick = () => insta.classList.toggle('on');
+
+    /* ---------- 저장 ---------- */
     ov.querySelector('#eSave').onclick = async () => {
+      const btn = ov.querySelector('#eSave');
       const v = ov.querySelector('#eBody').value.trim();
-      if (!v) return toast('내용을 적어주세요', 'err');
-      closeSheet();
-      try { await DB.community.updatePost(p.id, { body: v }); toast('고쳤어요', 'ok'); renderHome(true); }
-      catch (e) { toast(e.message || '고치지 못했어요', 'err'); }
+      if (!v && !shots.length) return toast('글이나 사진을 넣어주세요', 'err');
+      if (btn.disabled) return;
+      btn.disabled = true; btn.classList.add('busy'); btn.textContent = '저장 중…';
+
+      const patch = { body: v };
+      if (canPhotos) {
+        patch.photos = shots;
+        if (insta) patch.insta_ok = insta.classList.contains('on');
+      }
+
+      try {
+        await DB.community.updatePost(p.id, patch);
+        /* 새로 부른 사람에게만 알린다 — 고쳤다고 새 글 알림이 다시 가진 않는다 */
+        const ids = ment ? ment.ids(v) : [];
+        if (ids.length) {
+          try { await DB.community.mentionAdd(ids, p.id, null, v.slice(0, 120)); }
+          catch (e) { console.warn('[발자국] 언급을 못 적었어요:', e); }
+        }
+        closeSheet();
+        toast('고쳤어요', 'ok');
+        renderHome(true);
+      } catch (e) {
+        toast(e.message || '고치지 못했어요', 'err');
+        btn.disabled = false; btn.classList.remove('busy'); btn.textContent = '저장하기';
+      }
     };
   }
+
 
   /* ============================================================
      글쓰기 — 봉사 후기

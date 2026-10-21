@@ -1493,9 +1493,41 @@
         demoWrite(d);
         return { id: p.id };
       }
+      /* 사진을 **먼저** 올리고 글을 만든다.
+         ------------------------------------------------------------
+         예전에는 글을 먼저 만들고 사진을 한 장씩 올렸다.
+         3/7 쯤에서 끊기면 **사진 빠진 글이 남고 「새 글」 알림이
+         이미 72명에게 쌓인다.** 화면은 버튼을 되살려 다시 누르게 하니
+         같은 글이 두 번 생겼다.
+         이제 글 id 를 먼저 정해 사진을 다 올린 뒤에 글을 만든다 —
+         도중에 끊기면 **글이 아예 안 생기고 알림도 안 간다.**
+         올리다 만 파일은 치운다. */
+      const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : uid();
+      const paths = [];
+      if (photos.length) {
+        try {
+          for (let i = 0; i < photos.length; i++) {
+            paths.push(await DB.community.uploadPhoto(id, photos[i], i));
+          }
+        } catch (e) {
+          /* 올라간 것만 치운다 — 고아 파일을 남기지 않는다 */
+          if (paths.length) {
+            try {
+              await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prefixes: paths })
+              });
+            } catch (e2) { }
+          }
+          throw e;
+        }
+      }
+
       const rows = await rest('posts', {
         method: 'POST', prefer: 'return=representation',
         body: {
+          id: id,
           type: v.type || 'review', event_id: v.event_id || null,
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned,
@@ -1503,11 +1535,8 @@
           author_id: await DB.community.myId()
         }
       });
-      const id = rows && rows[0] && rows[0].id;
-      if (!id) throw new Error('글을 올리지 못했어요');
-      if (photos.length) {
-        const paths = [];
-        for (let i = 0; i < photos.length; i++) paths.push(await DB.community.uploadPhoto(id, photos[i], i));
+      if (!(rows && rows[0] && rows[0].id)) throw new Error('글을 올리지 못했어요');
+      if (paths.length) {
         await rest('post_photos', {
           method: 'POST', prefer: 'return=minimal',
           body: paths.map((pth, i) => ({ post_id: id, path: pth, sort: i }))
@@ -1546,18 +1575,92 @@
       return { id };
     },
 
+    /* 글을 고친다.
+       ------------------------------------------------------------
+       photos 를 주면 사진도 맞춘다 — 그 목록이 곧 「남길 사진」이다.
+         · 이미 올라간 것(경로 글자)은 그대로 두고
+         · 새로 고른 것(data: 로 시작)은 올리고
+         · 목록에 없는 것은 표에서 빼고 **파일도 지운다** (고아 파일 X)
+       animals 를 주면 만난 친구도 맞춘다. */
     async updatePost(id, patch) {
+      const p2 = Object.assign({}, patch);
+      const photos = p2.photos; delete p2.photos;
+      const animals = p2.animals; delete p2.animals;
+
       if (!HAS_SB) {
         const d = cdemo(), p = d.posts.find(x => x.id === id);
         if (!p) throw new Error('글을 찾지 못했어요');
-        Object.assign(p, patch, { edited_at: new Date().toISOString() });
+        Object.assign(p, p2, { edited_at: new Date().toISOString() });
+        if (photos) {
+          d.post_photos = (d.post_photos || []).filter(f => f.post_id !== id);
+          photos.forEach((src, i) =>
+            d.post_photos.push({ id: uid(), post_id: id, path: src, sort: i }));
+        }
+        if (animals) {
+          d.post_animals = (d.post_animals || []).filter(x => x.post_id !== id);
+          animals.forEach(a => d.post_animals.push({ post_id: id, animal_id: a }));
+        }
         demoWrite(d); return true;
       }
+
+      if (photos) {
+        /* 지금 올라가 있는 것 */
+        const now = await rest('post_photos?select=id,path,sort&post_id=eq.' + enc(id)) || [];
+        const keep = photos.filter(x => !/^data:/.test(x));
+        const gone = now.filter(f => keep.indexOf(f.path) < 0).map(f => f.path);
+
+        /* 새로 고른 것을 먼저 올린다 — 올리다 실패해도 글은 그대로다 */
+        const paths = [];
+        for (let i = 0; i < photos.length; i++) {
+          paths.push(/^data:/.test(photos[i])
+            ? await DB.community.uploadPhoto(id, photos[i], Date.now() + i)
+            : photos[i]);
+        }
+
+        await rest('post_photos?post_id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+        if (paths.length) {
+          await rest('post_photos', {
+            method: 'POST', prefer: 'return=minimal',
+            body: paths.map((path, i) => ({ post_id: id, path, sort: i }))
+          });
+        }
+        /* 뺀 사진은 파일도 지운다 */
+        if (gone.length) {
+          try {
+            await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prefixes: gone })
+            });
+          } catch (e) { console.warn('[발자국] 뺀 사진 파일을 못 지웠어요:', e); }
+        }
+      }
+
+      if (animals) {
+        await rest('post_animals?post_id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+        if (animals.length) {
+          await rest('post_animals', {
+            method: 'POST', prefer: 'return=minimal',
+            body: animals.map(a => ({ post_id: id, animal_id: a }))
+          });
+        }
+      }
+
       await rest('posts?id=eq.' + enc(id), {
         method: 'PATCH', prefer: 'return=minimal',
-        body: Object.assign({}, patch, { edited_at: new Date().toISOString() })
+        body: Object.assign({}, p2, { edited_at: new Date().toISOString() })
       });
       return true;
+    },
+
+    /* 이 글에 응답이 있나 — 있으면 설문을 못 고친다 */
+    async pollHasVotes(postId) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.poll_votes || []).some(v => v.post_id === postId);
+      }
+      const r = await rest('poll_votes?select=post_id&post_id=eq.' + enc(postId) + '&limit=1');
+      return !!(r && r.length);
     },
 
     /* 글을 지운다. 사진 파일까지 같이 치운다 —

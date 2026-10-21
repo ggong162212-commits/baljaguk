@@ -1164,6 +1164,18 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .shots img:active{opacity:.92}
 
 /* 구성원 줄 — 카카오 연결 여부 */
+/* 글 고칠 때 사진 — 빼기·순서 바꾸기 */
+.editshots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+.eshot{position:relative;aspect-ratio:1/1;border-radius:11px;overflow:hidden;
+  background:var(--surface-2);cursor:grab}
+.eshot img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
+.eshot .x{
+  position:absolute;top:3px;right:3px;width:26px;height:26px;border-radius:50%;
+  border:none;background:rgba(0,0,0,.55);color:#fff;display:grid;place-items:center;
+  cursor:pointer;padding:0;-webkit-tap-highlight-color:transparent
+}
+.eshot .x .svg{width:14px;height:14px}
+
 /* 누르는 중 — 두 번 눌리지 않고, 눌린 게 바로 보이게 */
 .btn.busy, button.busy{opacity:.6;cursor:default}
 
