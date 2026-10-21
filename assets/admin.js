@@ -512,7 +512,8 @@
       ['vol', 'calendar', '확정 안 한 봉사', t.unconfirmed],
       ['apply', 'mail', '가입 대기', t.applications],
       ['reports', 'alert', '신고', t.reports],
-      ['feedback', 'heart', '받은 의견', t.feedback]
+      ['feedback', 'heart', '받은 의견', t.feedback],
+      ['staff', 'star', '운영진 지원', t.staff]
     ].filter(x => Number(x[3]) > 0);
 
     if (!items.length) { box.innerHTML = ''; return; }
@@ -527,6 +528,7 @@
       const k = b.dataset.todo;
       if (k === 'reports') return reportsSheet();
       if (k === 'feedback') return feedbackSheet();
+      if (k === 'staff') return staffSheet();
       go(k);
     });
   }
@@ -586,6 +588,64 @@
       });
       ov2.querySelector('#frGo').onclick = async () => {
         const t = ov2.querySelector('#frText').value.trim();
+        if (!t) return toast('내용을 적어주세요', 'err');
+        try {
+          const r = await DB.feedback.reply(id, t);
+          if (r && r.ok === false) return toast('답장할 수 없어요', 'err');
+          closeSheet(); toast('답장했어요', 'ok'); render();
+        } catch (e) { toast(e.message || '보내지 못했어요', 'err'); }
+      };
+    });
+  }
+
+  /* 운영진 지원 목록 — 받은 의견과 같은 모양 */
+  async function staffSheet() {
+    const ov = sheet({ title: '운영진 지원', body: '<div id="saList" class="mut sm">불러오는 중…</div>' });
+    let list = null;
+    try { list = await DB.feedback.staffApplies(); }
+    catch (e) { console.warn('[발자국] 지원을 못 받아왔어요:', e); }
+    const box = ov.querySelector('#saList');
+    if (!box) return;
+    if (list === null) {
+      box.innerHTML = '<div class="card center" style="padding:22px 18px">' +
+        '<div class="sm">불러오지 못했어요</div></div>';
+      return;
+    }
+    if (!list.length) {
+      box.innerHTML = '<div class="mut sm">아직 지원이 없어요</div>';
+      return;
+    }
+    box.innerHTML = list.map(f =>
+      '<div class="card" style="padding:14px 15px;margin-bottom:9px">' +
+      '<div class="row" style="gap:10px;align-items:center">' +
+      avatar({ name: f.who || '?', photo: f.who_photo }) +
+      '<div class="grow"><div class="nm">' + esc(f.who || '(알 수 없음)') + '</div>' +
+      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) +
+      (f.joined_on ? ' · ' + fmtDate(f.joined_on) + ' 가입' : '') + '</div></div></div>' +
+      '<div style="margin-top:9px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
+      esc(f.body) + '</div>' +
+      (f.replied
+        ? '<div class="replybox"><div class="lb">보낸 답장</div>' +
+          '<div class="tx">' + esc(f.reply || '') + '</div></div>'
+        : '<button class="btn ghost sm block" type="button" style="margin-top:10px" ' +
+          'data-sreply="' + esc(f.id) + '">답장하기</button>') +
+      '<button class="btn soft sm block" type="button" style="margin-top:8px" ' +
+      'data-sdone="' + esc(f.id) + '">확인했어요</button></div>').join('');
+
+    box.querySelectorAll('[data-sdone]').forEach(b => b.onclick = async () => {
+      try { await DB.feedback.done(b.dataset.sdone); toast('확인했어요', 'ok'); closeSheet(); render(); }
+      catch (e) { toast(e.message || '처리하지 못했어요', 'err'); }
+    });
+    box.querySelectorAll('[data-sreply]').forEach(b => b.onclick = () => {
+      const id = b.dataset.sreply;
+      const ov2 = sheet({
+        title: '답장하기',
+        body: '<p class="mut sm" style="margin-bottom:10px">지원한 분에게 새 소식으로 가요.</p>' +
+          '<label class="field"><textarea class="input" id="srText" rows="4"></textarea></label>',
+        foot: '<button class="btn primary lg block" type="button" id="srGo">보내기</button>'
+      });
+      ov2.querySelector('#srGo').onclick = async () => {
+        const t = ov2.querySelector('#srText').value.trim();
         if (!t) return toast('내용을 적어주세요', 'err');
         try {
           const r = await DB.feedback.reply(id, t);
@@ -1015,6 +1075,25 @@
         S.pushWho = [];
       }
     }
+    /* 누가 언제 마지막으로 들어왔나 — 날짜만 */
+    if (!S.seenWho) {
+      try { S.seenWho = await DB.seenWho(); }
+      catch (e) { console.warn('[발자국] 접속 기록을 못 받아왔어요:', e); S.seenWho = []; }
+    }
+    const seenOf = id => (S.seenWho || []).filter(x => x.id === id)[0] || null;
+    /* 「오늘 · 어제 · 3일 전 · 2주 전 · 접속 안 함」 */
+    const seenWord = id => {
+      const s2 = seenOf(id);
+      if (!s2 || !s2.last_seen_on) return '접속 안 함';
+      const n = Number(s2.days);
+      if (!isFinite(n)) return '';
+      if (n <= 0) return '오늘';
+      if (n === 1) return '어제';
+      if (n < 7) return n + '일 전';
+      if (n < 30) return Math.floor(n / 7) + '주 전';
+      return Math.floor(n / 30) + '달 전';
+    };
+
     const devOf = id => {
       const hit = (S.pushWho || []).filter(x => x.id === id)[0];
       return hit ? Number(hit.devices) || 0 : 0;
@@ -1031,10 +1110,15 @@
     const counts = {
       all: all.length, admin: admins,
       nolink: all.length - nLinked,
-      nopush: all.filter(m => devOf(m.id) === 0).length
+      nopush: all.filter(m => devOf(m.id) === 0).length,
+      cold: all.filter(m => {
+        const s3 = seenOf(m.id);
+        return !s3 || !s3.last_seen_on || Number(s3.days) > 30;
+      }).length
     };
     const chips = [['all', '전체'], ['admin', '운영진'],
-                   ['nolink', '연결 안 함'], ['nopush', '알림 안 켬']];
+                   ['nolink', '연결 안 함'], ['nopush', '알림 안 켬'],
+                   ['cold', '한 달 넘게 안 들어옴']];
     $('#memberChips').innerHTML = chips.map(([k, l]) =>
       '<button class="chip' + (F.member === k ? ' on' : '') + '" data-m="' + k + '">' + l + '<span class="n">' + counts[k] + '</span></button>').join('');
     $$('#memberChips [data-m]').forEach(b => b.addEventListener('click', () => { F.member = b.dataset.m; renderMembers(); }));
@@ -1078,6 +1162,10 @@
     if (F.member === 'admin') list = list.filter(m => m.role === 'admin');
     if (F.member === 'nolink') list = list.filter(m => !linked(m));
     if (F.member === 'nopush') list = list.filter(m => devOf(m.id) === 0);
+    if (F.member === 'cold') list = list.filter(m => {
+      const s4 = seenOf(m.id);
+      return !s4 || !s4.last_seen_on || Number(s4.days) > 30;
+    });
     const q = F.q2.trim();
     if (q) list = list.filter(m => (m.name + (m.department || '') + (m.student_id || '')).includes(q));
     if (F.sort === 'name') list.sort((a, b) =>
@@ -1104,6 +1192,7 @@
       (linked(m)
         ? '<span class="linkdot on">연결됨</span>'
         : '<span class="linkdot">아직</span>') +
+      '<span class="seen">' + esc(seenWord(m.id)) + '</span>' +
       '<span class="belldot' + (devOf(m.id) ? ' on' : '') + '" ' +
       'title="' + (devOf(m.id) ? '알림 켬 · 기기 ' + devOf(m.id) + '대' : '알림 안 켬') + '">' +
       ic('megaphone') + '</span>' +
@@ -3289,7 +3378,9 @@
       '<button class="btn ghost block" type="button" id="goFeedback">' +
       ic('heart') + '<span>받은 의견 보기</span></button>' +
       '<button class="btn ghost block" type="button" id="goReports" style="margin-top:8px">' +
-      ic('alert') + '<span>신고 보기</span></button></div>' +
+      ic('alert') + '<span>신고 보기</span></button>' +
+      '<button class="btn ghost block" type="button" id="goStaff" style="margin-top:8px">' +
+      ic('star') + '<span>운영진 지원 보기</span></button></div>' +
 
       '<div class="card"><h3>사용 현황</h3>' +
       '<div class="sub">이번 주 움직임과 남은 저장 공간이에요.</div><div class="sp"></div>' +
@@ -3363,6 +3454,7 @@
     $('#goFormSettings').onclick = () => go('apply');
     const gf = $('#goFeedback'); if (gf) gf.onclick = feedbackSheet;
     const gr = $('#goReports');  if (gr) gr.onclick = reportsSheet;
+    const gs = $('#goStaff');    if (gs) gs.onclick = staffSheet;
     function paintPlaces() {
       const list = volPlaces();
       $('#placeList').innerHTML = list.map((pl, i) =>

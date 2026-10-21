@@ -1164,6 +1164,9 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .shots img:active{opacity:.92}
 
 /* 구성원 줄 — 카카오 연결 여부 */
+/* 최근 접속 — 날짜 단위로만 */
+.seen{font-size:11px;color:var(--ink-3);flex:none;white-space:nowrap}
+
 /* 알림을 켰는지 — 작은 종. 켜면 초록, 안 켜면 흐리게 */
 .belldot{display:inline-flex;align-items:center;color:var(--line);flex:none}
 .belldot .svg{width:13px;height:13px}

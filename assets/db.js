@@ -1143,12 +1143,68 @@
       });
     },
 
+    /* ---------- 운영진 지원 ---------- */
+    async applyStaff(body) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return { ok: false, why: 'nomember' };
+        const m = (d.members || []).find(x => x.id === me);
+        if (m && m.role === 'admin') return { ok: false, why: 'already' };
+        d.feedback = d.feedback || [];
+        if (d.feedback.some(f => f.member_id === me && f.kind === 'apply' && !f.done_at)) {
+          return { ok: false, why: 'pending' };
+        }
+        d.feedback.unshift({
+          id: uid(), created_at: new Date().toISOString(), member_id: me,
+          body: String(body || '').trim(), kind: 'apply', anon: false,
+          done_at: null, reply: null, replied_at: null
+        });
+        demoWrite(d); return { ok: true };
+      }
+      return await rest('rpc/apply_staff', { method: 'POST', body: { p_body: String(body || '') } });
+    },
+
+    async myStaffApply() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        const m = (d.members || []).find(x => x.id === me) || {};
+        const mine = (d.feedback || []).filter(f => f.member_id === me && f.kind === 'apply');
+        return {
+          is_admin: m.role === 'admin',
+          pending: mine.some(f => !f.done_at),
+          last: mine[0] ? {
+            created_at: mine[0].created_at, body: mine[0].body,
+            reply: mine[0].reply || null, done: !!mine[0].done_at
+          } : null
+        };
+      }
+      return await rest('rpc/my_staff_apply', { method: 'POST', body: {} });
+    },
+
+    async staffApplies() {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.feedback || [])
+          .filter(f => f.kind === 'apply' && !f.done_at)
+          .map(f => {
+            const m = demoMember(f.member_id) || {};
+            return {
+              id: f.id, created_at: f.created_at, body: f.body,
+              who: m.name, who_photo: m.photo || null,
+              can_reply: !!f.member_id, reply: f.reply || null,
+              replied: !!f.replied_at
+            };
+          });
+      }
+      return await rest('rpc/staff_applies', { method: 'POST', body: {} }) || [];
+    },
+
     /* 내가 보낸 의견과 운영진 답장 — 답장을 볼 곳이 없었다 */
     async mine() {
       if (!HAS_SB) {
         const d = cdemo(), me = myDemoId();
         return (d.feedback || [])
-          .filter(f => f.member_id === me && !f.anon)
+          .filter(f => f.member_id === me && !f.anon && (f.kind || 'idea') === 'idea')
           .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
           .map(f => ({
             id: f.id, created_at: f.created_at, body: f.body,
@@ -1183,7 +1239,7 @@
     async open() {
       if (!HAS_SB) {
         const d = cdemo();
-        return (d.feedback || []).filter(f => !f.done_at).map(f => ({
+        return (d.feedback || []).filter(f => !f.done_at && (f.kind || 'idea') === 'idea').map(f => ({
           id: f.id, created_at: f.created_at, body: f.body,
           anon: !!f.anon,
           who: f.anon ? null : (demoMember(f.member_id) || {}).name,
@@ -1229,6 +1285,23 @@
   };
 
   /* 누가 알림을 켰나 — 운영진만. 기기 수만 받는다 (주소·키는 안 받는다) */
+  /* 앱을 열었다고 적어 둔다 — 날짜 하나만, 하루 한 번.
+     몇 시에·몇 번·무엇을 봤는지는 안 남긴다. */
+  DB.touchSeen = async function () {
+    if (!HAS_SB) return;
+    try { await rest('rpc/touch_seen', { method: 'POST', body: {}, prefer: 'return=minimal' }); }
+    catch (e) { /* 못 적어도 쓰는 데는 지장 없다 */ }
+  };
+
+  /* 누가 언제 마지막으로 들어왔나 — 운영진만. 날짜만. */
+  DB.seenWho = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      return (d.members || []).map(m => ({ id: m.id, last_seen_on: m.last_seen_on || null, days: null }));
+    }
+    return await rest('rpc/seen_who', { method: 'POST', body: {} }) || [];
+  };
+
   DB.pushWho = async function () {
     if (!HAS_SB) {
       const d = cdemo();
@@ -1245,7 +1318,9 @@
         unconfirmed: (d.events || []).filter(e => String(e.date) < today && !e.confirmed_at).length,
         applications: (d.applications || []).filter(a => (a.status || 'pending') === 'pending').length,
         reports: (d.reports || []).filter(r => !r.done_at).length,
-        feedback: (d.feedback || []).filter(f => !f.done_at).length
+        /* 의견과 운영진 지원을 따로 센다 (kind 로 가른다) */
+        feedback: (d.feedback || []).filter(f => !f.done_at && (f.kind || 'idea') === 'idea').length,
+        staff: (d.feedback || []).filter(f => !f.done_at && f.kind === 'apply').length
       };
     }
     return await rest('rpc/admin_todo', { method: 'POST', body: {} });
@@ -1312,6 +1387,19 @@
           p_place: o.place || null, p_limit: o.limit || 20
         }
       });
+    },
+
+    /* 가장 오래된 고정 공지를 내린다 — 글은 피드에 그대로 남는다 */
+    async unpinOldest() {
+      if (!HAS_SB) {
+        const d = cdemo();
+        const pins = (d.posts || []).filter(p => p.type === 'notice' && p.pinned && !p.hidden)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+        if (!pins.length) return { ok: false, why: 'none' };
+        pins[0].pinned = false; demoWrite(d);
+        return { ok: true, id: pins[0].id };
+      }
+      return await rest('rpc/unpin_oldest', { method: 'POST', body: {} });
     },
 
     /* 글 하나만 받아오기 — 알림으로 오래된 글을 열 때.

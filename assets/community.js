@@ -99,6 +99,8 @@ window.Community = (function () {
     F.kind = sv0.kind; F.place = sv0.place;
     try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
     watchAvatars();
+    /* 앱을 열었다고 적어 둔다 — 날짜 하나만, 하루 한 번 */
+    DB.touchSeen && DB.touchSeen();
     go('home');
     paintTabDot();
     /* 알림을 눌러 들어왔으면 그 글·봉사·설문으로 바로 보낸다.
@@ -498,6 +500,8 @@ window.Community = (function () {
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="pfIdea">' +
         ic('mail') + '<span>운영진에게 의견 보내기</span></button>' +
+        /* 운영진 지원 — 이미 운영진이면 안 보인다 */
+        '<div id="pfStaffWrap"></div>' +
         '<a class="btn ghost block" href="privacy.html?from=app">' + ic('lock') + '<span>개인정보 처리방침</span></a>' +
         '<button class="btn ghost block" type="button" id="pfOut">로그아웃</button>' +
         '</div>'
@@ -507,6 +511,25 @@ window.Community = (function () {
 
     const bell = ov.querySelector('#pfBell');
     if (bell) bell.onclick = () => { closeSheet(); setTimeout(notifySheet, 180); };
+
+    /* 운영진 지원 줄 — 상태에 따라 글이 달라진다 */
+    (async () => {
+      const wrap = ov.querySelector('#pfStaffWrap');
+      if (!wrap) return;
+      let st = null;
+      try { st = await DB.feedback.myStaffApply(); }
+      catch (e) { console.warn('[발자국] 지원 상태를 못 받아왔어요:', e); return; }
+      if (!st || st.is_admin) return;        /* 이미 운영진이면 안 보인다 */
+      if (st.pending) {
+        wrap.innerHTML = '<div class="btn ghost block" style="cursor:default;opacity:.75">' +
+          ic('clock') + '<span>지원 확인 중이에요</span></div>';
+        return;
+      }
+      wrap.innerHTML = '<button class="btn ghost block" type="button" id="pfStaff">' +
+        ic('star') + '<span>운영진 지원하기</span></button>';
+      const b = wrap.querySelector('#pfStaff');
+      if (b) b.onclick = () => { closeSheet(); setTimeout(staffApplySheet, 180); };
+    })();
 
     const idea = ov.querySelector('#pfIdea');
     if (idea) idea.onclick = () => { closeSheet(); setTimeout(ideaSheet, 180); };
@@ -768,14 +791,10 @@ window.Community = (function () {
     if (first) paintReviewAsk();
 
     if (first) {
+      /* 공지는 세 개까지라 여기에 다 보인다 — 「모두 보기」가 필요 없다 */
       const pins = res.pinned || [];
       F.pins = pins;
-      const total = Number(res.pinned_total) || pins.length;
-      $('#pin').innerHTML = pins.map(pinnedCard).join('') +
-        (total > pins.length
-          ? '<button class="morecmt" type="button" data-notices="1" ' +
-            'style="margin:-4px 0 10px">공지 ' + total + '개 모두 보기</button>'
-          : '');
+      $('#pin').innerHTML = pins.map(pinnedCard).join('');
     }
 
     const rows = res.rows || [];
@@ -1056,6 +1075,10 @@ window.Community = (function () {
             catch (err) { console.warn('[발자국] 언급을 못 적었어요:', err); }
           }
           if (ment) ment.clear();
+          /* 보낸 뒤 그 글 댓글만 다시 받아 온다 —
+             임시로 올린 줄을 진짜 줄로 바꾸고, 답글까지 센다.
+             (「나갔다 들어와야 반영되는」 것을 막는다) */
+          await refreshComments(id);
         } catch (e) {
           /* 되돌린다 */
           row.recent_comments = before;
@@ -1067,6 +1090,22 @@ window.Community = (function () {
         }
       }
     });
+  }
+
+  /* 그 글 댓글만 다시 받아 카드 숫자·최근 댓글을 맞춘다.
+     어느 입력칸에서 달았든 이것 하나만 부르면 된다. */
+  async function refreshComments(id) {
+    const row = findRow(id);
+    if (!row) return;
+    try {
+      const rows = await DB.community.comments(id);
+      const live = (rows || []).filter(c => !c.hidden);
+      row.comment_count = live.length;
+      row.recent_comments = live.slice(-2);
+      paintCards(id);
+    } catch (e) {
+      console.warn('[발자국] 댓글을 다시 받지 못했어요:', e);
+    }
   }
 
   /* 한 카드의 댓글 자리만 다시 그린다 — 피드 자리를 지키려고 */
@@ -1125,12 +1164,27 @@ window.Community = (function () {
     const picked = new Map();     /* 이름 → id */
     let timer = null;
 
-    /* 맨 위에 올릴 사람들 (봉사 참석자) */
+    /* 맨 위에 올릴 사람들 (봉사 참석자).
+       ------------------------------------------------------------
+       예전에는 mentionPeople('') 로 받은 **이름순 20명**에서 걸렀다.
+       같이 간 사람이 21번째 뒤면 맨 위로 안 왔다.
+       이제 그 사람들만 따로 받는다. */
     let first = [];
     if (o.firstIds && o.firstIds.length) {
-      DB.community.mentionPeople('').then(all => {
-        first = (all || []).filter(x => o.firstIds.indexOf(x.id) >= 0);
-      }).catch(() => { });
+      (async () => {
+        try {
+          const got = [];
+          /* 참석자가 많아도 이름으로 하나씩 찾지 않는다 —
+             봉사에 다녀온 사람 목록을 그대로 쓴다 */
+          if (o.firstPeople && o.firstPeople.length) {
+            o.firstPeople.forEach(x => got.push(x));
+          } else {
+            const all = await DB.community.mentionPeople('');
+            (all || []).forEach(x => { if (o.firstIds.indexOf(x.id) >= 0) got.push(x); });
+          }
+          first = got;
+        } catch (e) { }
+      })();
     }
 
     function close() { menu.hidden = true; }
@@ -1267,46 +1321,44 @@ window.Community = (function () {
     return ov;
   }
 
-  /* 공지 모아 보기 — 맨 위에 고정된 것이 세 개 넘으면 여기서 다 본다 */
-  async function noticesSheet() {
-    const ov = sheet({
-      title: '공지',
-      body: '<div id="ntList" class="mut sm">불러오는 중…</div>'
-    });
-    let rows = null;
-    try {
-      const res = await DB.community.feed({ type: 'notice', limit: 40 });
-      /* 맨 위에 고정된 공지는 목록(rows)에 안 섞인다 —
-         pinned 로 따로 와서, 둘을 합쳐야 다 보인다 */
-      const byId = {};
-      (res.rows || []).forEach(r => { byId[r.id] = r; });
-      (res.pinned || []).forEach(r => { if (!byId[r.id]) byId[r.id] = r; });
-      rows = Object.keys(byId).map(k => byId[k])
-        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-    } catch (e) { console.warn('[발자국] 공지를 못 받아왔어요:', e); }
 
-    const box = ov.querySelector('#ntList');
-    if (!box) return;
-    if (rows === null) {
-      box.innerHTML = '<div class="card center" style="padding:20px">' +
-        '<div class="sm">불러오지 못했어요</div></div>';
-      return;
-    }
-    if (!rows.length) {
-      box.innerHTML = '<div class="mut sm">아직 공지가 없어요</div>';
-      return;
-    }
-    box.innerHTML = rows.map(p =>
-      '<button class="noticerow" type="button" data-open="' + esc(p.id) + '">' +
-      '<span class="ic">' + ic('pin') + '</span>' +
-      '<span class="grow">' +
-      '<span class="tx">' + esc(cut(p.body, 70)) + '</span>' +
-      '<span class="at">' + esc((p.author && p.author.name) || '운영진') +
-      ' · ' + relTime(p.created_at) + '</span></span></button>').join('');
-    box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => {
-      closeSheet();
-      setTimeout(() => openPost(b.dataset.open), 180);
+  /* 운영진 지원하기 — 입력칸 하나, 보내기 하나 */
+  function staffApplySheet() {
+    const ov = sheet({
+      title: '운영진 지원하기',
+      body:
+        '<p class="mut sm" style="margin-bottom:12px;line-height:1.65">' +
+        '지원하는 이유를 짧게 적어 주세요.<br>' +
+        '운영진이 보고 연락드릴게요.</p>' +
+        '<label class="field"><textarea class="input" id="saBody" rows="4" ' +
+        'placeholder="예: 봉사 일정 정리를 돕고 싶어요"></textarea></label>' +
+        '<div class="sheet-foot">' +
+        '<button class="btn primary lg block" type="button" id="saGo">지원하기</button></div>'
     });
+
+    ov.querySelector('#saGo').onclick = async () => {
+      const btn = ov.querySelector('#saGo');
+      const t = ov.querySelector('#saBody').value.trim();
+      if (!t) return toast('이유를 적어주세요', 'err');
+      btn.disabled = true; btn.textContent = '보내는 중…';
+      try {
+        const r = await DB.feedback.applyStaff(t);
+        if (r && r.ok === false) {
+          const why = {
+            already: '이미 운영진이에요',
+            pending: '이미 지원했어요. 확인 중이에요'
+          }[r.why] || '보내지 못했어요';
+          toast(why, 'err');
+          btn.disabled = false; btn.textContent = '지원하기';
+          return;
+        }
+        closeSheet();
+        toast('지원했어요. 운영진이 확인하면 알려 드릴게요', 'ok');
+      } catch (e) {
+        toast(e.message || '보내지 못했어요', 'err');
+        btn.disabled = false; btn.textContent = '지원하기';
+      }
+    };
   }
 
   /* 글 안의 @이름 을 초록으로 */
@@ -1359,13 +1411,38 @@ window.Community = (function () {
         return;
       }
       /* 답글은 부모 아래로 — 한 단계만 */
+      /* 인스타처럼 — 답글은 원댓글 아래에 평평하게 쌓인다.
+         ------------------------------------------------------------
+         예전에는 parent_id 만 보고 묶어서 **답글의 답글**이
+         top 에도 kids[원댓글] 에도 없어 아예 안 그려졌다.
+         (「댓글 3개인데 2개만 보여」)
+         이제 위로 거슬러 올라가 **원댓글**을 찾아 그 아래 붙인다. */
+      const byId = {};
+      rows.forEach(c => { byId[c.id] = c; });
+      const rootOf = c => {
+        let cur = c, hop = 0;
+        while (cur.parent_id && byId[cur.parent_id] && hop < 20) {
+          cur = byId[cur.parent_id]; hop++;
+        }
+        return cur.id;
+      };
+
       const top = rows.filter(c => !c.parent_id);
       kids = {};
+      const orphans = [];
       rows.filter(c => c.parent_id).forEach(c => {
-        (kids[c.parent_id] = kids[c.parent_id] || []).push(c);
+        const root = rootOf(c);
+        /* 부모를 못 찾으면 버리지 않는다 — 맨 아래에라도 보인다 */
+        if (root === c.id) { orphans.push(c); return; }
+        (kids[root] = kids[root] || []).push(c);
       });
+      Object.keys(kids).forEach(k => kids[k].sort(
+        (a, b) => String(a.created_at).localeCompare(String(b.created_at))));
+
       box.innerHTML = top.map(c => {
         const ks = kids[c.id] || [];
+        /* 두 개까지만 먼저 — 나머지는 「더 보기」로.
+           숨은 것이 있으면 버튼이 반드시 보인다 */
         const show = ks.slice(0, 2), rest = ks.length - show.length;
         return commentLine(c) +
           (ks.length
@@ -1377,8 +1454,19 @@ window.Community = (function () {
                 : '') +
               '</div>'
             : '');
-      }).join('');
+      }).join('') +
+      (orphans.length
+        ? '<div class="replies">' + orphans.map(x => commentLine(x)).join('') + '</div>'
+        : '');
       loadAvatars(box);
+
+      /* 카드 쪽 숫자도 보이는 수와 같게 맞춘다 */
+      const row = findRow(postId);
+      if (row) {
+        row.comment_count = rows.filter(c => !c.hidden).length;
+        row.recent_comments = rows.filter(c => !c.hidden).slice(-2);
+        paintCards(postId);
+      }
     }
 
     await draw();
@@ -1397,7 +1485,8 @@ window.Community = (function () {
       /* 답글 달기 → 입력창에 @이름 */
       const r = e.target.closest('[data-reply]');
       if (r) {
-        replyTo = r.dataset.reply;
+        /* 원댓글에 붙인다 — 답글의 답글도 같은 줄기에 */
+        replyTo = r.dataset.root || r.dataset.reply;
         const nm = r.dataset.rname || '';
         inp.value = '@' + nm + ' ';
         ment.byName(nm);
@@ -1761,7 +1850,10 @@ window.Community = (function () {
         ? '<button class="clink" type="button" data-clwho="' + esc(c.id) + '">' +
           '좋아요 ' + num(likes) + '개</button>'
         : '') +
+      /* 답글에도 「답글 달기」가 있다. 데이터는 원댓글에 붙이고(data-root)
+         화면은 평평하게 — 인스타와 같다. 깊이가 깊어지지 않는다. */
       '<button class="clink" type="button" data-reply="' + esc(c.id) + '" ' +
+      'data-root="' + esc(c.parent_id || c.id) + '" ' +
       'data-rname="' + esc(name) + '">답글 달기</button>' +
       (c.mine || AM_ADMIN
         ? '<button class="cdots" type="button" data-cmenu="' + esc(c.id) + '" aria-label="댓글 메뉴">' +
@@ -1806,8 +1898,6 @@ window.Community = (function () {
       if ((b = hit('data-animal'))) return animalSheet(b.dataset.animal, b.dataset.aname);
       if ((b = hit('data-checkin'))) return checkinSheet(b.dataset.checkin);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
-      /* 「공지 N개 모두 보기」 — 그리기만 하고 읽는 코드가 없었다 */
-      if (hit('data-notices')) return noticesSheet();
       if ((b = hit('data-best'))) return markBest(b.dataset.best, b.dataset.bc);
       if (hit('data-myans')) return myAnswersSheet();
       if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
@@ -2120,13 +2210,17 @@ window.Community = (function () {
       btns.push('<button class="btn ghost block" type="button" data-act="del">글 지우기</button>');
     }
     if (AM_ADMIN) {
+      /* 공지는 운영진 누구나 고칠 수 있다 — 담당이 바뀌어도 고칠 수 있게 */
+      if (p.type === 'notice' && !p.mine) {
+        btns.push('<button class="btn ghost block" type="button" data-act="edit">공지 고치기</button>');
+      }
       /* 남의 글도 지울 수 있다. 숨기기는 쓰지 않는다 — 지우거나 두거나 둘 중 하나다 */
       if (!p.mine) {
         btns.push('<button class="btn ghost block" type="button" data-act="del">글 삭제</button>');
       }
       if (p.type === 'notice')
         btns.push('<button class="btn ghost block" type="button" data-act="pin">' +
-          (p.pinned ? '고정 풀기' : '맨 위에 고정') + '</button>');
+          (p.pinned ? '공지 내리기' : '다시 공지로 올리기') + '</button>');
     }
     /* 남의 글만 신고할 수 있다. 누가 신고했는지는 운영진만 본다 */
     if (!p.mine) {
@@ -2147,7 +2241,23 @@ window.Community = (function () {
           return softDelete(p);
         }
         if (act === 'report') return reportSheet({ post: id });
-        if (act === 'pin') { await DB.community.setPinned(id, !p.pinned); toast(p.pinned ? '고정을 풀었어요' : '맨 위에 고정했어요'); return renderHome(true); }
+        if (act === 'pin') {
+          /* 공지는 세 개까지 — 네 번째면 가장 오래된 것을 내릴지 묻는다 */
+          if (!p.pinned) {
+            const now = (F.pins || []).length;
+            if (now >= 3) {
+              const ok = await confirmSheet('공지는 세 개까지예요',
+                '가장 오래된 공지를 내리고 이 글을 올릴까요? 내린 글은 피드에 그대로 남아요.',
+                '내리고 올리기');
+              if (!ok) return;
+              try { await DB.community.unpinOldest(); }
+              catch (e) { return toast(e.message || '바꾸지 못했어요', 'err'); }
+            }
+          }
+          await DB.community.setPinned(id, !p.pinned);
+          toast(p.pinned ? '공지를 내렸어요' : '공지로 올렸어요');
+          return renderHome(true);
+        }
       } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
     });
   }
@@ -2594,7 +2704,7 @@ window.Community = (function () {
         if (opt.whenPicked) { try { opt.whenPicked(vals); } catch (e) { } }
         r.__ment = attachMention(
           r.querySelector('#wBody'), r.querySelector('#wMenu'),
-          { firstIds: opt.firstIds || [] });
+          { firstIds: opt.firstIds || [], firstPeople: opt.firstPeople || [] });
       },
 
       read: r => ({
@@ -2867,10 +2977,13 @@ window.Community = (function () {
   async function reviewWizard(preEvent) {
     /* 그 봉사에 다녀온 사람들 — @ 목록 맨 위에 올리려고 미리 받아 둔다 */
     const goIds = [];
+    const goPeople = [];
     if (preEvent) {
       try {
         const who = await DB.community.eventPeople(preEvent);
-        (who || []).forEach(x => { if (x.id !== ME.id) goIds.push(x.id); });
+        (who || []).forEach(x => {
+          if (x.id !== ME.id) { goIds.push(x.id); goPeople.push(x); }
+        });
       } catch (e) { console.warn('[발자국] 같이 간 사람을 못 받아왔어요:', e); }
     }
     let acts = [];
@@ -2966,13 +3079,16 @@ window.Community = (function () {
           /* @ 목록 맨 위에 같이 간 사람.
              + 로 시작하면 봉사를 고른 뒤에야 알 수 있어 그때 채운다. */
           firstIds: goIds,
+          firstPeople: goPeople,
           whenPicked: v => {
             const ev = (v.when && v.when.event_id) || (fixed && fixed.event_id);
             if (!ev || goIds.__for === ev) return;
             goIds.__for = ev;
             DB.community.eventPeople(ev).then(who => {
-              goIds.length = 0;
-              (who || []).forEach(x => { if (x.id !== ME.id) goIds.push(x.id); });
+              goIds.length = 0; goPeople.length = 0;
+              (who || []).forEach(x => {
+                if (x.id !== ME.id) { goIds.push(x.id); goPeople.push(x); }
+              });
             }).catch(() => { });
           }
         })
@@ -3102,6 +3218,7 @@ window.Community = (function () {
         if (dMent) dMent.clear();
         inp.value = '';
         await draw();
+        await refreshComments(id);
       }
       catch (e) { toast(e.message || '남기지 못했어요', 'err'); }
       finally { inp.disabled = false; inp.focus(); }

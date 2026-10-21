@@ -851,7 +851,7 @@ begin
 
   /* 확정된 봉사·지난 봉사는 명단을 건드려도 대기자를 올리지 않는다 */
   if ev.confirmed_at is not null then return old; end if;
-  if ev.date < current_date then return old; end if;
+  if ev.date < (now() at time zone 'Asia/Seoul')::date then return old; end if;
 
   select count(*) into cnt from attendance where event_id = old.event_id;
   if cnt >= ev.capacity then return old; end if;
@@ -933,8 +933,8 @@ soon as (
               from event_waitlist) w
            where w.event_id = e.id and w.member_id = (select id from me_)) as wait_pos
     from events e
-   where e.date >= current_date
-     and e.date <= current_date + coalesce(p_days, 120)
+   where e.date >= (now() at time zone 'Asia/Seoul')::date
+     and e.date <= (now() at time zone 'Asia/Seoul')::date + coalesce(p_days, 120)
 ),
 past as (
   select e.id, e.date, e.place, e.title, e.confirmed_at,
@@ -943,7 +943,7 @@ past as (
          exists (select 1 from attendance a
                   where a.event_id = e.id and a.member_id = (select id from me_)) as went
     from events e
-   where e.date < current_date
+   where e.date < (now() at time zone 'Asia/Seoul')::date
    order by e.date desc limit 12
 )
 select case when not is_member() then null else
@@ -1180,8 +1180,8 @@ select case when not is_member() then null else (
     from attendance a
     join events e on e.id = a.event_id
    where a.member_id = (select id from me_)
-     and e.date <= current_date
-     and e.date >= current_date - 7
+     and e.date <= (now() at time zone 'Asia/Seoul')::date
+     and e.date >= (now() at time zone 'Asia/Seoul')::date - 7
      /* 이미 쓴 봉사는 권하지 않는다 */
      and not exists (
        select 1 from posts p
@@ -1394,7 +1394,7 @@ as $$
 select case when not is_admin() then null else
   json_build_object(
     'unconfirmed', (select count(*)::int from events e
-                     where e.date < current_date and e.confirmed_at is null),
+                     where e.date < (now() at time zone 'Asia/Seoul')::date and e.confirmed_at is null),
     'applications', (select count(*)::int from applications a
                       where coalesce(a.status, 'pending') = 'pending'),
     'reports',     (select count(*)::int from reports r where r.done_at is null)
@@ -1457,7 +1457,7 @@ begin
   if not is_member() then return json_build_object('ok', false, 'why', 'nologin'); end if;
   select * into e from events where id = p_event;
   if e.id is null then return json_build_object('ok', false, 'why', 'noevent'); end if;
-  if e.date <> current_date then return json_build_object('ok', false, 'why', 'notToday'); end if;
+  if e.date <> (now() at time zone 'Asia/Seoul')::date then return json_build_object('ok', false, 'why', 'notToday'); end if;
   if e.checkin_code is null or e.checkin_code <> btrim(p_code) then
     return json_build_object('ok', false, 'why', 'wrong');
   end if;
@@ -1745,7 +1745,7 @@ language plpgsql security definer
 set search_path = public
 as $$
 begin
-  if new.date < current_date then return new; end if;
+  if new.date < (now() at time zone 'Asia/Seoul')::date then return new; end if;
   insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
   values (null, 'vol', '봉사 신청이 열렸어요',
           to_char(new.date, 'MM/DD') || '(' ||
@@ -1789,7 +1789,7 @@ begin
   for r in
     select e.*, a.member_id
       from events e join attendance a on a.event_id = e.id
-     where e.date = (current_date + 1)
+     where e.date = ((now() at time zone 'Asia/Seoul')::date + 1)
        and (now() at time zone 'Asia/Seoul')::time >= time '20:00'
   loop
     dow := case extract(dow from r.date)::int
@@ -1812,7 +1812,7 @@ begin
   for r in
     select e.*, a.member_id
       from events e join attendance a on a.event_id = e.id
-     where e.date = current_date
+     where e.date = (now() at time zone 'Asia/Seoul')::date
        and (now() at time zone 'Asia/Seoul')::time >=
            case when e.start_time is null or e.start_time < time '12:00'
                 then time '13:00'
@@ -2142,8 +2142,8 @@ begin
 
   if coalesce(p_anon, false) then
     /* 날짜가 바뀌면 값도 바뀐다 — 어제 것과 이어 붙일 수 없다 */
-    t := encode(digest(me::text || ':' || current_date::text || ':baljaguk-anon', 'sha256'), 'hex');
-    insert into feedback_quota (day, tag, n) values (current_date, t, 1)
+    t := encode(digest(me::text || ':' || (now() at time zone 'Asia/Seoul')::date::text || ':baljaguk-anon', 'sha256'), 'hex');
+    insert into feedback_quota (day, tag, n) values ((now() at time zone 'Asia/Seoul')::date, t, 1)
     on conflict (day, tag) do update set n = feedback_quota.n + 1
     returning n into c;
     if c > 3 then

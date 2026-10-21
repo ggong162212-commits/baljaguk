@@ -57,7 +57,7 @@ create table if not exists members (
   emoji          text,
   role           text not null default 'member' check (role in ('admin','member')),
   status         text not null default 'active' check (status in ('active','rest')),
-  joined_on      date default current_date,
+  joined_on      date default (now() at time zone 'Asia/Seoul')::date,
   memo           text,
   application_id uuid references applications(id) on delete set null
 );
@@ -94,7 +94,7 @@ create table if not exists attendance (
 create table if not exists finance (
   id         uuid primary key default gen_random_uuid(),
   created_at timestamptz default now(),
-  date       date not null default current_date,
+  date       date not null default (now() at time zone 'Asia/Seoul')::date,
   kind       text not null check (kind in ('income','expense')),
   category   text,
   amount     integer not null,
@@ -245,7 +245,7 @@ create table if not exists donations (
   member_id   uuid references members(id) on delete set null,   -- 구성원 후원이면
   donor_name  text,                                             -- 외부 후원자 이름
   amount      integer not null,
-  date        date not null default current_date
+  date        date not null default (now() at time zone 'Asia/Seoul')::date
 );
 create index if not exists donations_campaign_idx on donations (campaign_id, date desc);
 
@@ -299,7 +299,7 @@ begin
 
   if not found then
     insert into finance (date, kind, category, amount, memo)
-    values (current_date, 'income', '동아리비 (1명)', fee, '');
+    values ((now() at time zone 'Asia/Seoul')::date, 'income', '동아리비 (1명)', fee, '');
     return;
   end if;
 
@@ -605,7 +605,7 @@ create table if not exists shelter_payouts (
   created_at timestamptz default now(),
   place      text not null,                 -- 보호소(봉사지) 이름
   amount     integer not null,
-  date       date not null default current_date,
+  date       date not null default (now() at time zone 'Asia/Seoul')::date,
   memo       text
 );
 create index if not exists shelter_payouts_place_idx on shelter_payouts (place, date desc);
@@ -916,7 +916,7 @@ begin
 
   if not found then
     insert into finance (date, kind, category, amount, memo)
-    values (current_date, 'income', '동아리비 (1명)', fee, '');
+    values ((now() at time zone 'Asia/Seoul')::date, 'income', '동아리비 (1명)', fee, '');
     return;
   end if;
 
