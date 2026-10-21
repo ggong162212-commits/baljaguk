@@ -1143,6 +1143,8 @@
       insta_ok: !!p.insta_ok,
       mine: p.author_id === meId,
       author: demoMember(p.author_id),
+      praised: p.praised_member_id ? demoMember(p.praised_member_id) : null,
+      fame: p.type === 'fame' ? Object.assign({ rank: p.fame_rank || null }, demoMember(p.honored_member_id || p.author_id) || {}) : null,
       question: !!p.is_question,
       solved: !!p.solved_at,
       answers: p.is_question
@@ -1596,7 +1598,7 @@
         const d = cdemo(), meId = myDemoId();
         let list = d.posts.slice()
           .filter(p => !p.hidden || p.author_id === meId)
-          .filter(p => !o.type || p.type === o.type)
+          .filter(p => !o.type || p.type === o.type || (o.type === 'free' && p.type === 'praise'))
           /* 공식 설문은 설문 탭에만 */
           .filter(p => o.type || p.type !== 'poll')
           /* 맨 위에 고정된 공지는 목록에 또 넣지 않는다 */
@@ -1671,7 +1673,8 @@
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null,
           insta_ok: !!v.insta_ok, is_question: !!v.is_question,
-          best_comment_id: null, solved_at: null
+          best_comment_id: null, solved_at: null,
+          praised_member_id: v.praised_member_id || null
         };
         d.posts.push(p);
         photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
@@ -1746,6 +1749,8 @@
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned,
           insta_ok: !!v.insta_ok, is_question: !!v.is_question,
+          /* 칭찬 글만 — 칸이 없는 서버(fix-praise.sql 전)에서도 다른 글은 그대로 올라가게 */
+          ...(v.praised_member_id ? { praised_member_id: v.praised_member_id } : {}),
           author_id: await DB.community.myId()
         }
       });
