@@ -52,6 +52,13 @@
   window.addEventListener('baljaguk:logout', () => {
     signCache.clear();
     try { localStorage.removeItem(SIGN_KEY); } catch (e) { }
+    try { localStorage.removeItem('baljaguk.lastFeed'); } catch (e) { }
+    /* 서비스워커가 담아 둔 사진도 비운다 */
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'clearPhotos' });
+      }
+    } catch (e) { }
   });
 
   /* dataURL 을 더 작게 — 피드에 쓸 640px 짜리를 만든다 */

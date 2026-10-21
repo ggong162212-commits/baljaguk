@@ -800,6 +800,43 @@ window.Community = (function () {
   /* ============================================================
      홈 — 피드
      ============================================================ */
+  /* ============================================================
+     앱을 껐다 켜도 첫 화면이 바로 보이게
+     ------------------------------------------------------------
+     선고은님: 「앱을 껐다 켜면 사진들이 너무 늦게 보여」
+     사진 주소는 따로 담아 뒀는데(db.js), **글 목록 자체**는
+     켤 때마다 서버를 기다렸다 뼈대(스켈레톤)로 비운 뒤 채웠다.
+     마지막으로 본 첫 화면을 적어 두고, 켜자마자 **그것부터** 보여 준다.
+     새 것이 오면 조용히 바뀐다.
+     ★ 20분이 지난 것은 쓰지 않는다 — 너무 옛 것을 보여 주지 않으려고.
+     ★ 로그아웃하면 지운다 (db.js).
+     ============================================================ */
+  const FEED_KEY = 'baljaguk.lastFeed';
+  const FEED_OLD = 20 * 60 * 1000;
+
+  function saveFeed(res) {
+    try {
+      /* 첫 장만, 글 열 개까지 — 너무 크면 적는 데 더 걸린다 */
+      localStorage.setItem(FEED_KEY, JSON.stringify({
+        at: Date.now(),
+        kind: F.kind, place: F.place,
+        pinned: res.pinned || [],
+        rows: (res.rows || []).slice(0, 10)
+      }));
+    } catch (e) { /* 자리가 없으면 그냥 넘어간다 */ }
+  }
+
+  function lastFeed() {
+    try {
+      const d = JSON.parse(localStorage.getItem(FEED_KEY) || 'null');
+      if (!d || !d.rows || !d.rows.length) return null;
+      if (Date.now() - (d.at || 0) > FEED_OLD) return null;
+      /* 다른 거르기로 보고 있었으면 쓰지 않는다 */
+      if (d.kind !== F.kind || d.place !== F.place) return null;
+      return d;
+    } catch (e) { return null; }
+  }
+
   /* 내용이 바뀌었으면 적어 둔 화면을 버린다 */
   function dropViewCache(tab) {
     if (tab) delete viewCache[tab];
@@ -828,7 +865,25 @@ window.Community = (function () {
     $('#wallBtn').onclick = photoWall;
 
     paintChips();
+
+    /* 지난번 첫 화면이 있으면 **그것부터** 보여 준다 — 기다리지 않게 */
+    const last = lastFeed();
+    if (last) {
+      F.rows = last.rows.slice();
+      F.pins = last.pinned || [];
+      $('#pin').innerHTML = F.pins.map(pinnedCard).join('');
+      $('#list').innerHTML = F.rows.map(postCard).join('');
+      bindOnce();
+      loadAvatars($('#list'));
+      loadPhotos($('#list'));
+      wireCbar($('#list'));
+      clipCheck($('#list'));
+      warm = true;          /* 뼈대를 그리지 않는다 */
+      F.rows = [];          /* 새로 받은 것으로 갈아 끼운다 */
+    }
+
     await loadMore(true);
+    warm = false;
   }
 
   /* ---------- 홈 필터 ----------
@@ -1004,6 +1059,8 @@ window.Community = (function () {
     loadPhotos($('#list'));
     wireCbar($('#list'));
     clipCheck($('#list'));
+    /* 다음에 켤 때 바로 보여 줄 수 있게 첫 장을 적어 둔다 */
+    if (first) saveFeed(res);
     /* 한가할 때 다음에 볼 사진 주소를 미리 받아 둔다 */
     prefetchPhotos();
   }

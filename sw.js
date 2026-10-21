@@ -6,17 +6,116 @@
    ============================================================ */
 /* 알림 처리 버전 — 화면 설정에서 이 숫자를 보고
    폰이 새 서비스워커로 바뀌었는지 바로 알 수 있다 */
-const VERSION = 'baljaguk-2';
+const VERSION = 'baljaguk-3';
 
 /* 화면이 「지금 몇 번이야?」 하고 물으면 답한다 */
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'version' && e.source) {
     try { e.source.postMessage({ type: 'version', version: VERSION }); } catch (err) { }
   }
+  /* 로그아웃 — 담아 둔 사진을 비운다 (다음 사람에게 남지 않게) */
+  if (e.data && e.data.type === 'clearPhotos') {
+    e.waitUntil(caches.delete('baljaguk-photos-1'));
+  }
 });
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('activate', e => e.waitUntil((async () => {
+  await self.clients.claim();
+  /* 옛 사진 보관함은 치운다 */
+  const names = await caches.keys();
+  await Promise.all(names
+    .filter(n => n.indexOf('baljaguk-photos-') === 0 && n !== PHOTOS)
+    .map(n => caches.delete(n)));
+})()));
+
+
+/* ============================================================
+   사진을 기기에 담아 둔다
+   ------------------------------------------------------------
+   선고은님: 「앱을 껐다 켜면 사진들이 너무 늦게 보여」
+
+   사진 주소는 **볼 때마다 토큰이 달라서** 브라우저 캐시가 못 쓴다.
+   같은 사진인데 주소가 달라 보이니 매번 새로 받아 왔다.
+   그래서 **토큰을 뗀 경로**를 열쇠로 삼아 우리가 담아 둔다.
+
+   · 담긴 게 있으면 그것부터 보여 주고, 뒤에서 조용히 새로 받아 갱신
+   · 150장까지, 한 장이 2MB 넘으면 안 담는다, 모두 합쳐 50MB 를 넘으면
+     오래된 것부터 지운다
+   · 비공개 사진이라 **이 기기·이 로그인**에서만 쓴다 —
+     로그아웃하면 화면이 알려 주고 여기서 비운다
+   ============================================================ */
+const PHOTOS = 'baljaguk-photos-1';
+const MAX_N = 150;
+const MAX_ONE = 2 * 1024 * 1024;
+const MAX_ALL = 50 * 1024 * 1024;
+
+/* 토큰을 뗀 주소 — 같은 사진은 늘 같은 열쇠가 된다 */
+const photoKey = url => {
+  const u = new URL(url);
+  return u.origin + u.pathname;
+};
+const isPhoto = url =>
+  /\/storage\/v1\/(object|render\/image)\/(sign|public)\//.test(url);
+
+async function trim(cache) {
+  let keys = await cache.keys();
+  /* 수가 넘치면 오래된 것(먼저 담은 것)부터 */
+  while (keys.length > MAX_N) {
+    await cache.delete(keys.shift());
+  }
+  /* 합쳐서 너무 크면 역시 오래된 것부터 */
+  let total = 0;
+  const sizes = [];
+  for (const k of keys) {
+    const r = await cache.match(k);
+    const n = Number((r && r.headers.get('content-length')) || 0);
+    sizes.push(n);
+    total += n;
+  }
+  let i = 0;
+  while (total > MAX_ALL && i < keys.length) {
+    await cache.delete(keys[i]);
+    total -= sizes[i];
+    i++;
+  }
+}
+
+self.addEventListener('fetch', event => {
+  const req = event.request;
+  if (req.method !== 'GET' || !isPhoto(req.url)) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(PHOTOS);
+    const key = photoKey(req.url);
+    const hit = await cache.match(key);
+
+    /* 담긴 게 있으면 바로 준다. 뒤에서 조용히 새로 받아 둔다 */
+    if (hit) {
+      event.waitUntil((async () => {
+        try {
+          const fresh = await fetch(req);
+          if (fresh && fresh.ok) {
+            const n = Number(fresh.headers.get('content-length') || 0);
+            if (n <= MAX_ONE) { await cache.put(key, fresh.clone()); await trim(cache); }
+          }
+        } catch (e) { /* 인터넷이 없으면 담긴 것으로 버틴다 */ }
+      })());
+      return hit;
+    }
+
+    const res = await fetch(req);
+    if (res && res.ok) {
+      const n = Number(res.headers.get('content-length') || 0);
+      if (n <= MAX_ONE) {
+        event.waitUntil((async () => {
+          try { await cache.put(key, res.clone()); await trim(cache); } catch (e) { }
+        })());
+      }
+    }
+    return res;
+  })());
+});
 
 self.addEventListener('push', event => {
   let d = {};

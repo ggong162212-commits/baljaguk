@@ -13,9 +13,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="assets/style.css?v=202610211740">
+<!-- 글꼴은 **그림을 막지 않게** 받는다.
+     글꼴 CSS 가 render-blocking 이면 글자가 준비될 때까지 화면이 하얗다.
+     (느린 4G 에서 첫 그림이 1988ms 였다 — HTML 은 185ms 에 왔는데도)
+     먼저 기본 글꼴로 보여 주고, 글꼴이 오면 바꿔 끼운다. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap"
+      media="print" onload="this.media='all'">
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+      media="print" onload="this.media='all'">
+<noscript>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+</noscript>
+<link rel="stylesheet" href="assets/style.css?v=202610211802">
 <style>
   .chipwrap{display:flex;flex-wrap:wrap;gap:7px}
   .pchip{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);
@@ -90,10 +101,10 @@
   <div style="height:50px"></div>
 </main>
 
-<script src="assets/config.js?v=202610211740"></script>
-<script src="assets/icons.js?v=202610211740"></script>
-<script src="assets/ui.js?v=202610211740"></script>
-<script src="assets/db.js?v=202610211740"></script>
-<script src="assets/fund.js?v=202610211740"></script>
+<script src="assets/config.js?v=202610211802"></script>
+<script src="assets/icons.js?v=202610211802"></script>
+<script src="assets/ui.js?v=202610211802"></script>
+<script src="assets/db.js?v=202610211802"></script>
+<script src="assets/fund.js?v=202610211802"></script>
 </body>
 </html>

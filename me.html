@@ -13,9 +13,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="assets/style.css?v=202610211740">
+<!-- 글꼴은 **그림을 막지 않게** 받는다.
+     글꼴 CSS 가 render-blocking 이면 글자가 준비될 때까지 화면이 하얗다.
+     (느린 4G 에서 첫 그림이 1988ms 였다 — HTML 은 185ms 에 왔는데도)
+     먼저 기본 글꼴로 보여 주고, 글꼴이 오면 바꿔 끼운다. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap"
+      media="print" onload="this.media='all'">
+<link rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+      media="print" onload="this.media='all'">
+<noscript>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+</noscript>
+<link rel="stylesheet" href="assets/style.css?v=202610211802">
 <style>
   /* 카카오 버튼 — 카카오가 정해둔 색 그대로 */
   .kakao{
@@ -60,19 +71,19 @@
 <!-- 커뮤니티 하단 탭 — 명부와 이어진 구성원에게만 보인다 -->
 <nav class="tabbar" id="tabbar" hidden aria-label="커뮤니티 메뉴"></nav>
 
-<script src="assets/config.js?v=202610211740"></script>
-<script src="assets/icons.js?v=202610211740"></script>
-<script src="assets/illus.js?v=202610211740"></script>
-<script src="assets/ui.js?v=202610211740"></script>
-<script src="assets/theme.js?v=202610211740"></script>
-<script src="assets/pastvol.js?v=202610211740"></script>
-<script src="assets/volwho.js?v=202610211740"></script>
-<script src="assets/avatarview.js?v=202610211740"></script>
-<script src="assets/praise.js?v=202610211740"></script>
-<script src="assets/fame.js?v=202610211740"></script>
-<script src="assets/db.js?v=202610211740"></script>
-<script src="assets/push.js?v=202610211740"></script>
-<script src="assets/community.js?v=202610211740"></script>
-<script src="assets/me.js?v=202610211740"></script>
+<script src="assets/config.js?v=202610211802"></script>
+<script src="assets/icons.js?v=202610211802"></script>
+<script src="assets/illus.js?v=202610211802"></script>
+<script src="assets/ui.js?v=202610211802"></script>
+<script src="assets/theme.js?v=202610211802"></script>
+<script src="assets/pastvol.js?v=202610211802"></script>
+<script src="assets/volwho.js?v=202610211802"></script>
+<script src="assets/avatarview.js?v=202610211802"></script>
+<script src="assets/praise.js?v=202610211802"></script>
+<script src="assets/fame.js?v=202610211802"></script>
+<script src="assets/db.js?v=202610211802"></script>
+<script src="assets/push.js?v=202610211802"></script>
+<script src="assets/community.js?v=202610211802"></script>
+<script src="assets/me.js?v=202610211802"></script>
 </body>
 </html>
