@@ -178,10 +178,12 @@
           toast('반가워요, ' + r.name + '님!', 'ok');
           return draw0();
         }
+        /* 「다른 카카오 계정」은 토스트 한 줄로는 뭘 해야 할지 모른다.
+           갤럭시에서 많이 걸린다 — 크롬에 예전 카카오계정이 남아 있어서다. */
+        if (r && r.why === 'taken') return takenSheet();
         toast(({
           nomatch: '명부에서 못 찾았어요. 이름과 뒤 4자리를 다시 봐주세요',
           many: '같은 이름이 둘 이상이에요. 운영진에게 말씀해주세요',
-          taken: '그 이름은 이미 다른 카카오 계정과 이어져 있어요',
           locked: '여러 번 틀렸어요. 한 시간 뒤에 다시 해주세요',
           nologin: '로그인이 풀렸어요. 다시 로그인해주세요'
         }[(r && r.why) || ''] || '확인하지 못했어요'), 'err');
@@ -191,6 +193,38 @@
         btn.disabled = false;
         btn.textContent = '확인하고 시작하기';
       }
+    }
+
+    /* ── 「이미 다른 카카오 계정과 이어져 있어요」
+       거의 다 **카톡에서 한 번 하고, 크롬에서 다시 하는 경우**다.
+       크롬에는 예전 카카오계정이 로그인돼 있어서 그쪽으로 들어간다.
+       그래서 「카카오 계정 다시 고르기」를 맨 위에 둔다. */
+    function takenSheet() {
+      const ov = UI.sheet({
+        title: '다른 카카오 계정으로 이어져 있어요',
+        body:
+          '<p style="margin:0 0 14px;line-height:1.7">' +
+          '이 이름은 <b>다른 카카오 계정</b>으로 이미 이어져 있어요.<br>' +
+          '카카오톡 안에서 먼저 하셨다면, 지금 브라우저는 <b>예전 카카오계정</b>으로 ' +
+          '들어가 있을 수 있어요.</p>' +
+          '<p class="mut xs" style="margin:0 0 16px;line-height:1.7">' +
+          '아래 버튼을 누르면 카카오가 <b>어느 계정으로 들어갈지 다시 물어봐요.</b><br>' +
+          '카카오톡에서 쓰는 계정을 고르면 바로 들어와요.</p>' +
+          '<div style="display:grid;gap:8px">' +
+          '<button class="btn primary lg block" type="button" id="tkRe">' +
+          '카카오 계정 다시 고르기</button>' +
+          '<button class="btn ghost block" type="button" id="tkAsk">' +
+          '운영진에게 「연결 다시 하기」 요청</button></div>',
+        noFocus: true
+      });
+      ov.querySelector('#tkRe').onclick = () => {
+        /* 묻고 들어가게 — 브라우저에 남은 계정으로 그냥 들어가지 않게 */
+        DB.kakaoLogin(location.origin + location.pathname, { pick: true });
+      };
+      ov.querySelector('#tkAsk').onclick = () => {
+        UI.closeSheet();
+        toast('운영진에게 이름을 알려주시면 연결을 풀어드려요', 'ok');
+      };
     }
 
     draw();

@@ -1157,6 +1157,19 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .fbshot{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;
   background:var(--surface-2);cursor:zoom-in}
 
+/* 글 쓸 때 고른 영상 — 표지 위에 ▶ */
+.shotchip.vid .play{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:30px;height:30px;min-width:0;min-height:0;border:0;border-radius:999px;
+  background:rgba(0,0,0,.55);color:#fff;font-size:13px;line-height:1;
+  display:grid;place-items:center;cursor:pointer;padding:0
+}
+/* 표지를 못 만든 영상 — 사진 칸과 같은 크기로 자리를 잡는다 */
+.shotchip .noposter{
+  width:72px;height:72px;border-radius:13px;display:grid;place-items:center;
+  background:var(--surface-2);font-size:24px
+}
+
 /* 짧은 영상 — 사진 줄 안에 같이 */
 .vwrap{
   position:relative;width:100%;flex:none;scroll-snap-align:center;

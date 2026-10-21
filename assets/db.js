@@ -417,7 +417,7 @@
        체험 모드에서는 카카오를 거치지 않고 바로 로그인한 척한다. */
     authError: () => authError,
 
-    kakaoLogin(returnTo) {
+    kakaoLogin(returnTo, opts) {
       const back = returnTo || (location.origin + location.pathname);
       if (!HAS_SB) {
         localStorage.setItem('baljaguk.demoLogin', '1');
@@ -428,7 +428,22 @@
          scopes(복수)는 기본값에 더하기만 하고, scope(단수)라야 통째로 바뀐다. */
       location.href = C.SUPABASE_URL + '/auth/v1/authorize?provider=kakao' +
         '&scope=' + enc('profile_nickname') +
+        /* pick:true 면 카카오가 **어느 계정으로 들어갈지 다시 묻는다.**
+           안드로이드 크롬은 예전 카카오계정이 남아 있어 그냥 그쪽으로
+           들어가 버린다 — 그래서 「다른 계정과 이어져 있어요」가 떴다. */
+        ((opts && opts.pick) ? '&prompt=' + enc('login') : '') +
         '&redirect_to=' + enc(back);
+    },
+
+    /* 운영진이 카카오 연결만 푼다 — 글·댓글·봉사 기록은 그대로 */
+    async unlinkMember(id) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        const m = (d.members || []).filter(x => x.id === id)[0];
+        if (m) { m.auth_user_id = null; demoWrite(d); }
+        return { ok: !!m, name: m && m.name };
+      }
+      return await rest('rpc/unlink_member', { method: 'POST', body: { p_id: id } });
     },
 
     /* 이 사람이 운영진인가 — 데이터베이스에 직접 물어본다 */

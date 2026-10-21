@@ -1540,47 +1540,15 @@ window.Community = (function () {
          top 에도 kids[원댓글] 에도 없어 아예 안 그려졌다.
          (「댓글 3개인데 2개만 보여」)
          이제 위로 거슬러 올라가 **원댓글**을 찾아 그 아래 붙인다. */
-      const byId = {};
-      rows.forEach(c => { byId[c.id] = c; });
-      const rootOf = c => {
-        let cur = c, hop = 0;
-        while (cur.parent_id && byId[cur.parent_id] && hop < 20) {
-          cur = byId[cur.parent_id]; hop++;
-        }
-        return cur.id;
-      };
-
-      const top = rows.filter(c => !c.parent_id);
+      /* ★ 달린 순서 그대로 한 줄씩 — 묶지 않는다.
+         예전에는 답글을 원댓글 아래로 끌어다 붙여서, 나중에 쓴 답글이
+         먼저 쓴 댓글보다 위에 보였다. (「순서가 이리저리 엉켜 있어요」)
+         답글인지는 들여쓰기로 알 수 있고, 누구에게 한 말인지는
+         본문의 「@이름」으로 보인다. */
       kids = {};
-      const orphans = [];
-      rows.filter(c => c.parent_id).forEach(c => {
-        const root = rootOf(c);
-        /* 부모를 못 찾으면 버리지 않는다 — 맨 아래에라도 보인다 */
-        if (root === c.id) { orphans.push(c); return; }
-        (kids[root] = kids[root] || []).push(c);
-      });
-      Object.keys(kids).forEach(k => kids[k].sort(
-        (a, b) => String(a.created_at).localeCompare(String(b.created_at))));
-
-      box.innerHTML = top.map(c => {
-        const ks = kids[c.id] || [];
-        /* 두 개까지만 먼저 — 나머지는 「더 보기」로.
-           숨은 것이 있으면 버튼이 반드시 보인다 */
-        const show = ks.slice(0, 2), rest = ks.length - show.length;
-        return commentLine(c) +
-          (ks.length
-            ? '<div class="replies" data-rep="' + esc(c.id) + '">' +
-              show.map(x => commentLine(x)).join('') +
-              (rest > 0
-                ? '<button class="morerep" type="button" data-morerep="' + esc(c.id) + '">' +
-                  '답글 ' + rest + '개 더 보기</button>'
-                : '') +
-              '</div>'
-            : '');
-      }).join('') +
-      (orphans.length
-        ? '<div class="replies">' + orphans.map(x => commentLine(x)).join('') + '</div>'
-        : '');
+      const inOrder = rows.slice().sort(
+        (a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      box.innerHTML = inOrder.map(c => commentLine(c)).join('');
       loadAvatars(box);
 
       /* 카드 쪽 숫자도 보이는 수와 같게 맞춘다 */
@@ -1853,29 +1821,88 @@ window.Community = (function () {
       v.preload = 'metadata';
       v.muted = true;
       v.playsInline = true;
-      v.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이 영상은 열 수 없어요')); };
+      v.setAttribute('playsinline', '');
+      v.setAttribute('webkit-playsinline', '');
+
+      let done = false;
+      const finish = (poster, seconds) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        resolve({ file, poster: poster || '', seconds: seconds || 0 });
+      };
+      const fail = msg => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        URL.revokeObjectURL(url);
+        reject(new Error(msg));
+      };
+
+      /* ★ 끝나지 않는 길을 막는다.
+         폰에 따라 seek 가 영영 안 끝나거나 metadata 가 안 온다.
+         그러면 「영상을 보는 중…」에서 멈춰 아무 일도 안 일어났다.
+         6초가 지나면 **표지 없이 그냥 올린다** — 올리는 것이 먼저다. */
+      const timer = setTimeout(() => {
+        finish('', Math.round(v.duration) || 0);
+      }, 6000);
+
+      v.onerror = () => fail('이 영상은 열 수 없어요');
+
       v.onloadedmetadata = () => {
-        if (v.duration > VIDEO_MAX_SEC + 0.5) {
-          URL.revokeObjectURL(url);
-          return reject(new Error(VIDEO_MAX_SEC + '초 이하로 잘라서 올려 주세요'));
+        /* 길이를 모르는 파일도 있다 — 모르면 막지 않는다 */
+        if (isFinite(v.duration) && v.duration > VIDEO_MAX_SEC + 0.5) {
+          return fail(VIDEO_MAX_SEC + '초 이하로 잘라서 올려 주세요');
         }
         /* 첫 프레임을 그림으로 — 불러오기 전 자리를 잡아 화면이 안 흔들리게 */
-        v.currentTime = 0.1;
-        v.onseeked = () => {
+        const shoot = () => {
           let poster = '';
           try {
             const c = document.createElement('canvas');
             const w = 640, h = Math.round(640 * (v.videoHeight / v.videoWidth || 0.75));
-            c.width = w; c.height = h;
-            c.getContext('2d').drawImage(v, 0, 0, w, h);
+            c.width = w; c.height = Math.max(1, h);
+            c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
             poster = c.toDataURL('image/jpeg', 0.7);
-          } catch (e) { /* 포스터를 못 만들어도 올릴 수는 있다 */ }
-          URL.revokeObjectURL(url);
-          resolve({ file, poster, seconds: Math.round(v.duration) });
+          } catch (e) { /* 표지를 못 만들어도 올릴 수는 있다 */ }
+          finish(poster, Math.round(v.duration) || 0);
         };
+        v.onseeked = shoot;
+        /* seek 가 안 먹는 폰도 있다 — 그림이 한 장 온 것만으로도 찍는다 */
+        v.onloadeddata = () => { if (v.readyState >= 2 && v.currentTime > 0) shoot(); };
+        try { v.currentTime = 0.1; } catch (e) { shoot(); }
       };
+
       v.src = url;
+      /* 안드로이드 크롬은 이것을 불러야 metadata 를 받아온다 */
+      try { v.load(); } catch (e) { }
     });
+  }
+
+  /* 올리기 전에 고른 영상을 크게 보여 준다 */
+  function playPreview(file) {
+    const url = URL.createObjectURL(file);
+    const box = document.createElement('div');
+    box.className = 'shotview';
+    box.innerHTML =
+      '<button class="x" type="button" aria-label="닫기">' + ic('x') + '</button>' +
+      '<div class="shotview-track">' +
+      '<video src="' + url + '" controls autoplay playsinline webkit-playsinline ' +
+      'style="max-width:100%;max-height:78vh;border-radius:14px;background:#000"></video>' +
+      '</div>' +
+      '<p class="mut xs" style="text-align:center;margin:10px 16px 0">' +
+      '올리기 전에 확인해 보세요. 소리도 같이 올라가요.</p>';
+    document.body.appendChild(box);
+    document.body.style.overflow = 'hidden';
+    const shut = () => {
+      const v = box.querySelector('video');
+      if (v) { try { v.pause(); } catch (e) { } }
+      URL.revokeObjectURL(url);
+      box.remove();
+      document.body.style.overflow = '';
+    };
+    box.querySelector('.x').onclick = shut;
+    box.onclick = e => { if (e.target === box) shut(); };
   }
 
   /* 화면에 보이는 영상만 돌린다 — 데이터를 아끼려고 */
@@ -2055,20 +2082,28 @@ window.Community = (function () {
     /* 좌우로 밀어 사진을 넘기면 그건 클릭이 아니다.
        10px 넘게 움직였으면 누른 것으로 치지 않는다.
        (실서버 폰에서 사진을 넘기려 하면 사진 뷰어가 열렸다 — 2026-10-20) */
-    let downX = 0, downY = 0, moved = false;
+    /* ★ 이 규칙은 **사진을 넘길 때만** 쓴다.
+       예전에는 화면 전체에 걸어서, 손가락이 10px 만 움직여도
+       버튼이 안 눌렸다. 엄지로 누르면 그 정도는 늘 움직인다.
+       (「대기 신청하기를 눌러도 아무 반응이 없어요 — 다시 누르니 됐어요」)
+       이제 사진 줄에서 시작한 손가락만 본다. 기준도 14px 로 넉넉히. */
+    let downX = 0, downY = 0, moved = false, fromShots = false;
     view.addEventListener('pointerdown', e => {
       downX = e.clientX; downY = e.clientY; moved = false;
+      fromShots = !!(e.target.closest && e.target.closest('.shots'));
     }, { passive: true });
     view.addEventListener('pointermove', e => {
-      if (Math.abs(e.clientX - downX) > 10 || Math.abs(e.clientY - downY) > 10) moved = true;
+      if (!fromShots) return;
+      if (Math.abs(e.clientX - downX) > 14 || Math.abs(e.clientY - downY) > 14) moved = true;
     }, { passive: true });
 
     view.addEventListener('click', async e => {
       const hit = sel => e.target.closest('[' + sel + ']');
       let b;
 
-      /* 민 것이면 열지 않는다 */
-      if (moved) { moved = false; return; }
+      /* 사진을 민 것이면 열지 않는다 (사진 줄에서 시작한 손가락만) */
+      if (moved && fromShots) { moved = false; return; }
+      moved = false;
 
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
@@ -3083,19 +3118,46 @@ window.Community = (function () {
             return;
           }
           idle.hidden = true;
-          thumbs.innerHTML = r.__shots.map((src, i) =>
-            '<span class="shotchip" data-i="' + i + '">' +
-            '<img src="' + src + '" alt="">' +
-            '<button type="button" class="rm" data-rm="' + i + '" ' +
-            'aria-label="' + (i + 1) + '번째 사진 빼기">✕</button>' +
-            (i === 0 ? '<span class="first">대표</span>' : '') +
-            '</span>').join('') +
+          /* 「video:…」 는 영상 자리다 — 표지 그림을 보여 주고
+             ▶︎ 를 얹는다. 예전에는 그대로 img src 에 넣어서
+             깨진 그림만 나왔다. (「영상 올리는 게 안 돼요」) */
+          const nPhoto = r.__shots.filter(x => !/^video:/.test(String(x))).length;
+          const nVideo = r.__shots.length - nPhoto;
+          thumbs.innerHTML = r.__shots.map((src, i) => {
+            const isVid = /^video:/.test(String(src));
+            const pic = isVid ? String(src).slice(6) : src;
+            return '<span class="shotchip' + (isVid ? ' vid' : '') + '" data-i="' + i + '">' +
+              (pic
+                ? '<img src="' + pic + '" alt="">'
+                : '<span class="noposter" aria-hidden="true">🎬</span>') +
+              (isVid
+                ? '<button type="button" class="play" data-play="' + i + '" ' +
+                  'aria-label="영상 미리보기">▶</button>'
+                : '') +
+              '<button type="button" class="rm" data-rm="' + i + '" ' +
+              'aria-label="' + (i + 1) + '번째 ' + (isVid ? '영상' : '사진') + ' 빼기">✕</button>' +
+              (i === 0 ? '<span class="first">대표</span>' : '') +
+              '</span>';
+          }).join('') +
             '<div class="sm mut" style="width:100%;margin-top:7px;text-align:center">' +
-            r.__shots.length + '장 / 10장 · 길게 눌러 끌면 순서가 바뀌어요</div>';
+            '사진 ' + nPhoto + '장 / 10장' +
+            (nVideo ? ' · 영상 ' + nVideo + '개' : '') +
+            ' · 길게 눌러 끌면 순서가 바뀌어요</div>';
+
+          /* 올리기 전에 영상을 눌러서 확인한다 */
+          thumbs.querySelectorAll('[data-play]').forEach(b => b.onclick = ev => {
+            ev.stopPropagation();
+            if (!r.__video || !r.__video.file) return toast('영상을 찾지 못했어요', 'err');
+            playPreview(r.__video.file);
+          });
 
           thumbs.querySelectorAll('[data-rm]').forEach(b => b.onclick = ev => {
             ev.stopPropagation();
-            r.__shots.splice(Number(b.dataset.rm), 1);
+            const at = Number(b.dataset.rm);
+            /* 영상을 빼면 들고 있던 파일도 같이 놓는다 —
+               안 그러면 자리는 사라졌는데 영상은 올라간다 */
+            if (/^video:/.test(String(r.__shots[at]))) r.__video = null;
+            r.__shots.splice(at, 1);
             paintThumbs();
           });
 
@@ -3517,48 +3579,13 @@ window.Community = (function () {
         ov.querySelectorAll('[data-best]').forEach(b =>
           b.onclick = () => markBest(b.dataset.best, b.dataset.bc));
       } else {
-        /* 시트와 같은 모양 — 답글은 원댓글 아래 평평하게.
-           예전에는 그냥 나열해서 답글이 어디 붙은 건지 알 수 없었다. */
-        const byId = {};
-        shown.forEach(c => { byId[c.id] = c; });
-        const rootOf = c => {
-          let cur = c, hop = 0;
-          while (cur.parent_id && byId[cur.parent_id] && hop < 20) {
-            cur = byId[cur.parent_id]; hop++;
-          }
-          return cur.id;
-        };
-        const top = shown.filter(c => !c.parent_id);
-        const kids = {};
-        const orphans = [];
-        shown.filter(c => c.parent_id).forEach(c => {
-          const root = rootOf(c);
-          if (root === c.id) { orphans.push(c); return; }
-          (kids[root] = kids[root] || []).push(c);
-        });
-        Object.keys(kids).forEach(k => kids[k].sort(
-          (a, b) => String(a.created_at).localeCompare(String(b.created_at))));
-
-        ov.querySelector('#dList').innerHTML = shown.length
-          ? top.map(c => {
-              const ks = kids[c.id] || [];
-              const show = ks.slice(0, 2), rest = ks.length - show.length;
-              return commentLine(c) +
-                (ks.length
-                  ? '<div class="replies" data-rep="' + esc(c.id) + '">' +
-                    show.map(x => commentLine(x)).join('') +
-                    (rest > 0
-                      ? '<button class="morerep" type="button" data-morerep="' + esc(c.id) + '">' +
-                        '답글 ' + rest + '개 더 보기</button>'
-                      : '') +
-                    '</div>'
-                  : '');
-            }).join('') +
-            (orphans.length
-              ? '<div class="replies">' + orphans.map(x => commentLine(x)).join('') + '</div>'
-              : '')
+        /* 댓글 시트와 같게 — 달린 순서 그대로 */
+        const inOrder = shown.slice().sort(
+          (a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+        ov.querySelector('#dList').innerHTML = inOrder.length
+          ? inOrder.map(c => commentLine(c)).join('')
           : '<div class="mut sm">아직 댓글이 없어요. 처음 남겨보세요.</div>';
-        dKids = kids;
+        dKids = {};
         loadAvatars(ov.querySelector('#dList'));
       }
       /* 피드 카드도 같이 맞춰둔다 */

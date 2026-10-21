@@ -69,13 +69,14 @@
     if (!window.visualViewport || !ov) return;
     const vv = window.visualViewport;
     const foot = ov.querySelector('.sheet-foot');
-    const body = ov.querySelector('.sheet-body');
     const fit = () => {
+      if (!foot) return;
+      /* ★ 본문에 아래 여백을 더하지 않는다.
+         안드로이드 크롬은 키보드가 올라와도 innerHeight 가 안 줄어서
+         여백을 더하면 입력칸이 화면 밖으로 밀려난다.
+         (「안드로이드에서 댓글 입력창이 이상해요」) */
       const gap = Math.max(0, innerHeight - vv.height - vv.offsetTop);
-      if (foot) foot.style.transform = gap ? 'translateY(-' + gap + 'px)' : '';
-      /* 버튼줄이 올라온 만큼 본문 아래에 자리를 만들어
-         마지막 입력칸이 버튼에 가리지 않게 한다 */
-      if (body) body.style.paddingBottom = gap ? gap + 'px' : '';
+      foot.style.transform = gap ? 'translateY(-' + gap + 'px)' : '';
     };
     vv.addEventListener('resize', fit);
     vv.addEventListener('scroll', fit);

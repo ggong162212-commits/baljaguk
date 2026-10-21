@@ -1314,7 +1314,15 @@
         '<div class="kv"><span class="k">카카오 연결</span><span class="v">' +
         (m.auth_user_id
           ? '연결됨' + (m.linked_at ? ' · ' + fmtDate(m.linked_at) : '')
-          : '아직') + '</span></div>') +
+          : '아직') + '</span></div>' +
+        /* 「다른 카카오 계정과 이어져 있어요」로 막힌 사람을 풀어 준다.
+           연결만 풀고 글·댓글·봉사 기록은 그대로 둔다. */
+        (m.auth_user_id
+          ? '<button class="btn ghost block sm" type="button" data-unlink ' +
+            'style="margin-top:8px">카카오 연결 풀기</button>' +
+            '<span class="hint">다른 카카오 계정으로 다시 본인 확인을 하게 해줘요. ' +
+            '글·댓글·봉사 기록은 그대로 남아요.</span>'
+          : '')) +
 
       (isNew ? '' : memberApplyBlock(m)) +
       (isNew ? '' :
@@ -1333,6 +1341,25 @@
 
     const ov = sheet({ title: isNew ? '구성원 추가' : m.name, body });
     ov.querySelector('#mPhone').addEventListener('input', e => e.target.value = hyphenPhone(e.target.value));
+    const un = ov.querySelector('[data-unlink]');
+    if (un) un.onclick = async () => {
+      if (!await confirmSheet(m.name + '님의 카카오 연결을 풀까요?',
+        '다음에 카카오로 들어오면 이름과 휴대폰 뒤 4자리로 다시 확인하게 돼요. ' +
+        '쓴 글·댓글·봉사 기록은 그대로 남아요.', '연결 풀기', true)) return;
+      un.disabled = true; un.textContent = '푸는 중…';
+      try {
+        const r = await DB.unlinkMember(m.id);
+        if (!r || !r.ok) throw new Error(
+          r && r.why === 'notlinked' ? '이미 풀려 있어요' : '풀지 못했어요');
+        toast('연결을 풀었어요. 다시 본인 확인을 하면 돼요', 'ok');
+        closeSheet();
+        await load();
+      } catch (e) {
+        toast(e.message || '풀지 못했어요', 'err');
+        un.disabled = false; un.textContent = '카카오 연결 풀기';
+      }
+    };
+
     const rc = ov.querySelector('[data-receipt]');
     if (rc) rc.onclick = async () => {
       const a = findApp(m); if (!a) return;
