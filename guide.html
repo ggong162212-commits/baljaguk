@@ -100,8 +100,8 @@
       <a href="#s5"><span class="no">5</span>후기 올리기</a>
       <a href="#s6"><span class="no">6</span>오늘 만난 친구</a>
       <a href="#s7"><span class="no">7</span>설문과 퀴즈</a>
-      <a href="#s8"><span class="no">8</span>댓글과 반응</a>
-      <a href="#s9"><span class="no">9</span>내 활동과 프로필</a>
+      <a href="#s8"><span class="no">8</span>좋아요 · 댓글 · 답글 · @부르기</a>
+      <a href="#s9"><span class="no">9</span>내 활동 · 프로필 · 의견 보내기</a>
       <a href="#s10"><span class="no">10</span>자주 묻는 질문</a>
       <a href="#s11"><span class="no">🔑</span>운영진용</a>
     </div>
@@ -219,7 +219,12 @@
     <p class="mut sm" style="margin-top:8px;line-height:1.65">
       새 글 · 댓글 · 답글 · 반응 · 봉사 열림 · 대기→신청 ·
       공지 · 설문 마감 · 퀴즈 결과 · 봉사 전날 · 봉사 감사</p>
+    <p class="mut sm" style="margin-top:6px;line-height:1.65">
+      누가 나를 <b>@로 부르면</b> 따로 알림이 와요. 이건 끄는 칸이 없어요.<br>
+      운영진이 <b>내 의견에 답장</b>하면 알림이 와요.</p>
     <p class="pill-note" style="margin-top:10px">
+      알림을 누르면 <b>그 글이 바로 열려요</b>. 오래된 글이어도 열리고,
+      지워진 글이면 「지워진 글이에요」라고 알려줘요.<br>
       종류마다 <b>보내 보기</b>를 누르면 나에게만 보내서 어떻게 보이는지 확인할 수 있어요.</p>
   </div>
 
@@ -293,6 +298,8 @@
       <div class="tx">
         <b>글 쓰고 올리기</b>
         <p>글 아래 <b>더하기 칩</b> 두 개가 있어요. 안 눌러도 그냥 올라가요.</p>
+        <p class="mut sm">글에 <b>@</b>를 치면 이름 목록이 떠요.
+          그 봉사에 <b>같이 다녀온 사람이 먼저</b> 보여요. 고르면 그 사람에게 알림이 가요.</p>
         <div class="kv"><span class="k">🐾 만난 친구</span><span class="v">오늘 만난 아이 이름</span></div>
         <div class="kv"><span class="k">설문 · 퀴즈</span><span class="v">글 안에서 물어보기</span></div>
       </div>
@@ -332,14 +339,53 @@
 
   <!-- 8 -->
   <div class="card" id="s8">
-    <h3>8. 댓글과 반응</h3>
+    <h3>8. 좋아요 · 댓글 · 답글 · @부르기</h3>
     <div class="sp"></div>
-    <div class="kv"><span class="k">반응 달기</span><span class="v">글 아래 + 버튼</span></div>
-    <div class="kv"><span class="k">누가 달았는지</span><span class="v">반응을 길게 누르기</span></div>
-    <div class="kv"><span class="k">댓글</span><span class="v">글 아래 「댓글 남기기」</span></div>
+    <div class="kv"><span class="k">좋아요</span><span class="v">글 아래 하트 — 다시 누르면 취소</span></div>
+    <div class="kv"><span class="k">누가 눌렀는지</span><span class="v">「좋아요 n개」 누르기</span></div>
+    <div class="kv"><span class="k">댓글</span><span class="v">카드 아래 「댓글 달기…」 → 게시</span></div>
+    <div class="kv"><span class="k">댓글 전부 보기</span><span class="v">말풍선 버튼</span></div>
+    <div class="kv"><span class="k">답글</span><span class="v">댓글 아래 「답글 달기」</span></div>
     <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">1</span>
+      <div class="tx">
+        <b>좋아요는 하트 하나</b>
+        <p>글 아래 하트를 누르면 좋아요예요. 「좋아요 n개」를 누르면
+           <b>누가 눌렀는지 사진과 이름</b>으로 보여요. 댓글에도 하트가 있어요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">2</span>
+      <div class="tx">
+        <b>답글 — 이름이 알아서 들어가요</b>
+        <p>「답글 달기」를 누르면 그 사람 <b>@이름</b>이 입력칸에 먼저 들어가고,
+           그 댓글 바로 아래에 붙어요. 답글이 많으면 「답글 n개 더 보기」가 보여요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">3</span>
+      <div class="tx">
+        <b>@로 사람 부르기</b>
+        <p>글이나 댓글을 쓸 때 <b>@</b>를 치면 이름 목록이 떠요. 고르면 그 사람에게 알림이 가요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">4</span>
+      <div class="tx">
+        <b>고치기 · 지우기</b>
+        <p>내 글은 <b>···</b> → <b>글 고치기</b> · <b>글 지우기</b>,
+           내 댓글은 <b>···</b> → <b>고치기</b> · <b>지우기</b>.
+           고치면 시간 옆에 「수정됨」이 붙어요. 지우면 되돌릴 수 없어요.</p>
+      </div>
+    </div>
+
     <p class="mut sm" style="line-height:1.65">
-      내 글에 달린 댓글·반응은 알림이 와요. 남의 글에 달린 건 안 와요.<br>
+      내 글에 달린 댓글·좋아요는 알림이 와요. 남의 글에 달린 건 안 와요.<br>
       내가 쓴 댓글에 답글이 달리면 알림이 와요.</p>
     <div class="sp"></div>
     <p class="pill-note">불편한 글이나 댓글은 <b>···</b> → <b>신고하기</b>.
@@ -348,7 +394,7 @@
 
   <!-- 9 -->
   <div class="card" id="s9">
-    <h3>9. 내 활동과 프로필</h3>
+    <h3>9. 내 활동 · 프로필 · 의견 보내기</h3>
     <div class="sub">오른쪽 위 동그라미를 누르면 열려요.</div>
     <div class="sp"></div>
     <div class="kv"><span class="k">봉사 횟수</span><span class="v">다녀온 횟수</span></div>
@@ -358,6 +404,37 @@
     <div class="sp"></div>
     <p class="pill-note">숫자는 <b>운영진이 확정한 봉사</b>만 세요.
       다녀온 날 바로 안 올라가도 걱정하지 마세요. 확정되면 반영돼요.</p>
+    <div class="sp"></div>
+
+    <div class="step">
+      <span class="no">1</span>
+      <div class="tx">
+        <b>다른 사람 프로필 크게 보기</b>
+        <p>글이나 댓글에서 <b>그 사람 동그라미 사진을 누르면</b> 프로필이 크게 열려요.
+           이름 · 사진 · 기수만 보여요. 사진을 누르면 더 크게 볼 수 있어요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">2</span>
+      <div class="tx">
+        <b>운영진에게 의견 보내기</b>
+        <p>프로필 → <b>운영진에게 의견 보내기</b>.
+           아래 <b>「내가 보낸 의견」</b>에서 보낸 것과 <b>운영진 답장</b>을 볼 수 있어요.
+           답장이 오면 새 소식과 알림으로도 알려줘요.</p>
+        <p class="mut sm"><b>이름 없이 보내기</b>를 켜면 누가 보냈는지 남지 않아요.
+           대신 운영진이 답장할 수 없어요.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="no">3</span>
+      <div class="tx">
+        <b>운영진 지원하기</b>
+        <p>프로필 → <b>운영진 지원하기</b> → 지원하는 이유를 짧게 적어 보내요.
+           운영진이 보고 연락드려요. 확인하는 동안은 「지원 확인 중이에요」로 보여요.</p>
+      </div>
+    </div>
   </div>
 
   <!-- 10 -->
@@ -437,9 +514,11 @@
     <div class="step">
       <span class="no">3</span>
       <div class="tx">
-        <b>공지 올리기·내리기</b>
+        <b>공지 올리기 · 고치기 · 내리기</b>
         <p>홈 <b>+</b> → <b>공지</b>. 「맨 위에 고정」을 고르면 모두의 홈 맨 위에 붙어요
-           (<b>세 개까지</b>). 내릴 때는 글 <b>···</b> → <b>고정 풀기</b>.</p>
+           (<b>세 개까지</b>). 네 번째를 붙이려 하면 「가장 오래된 공지를 내리고 올릴까요?」라고 물어봐요.</p>
+        <p>공지 <b>···</b> → <b>공지 고치기</b> · <b>공지 내리기</b>.
+           공지는 <b>운영진 누구나</b> 고칠 수 있어요. 내린 글은 피드에 그대로 남아요.</p>
       </div>
     </div>
 
@@ -447,8 +526,10 @@
       <span class="no">4</span>
       <div class="tx">
         <b>할 일 챙기기</b>
-        <p>운영진 화면 맨 위에 <b>확정 안 한 봉사 · 가입 대기 · 신고</b> 개수가 떠요.
+        <p>운영진 화면 맨 위에 <b>확정 안 한 봉사 · 가입 대기 · 신고 · 받은 의견 · 운영진 지원</b> 개수가 떠요.
            챙길 게 없으면 안 보여요.</p>
+        <p class="mut sm"><b>받은 의견</b>과 <b>운영진 지원</b>은 눌러서 <b>답장하기</b>를 할 수 있어요.
+           답장은 보낸 사람에게 새 소식과 알림으로 가요. 이름 없이 보낸 의견은 답장할 수 없어요.</p>
       </div>
     </div>
 
@@ -458,6 +539,8 @@
         <b>누가 아직 안 들어왔는지</b>
         <p>구성원 탭 → <b>연결 안 함</b> 칩.
            <b>안내 문구 복사</b>를 누르면 보낼 문구가 복사돼요 (이름 목록은 안 들어가요).</p>
+        <p class="mut sm">구성원마다 <b>최근 접속</b>이 「오늘 · 어제 · 3일 전 · 2주 전 · 접속 안 함」으로 보여요.
+           <b>앱을 연 날짜</b>만 남고, 몇 시에 무엇을 봤는지는 남지 않아요.</p>
       </div>
     </div>
 
