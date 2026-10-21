@@ -56,6 +56,8 @@
   .step .tx > b{display:block;font-size:14.5px;margin-bottom:4px}
   .step .tx p{margin:0;font-size:13px;color:var(--ink-3);line-height:1.65}
   /* 화면 흉내 — 캡처 대신 쓰는 작은 그림 */
+  .gshot{display:block;width:100%;max-width:300px;height:auto;margin:12px auto 4px;
+    border-radius:14px;border:1px solid var(--line);box-shadow:var(--shadow-sm);background:var(--surface)}
   .shot{
     margin-top:10px;border:1px solid var(--line);border-radius:14px;
     padding:12px;background:var(--surface);font-size:12.5px
@@ -230,6 +232,7 @@
            그 다음 <b>홈 화면의 발바닥 아이콘</b>으로 들어와서
            프로필(오른쪽 위 동그라미) → <b>알림 설정</b> → <b>알림 켜기</b>.</p>
         <p class="mut sm">아이폰은 iOS 16.4 이상이어야 해요.</p>
+        <img class="gshot" src="assets/guide/notify-ask.webp" width="375" height="346" loading="lazy" alt="아이폰에서 홈 화면에 추가하기 전에 알림 설정을 열면 보이는 안내">
       </div>
     </div>
 
@@ -251,7 +254,8 @@
     <p class="mut sm" style="margin-top:6px;line-height:1.65">
       누가 나를 <b>@로 부르면</b> 알림이 와요. 「언급(@)」 칸에서 끌 수 있어요.<br>
       운영진이 <b>내 의견에 답장</b>하면 알림이 와요(「공지」 칸을 따라가요).<br>
-      내 글에 달린 <b>좋아요</b>와 <b>대기에서 신청으로 올라간 것</b>은 알림 대신 <b>나</b> 탭 <b>새 소식</b>에 떠요.</p>
+      내 글에 <b>좋아요</b>가 달리면 「○○님이 내 글을 좋아해요」 알림이 와요 — 연달아 받아도 <b>10분에 한 번</b>만 와요.<br>
+      <b>대기에서 신청으로 올라가면</b> 「자리가 났어요!」 알림이 바로 와요.</p>
     <p class="pill-note" style="margin-top:10px">
       알림을 누르면 <b>그 글이 바로 열려요</b>. 오래된 글이어도 열리고,
       지워진 글이면 「지워진 글이에요」라고 알려줘요.<br>
@@ -306,7 +310,7 @@
         <b>자리가 찼으면 — 대기 신청</b>
         <p>정원이 차면 <b>대기 신청하기</b>가 보여요.
            누가 취소하면 <b>먼저 신청한 대기자부터</b> 자동으로 올라가요(운영진이 확정하기 전 · 봉사 날 전까지).
-           올라가면 <b>나</b> 탭 <b>새 소식</b>에 떠요.</p>
+           올라가면 <b>「자리가 났어요!」</b> 알림이 와요(내가 직접 누른 신청에는 안 와요). 못 가면 꼭 취소해 주세요.</p>
       </div>
     </div>
 
@@ -317,6 +321,8 @@
         <p><b>다가오는 봉사</b> 카드 「선착순 3 / 8명」 옆에 신청한 사람이 있으면 <b>얼굴</b>이 다섯 개까지 겹쳐 보여요(더 있으면 「+n」).
            얼굴을 누르면 <b>신청한 순서대로</b> 사진 · 이름 · 기수가 나오고, 대기자는 따로 보여요.
            신청하거나 취소하면 바로 바뀌어요.</p>
+        <img class="gshot" src="assets/guide/vol-card.webp" width="355" height="205" loading="lazy" alt="봉사 카드의 신청자 얼굴">
+        <img class="gshot" src="assets/guide/vol-who.webp" width="375" height="587" loading="lazy" alt="신청한 사람 시트">
       </div>
     </div>
 
@@ -329,6 +335,7 @@
            <b>내가 간 봉사만</b> · <b>보호소별</b>로 골라 볼 수 있고, 아래 <b>20개 더 보기</b>로 더 불러와요.
            줄마다 후기 몇 개인지 나오고, 누르면 그 봉사 후기가 모여 보여요(후기가 없으면 후기 쓰기 창이 열려요).</p>
         <p class="mut sm">나 탭의 「내가 간 봉사」에도 같은 전체 보기가 있어요.</p>
+        <img class="gshot" src="assets/guide/past-all.webp" width="375" height="534" loading="lazy" alt="지난 봉사 전체 보기 시트">
       </div>
     </div>
 
@@ -434,6 +441,7 @@
         <b>답글 — 이름이 알아서 들어가요</b>
         <p>「답글 달기」를 누르면 그 사람 <b>@이름</b>이 입력칸에 먼저 들어가고,
            그 댓글 바로 아래에 붙어요. 답글은 그 댓글 밑에 모두 보여요.</p>
+        <img class="gshot" src="assets/guide/comments.webp" width="375" height="587" loading="lazy" alt="댓글 화면 — 답글은 그 댓글 바로 아래">
       </div>
     </div>
 
@@ -456,7 +464,7 @@
     </div>
 
     <p class="mut sm" style="line-height:1.65">
-      내 글에 달린 <b>댓글</b>은 알림이 와요(좋아요는 나 탭 새 소식에). 남의 글에 달린 건 안 와요.<br>
+      내 글에 달린 <b>댓글</b>·<b>좋아요</b>는 알림이 와요(좋아요는 10분에 한 번 묶어서). 남의 글에 달린 건 안 와요.<br>
       내 <b>댓글에 좋아요</b>가 달려도 알림이 와요.<br>
       내가 쓴 댓글에 답글이 달리면 알림이 와요.</p>
     <div class="sp"></div>
@@ -474,6 +482,8 @@
     <div class="kv"><span class="k">프로필 사진</span><span class="v">「사진 바꾸기」</span></div>
     <div class="kv"><span class="k">알림 설정</span><span class="v">종류별 끄고 켜기</span></div>
     <div class="kv"><span class="k">어둡게 · 밝게</span><span class="v">위 오른쪽 달 · 해 모양</span></div>
+    <img class="gshot" src="assets/guide/home-top.webp" width="375" height="65" loading="lazy" alt="상단바 — 오른쪽 달 모양이 어둡게 보기, 그 옆 동그라미가 프로필">
+    <img class="gshot" src="assets/guide/profile-sheet.webp" width="375" height="587" loading="lazy" alt="오른쪽 위 동그라미를 누르면 열리는 내 프로필">
     <div class="sp"></div>
     <p class="pill-note">숫자는 <b>운영진이 확정한 봉사</b>만 세요.
       다녀온 날 바로 안 올라가도 걱정하지 마세요. 확정되면 반영돼요.</p>
@@ -486,6 +496,7 @@
         <p>프로필 → <b>사진 바꾸기</b> → 사진을 고르면 자르는 화면이 떠요.
            <b>사진을 끌어서</b> 동그라미 안에 맞추고, 아래 막대로 <b>크기</b>를 바꾼 뒤 <b>확인</b>.
            <b>취소</b>하면 아무것도 안 바뀌어요.</p>
+        <img class="gshot" src="assets/guide/crop.webp" width="375" height="667" loading="lazy" alt="사진 자르기 화면">
       </div>
     </div>
 
@@ -498,6 +509,8 @@
            다른 사람 프로필에는 이름 · 사진 · 기수만 보여요.</p>
         <div class="kv"><span class="k">확대</span><span class="v">두 번 톡톡 · 두 손가락으로 벌리기</span></div>
         <div class="kv"><span class="k">닫기</span><span class="v">아래로 쓸어내리기 · 왼쪽 위 ✕ · 뒤로 가기</span></div>
+        <img class="gshot" src="assets/guide/peek.webp" width="375" height="440" loading="lazy" alt="다른 사람 프로필">
+        <img class="gshot" src="assets/guide/avatar-view.webp" width="375" height="667" loading="lazy" alt="사진 크게 보기">
       </div>
     </div>
 
@@ -539,6 +552,8 @@
            ③ 사진 — 없어도 돼요 → <b>올리기</b></p>
         <p class="mut sm">피드 카드 맨 위에 「[사진] 쓴 사람 → [사진] 칭찬받은 사람 · 칭찬해요」 한 줄로 올라가요. 사진이나 이름을 누르면 그 사람 프로필이 열려요.
            <b>전체</b>와 <b>자유게시판</b> 둘 다에 보여요. 하트 · 댓글 · 고치기 · 지우기는 다른 글과 같아요(칭찬받는 사람은 바꿀 수 없어요).</p>
+        <img class="gshot" src="assets/guide/write-kinds.webp" width="375" height="338" loading="lazy" alt="어떤 글인가요? — 칭찬해요">
+        <img class="gshot" src="assets/guide/praise-card.webp" width="355" height="420" loading="lazy" alt="피드의 칭찬 카드">
       </div>
     </div>
 
@@ -558,6 +573,7 @@
         <b>받은 칭찬 보기</b>
         <p>아래 <b>나</b> 탭 → <b>받은 칭찬 n</b>을 누르면 나를 칭찬한 글이 모여요. 누르면 그 글이 열려요.
            순위나 비교는 없어요.</p>
+        <img class="gshot" src="assets/guide/me-praise.webp" width="355" height="68" loading="lazy" alt="나 탭의 받은 칭찬">
       </div>
     </div>
 
@@ -572,6 +588,8 @@
            「보호소 3곳」은 <b>적립(후원금·사료)이 있는 봉사</b>의 보호소로 세요.
            한 사람에 <b>한 번만</b> 올라가고, 나 탭 배지 칸에 「명예의 전당 ○번째」가 붙어요.
            이 글은 아무도 고칠 수 없고, 지우기는 운영진만 할 수 있어요.</p>
+        <img class="gshot" src="assets/guide/fame-card.webp" width="355" height="470" loading="lazy" alt="명예의 전당 카드">
+        <img class="gshot" src="assets/guide/me-badges.webp" width="355" height="229" loading="lazy" alt="나 탭 기록 배지와 명예의 전당 번호">
       </div>
     </div>
   </div>
