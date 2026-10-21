@@ -375,7 +375,9 @@ rows_ as (
          select json_build_object(
                   'id', c.id, 'created_at', c.created_at, 'body', c.body,
                   'mine', c.author_id = (select id from me_),
-                  'author', (select m.name from members m where m.id = c.author_id)) as j,
+                  'author', (select json_build_object('id', m.id, 'name', m.name,
+                                      'role', m.role, 'photo', m.photo_path)
+                               from members m where m.id = c.author_id)) as j,
                 c.created_at as at
            from comments c
           where c.post_id = p.id and not c.hidden

@@ -345,7 +345,10 @@
     const face = name.slice(0, 1);
     /* 사진은 비공개 보관함에 있어 주소를 따로 받아야 한다.
        자리만 만들어 두고 community.js 가 채운다. 공개 페이지는 사진을 안 쓴다. */
-    const photo = (m && m.photo) ? ' data-avatar="' + esc(m.photo) + '"' : '';
+    /* 어떤 화면은 photo, 어떤 화면은 표에서 그대로 온 photo_path 로 준다.
+       운영진 화면 구성원 목록이 photo_path 라 사진이 안 나왔다. */
+    const path = (m && (m.photo || m.photo_path)) || '';
+    const photo = path ? ' data-avatar="' + esc(path) + '"' : '';
     return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '"' + photo +
       ' aria-hidden="true">' + esc(face) + '</div>';
   }

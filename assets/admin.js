@@ -2,7 +2,7 @@
    운영진 관리 화면
    ============================================================ */
 (function () {
-  const { $, $$, toast, sheet, closeSheet, confirmSheet, copy, won, credit, num, esc,
+  const { $, $$, toast, sheet: _rawSheet, closeSheet, confirmSheet, copy, won, credit, num, esc,
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
@@ -432,6 +432,17 @@
     }[cur] || (() => { }))();
     UI.initGrow();
     paintTodo();
+    /* 운영진 화면 어디든 사람 사진을 채운다 —
+       구성원 목록·상세·출석 명단·순위·가입 승인 모두 같은 자리를 쓴다.
+       (예전에는 상단바와 내 프로필에만 채워서 사진이 안 보였다) */
+    fillAvatars(document);
+  }
+
+  /* 시트가 열린 뒤에도 사진을 채운다 — 시트는 나중에 생긴다 */
+  function sheet(opts) {
+    const ov = _rawSheet(opts);
+    setTimeout(() => fillAvatars(ov), 0);
+    return ov;
   }
 
   /* ---------- 운영진 할 일 ----------
@@ -512,10 +523,12 @@
       '<div style="margin-top:7px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
       esc(f.body) + '</div>' +
       (f.anon
-        ? '<p class="mut" style="font-size:11.5px;margin-top:9px;line-height:1.55">' +
-          '이름 없이 온 의견이라 답장할 수 없어요. 답할 내용이면 공지로 알려주세요.</p>'
+        ? '<p class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.55">' +
+          '익명 의견이라 답장할 수 없어요 · 필요하면 공지로 답해 주세요</p>'
         : (f.replied
-          ? '<p class="mut" style="font-size:11.5px;margin-top:9px">답장했어요</p>'
+          ? '<div class="replybox">' +
+            '<div class="lb">보낸 답장</div>' +
+            '<div class="tx">' + esc(f.reply || '') + '</div></div>'
           : '<button class="btn ghost sm block" type="button" style="margin-top:10px" ' +
             'data-freply="' + esc(f.id) + '">답장하기</button>')) +
       '<button class="btn soft sm block" type="button" style="margin-top:8px" ' +

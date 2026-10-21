@@ -1108,6 +1108,22 @@
       });
     },
 
+    /* 내가 보낸 의견과 운영진 답장 — 답장을 볼 곳이 없었다 */
+    async mine() {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        return (d.feedback || [])
+          .filter(f => f.member_id === me && !f.anon)
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+          .map(f => ({
+            id: f.id, created_at: f.created_at, body: f.body,
+            reply: f.reply || null, replied_at: f.replied_at || null,
+            done: !!f.done_at
+          }));
+      }
+      return await rest('rpc/my_feedback', { method: 'POST', body: {} }) || [];
+    },
+
     async reply(id, text) {
       if (!HAS_SB) {
         const d = cdemo(), f = (d.feedback || []).find(x => x.id === id);

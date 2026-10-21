@@ -56,6 +56,14 @@ fi
 if [ -f "$HERE/fix-2.sql" ]; then
   run "fix-2.sql" "$HERE/fix-2.sql"
 fi
+if [ -f "$HERE/fix-3.sql" ]; then
+  run "fix-3.sql" "$HERE/fix-3.sql"
+fi
+
+# 함수 본문은 만들 때 검사되지 않는다 — 실제로 들여다본다
+if [ -f "$HERE/check-calls.sql" ]; then
+  run "없는 칸·표를 쓰는 함수 찾기" "$HERE/check-calls.sql"
+fi
 
 echo ""
 echo "── 없는 것을 부르는 곳 (버튼이 조용히 죽는 버그)"

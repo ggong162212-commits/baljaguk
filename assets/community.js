@@ -173,14 +173,48 @@ window.Community = (function () {
         '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
         '<span class="grow"><span class="sm" style="font-weight:700">이름 없이 보내기</span>' +
         '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px;line-height:1.5">' +
-        '누가 보냈는지 저장하지 않아요. 대신 답장을 받을 수 없어요</span></span></button>' +
+        '누가 보냈는지 저장하지 않아요</span></span></button>' +
+        /* 켰을 때만 보이는 한 줄 */
+        '<p class="mut anonnote" id="anonNote" hidden ' +
+        'style="font-size:11.5px;margin:8px 2px 0;line-height:1.55">' +
+        '이름 없이 보내면 운영진이 답장할 수 없어요</p>' +
+
+        /* 내가 보낸 의견과 답장 — 답장을 볼 곳이 없었다 */
+        '<div id="myIdeas"></div>' +
 
         '<div class="sheet-foot">' +
         '<button class="btn primary lg block" type="button" id="ideaGo">보내기</button></div>'
     });
 
     const anonBtn = ov.querySelector('#ideaAnon');
-    anonBtn.onclick = () => anonBtn.classList.toggle('on');
+    const note = ov.querySelector('#anonNote');
+    anonBtn.onclick = () => {
+      anonBtn.classList.toggle('on');
+      note.hidden = !anonBtn.classList.contains('on');
+    };
+
+    /* 지난 의견과 답장 */
+    (async () => {
+      let rows = [];
+      try { rows = await DB.feedback.mine(); }
+      catch (e) { console.warn('[발자국] 내 의견을 못 받아왔어요:', e); return; }
+      const box = ov.querySelector('#myIdeas');
+      if (!box || !rows.length) return;
+      box.innerHTML =
+        '<div class="divider" style="margin:18px 0 12px"></div>' +
+        '<div class="sm" style="font-weight:700;margin-bottom:9px">내가 보낸 의견</div>' +
+        rows.map(f =>
+          '<div class="card" style="padding:13px 14px;margin-bottom:8px">' +
+          '<div class="sm mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) + '</div>' +
+          '<div class="sm" style="margin-top:5px;line-height:1.6;white-space:pre-wrap">' +
+          esc(f.body) + '</div>' +
+          (f.reply
+            ? '<div class="replybox"><div class="lb">운영진 답장</div>' +
+              '<div class="tx">' + esc(f.reply) + '</div></div>'
+            : '<div class="mut" style="font-size:11.5px;margin-top:8px">' +
+              (f.done ? '확인했어요' : '운영진이 확인하는 중이에요') + '</div>') +
+          '</div>').join('');
+    })();
 
     ov.querySelector('#ideaGo').onclick = async () => {
       const btn = ov.querySelector('#ideaGo');
@@ -888,13 +922,24 @@ window.Community = (function () {
     const counts = p.reactions || {};
     const mine = p.my_reactions || [];
     const total = KINDS.reduce((t, k) => t + (counts[k] || 0), 0);
-    const iLike = mine.length > 0;
+    const iLike = mine.indexOf('heart') >= 0;
+    const others = mine.filter(k => k !== 'heart');
+    /* 이모지는 기기마다 모양이 달라진다 — 선 아이콘으로 그린다.
+       이모지는 길게 눌러 고르는 반응 다섯 가지에만 쓴다. */
     return '<div class="acts" data-acts="' + esc(p.id) + '">' +
       '<button class="act' + (iLike ? ' on' : '') + '" type="button" ' +
-      'data-heart="' + esc(p.id) + '" aria-label="좋아요">' +
-      '<span class="hv">' + (iLike ? '💗' : '🤍') + '</span></button>' +
+      'data-heart="' + esc(p.id) + '" aria-label="좋아요" ' +
+      'aria-pressed="' + (iLike ? 'true' : 'false') + '">' +
+      ic('heart') + '</button>' +
       '<button class="act" type="button" data-cmt="' + esc(p.id) + '" aria-label="댓글">' +
-      '<span class="hv">💬</span></button>' +
+      ic('bubble') + '</button>' +
+      /* 길게 누르기는 못 찾는 사람이 많다 — 한 번 눌러도 고를 수 있게 */
+      '<button class="act emo" type="button" data-pick="' + esc(p.id) + '" ' +
+      'aria-label="다른 반응 고르기">' + ic('plus') + '</button>' +
+      /* 하트 말고 다른 반응을 달았으면 그걸 보여 준다 */
+      (others.length
+        ? '<span class="mine-emo">' + others.map(k => EMOJI[k]).join('') + '</span>'
+        : '') +
       '</div>' +
       (total
         ? '<button class="likes" type="button" data-who="' + esc(p.id) + '">' +
@@ -952,9 +997,11 @@ window.Community = (function () {
         };
         row.recent_comments = before.concat([mine]).slice(-2);
         row.comment_count = beforeN + 1;
-        /* 먼저 비운다 — 다시 그리면 이 칸은 떨어져 나가 비워도 소용없다 */
+        /* 먼저 비우고 키보드를 내린다 —
+           다시 그리면 이 칸은 떨어져 나가 그때 비워도 소용없다 */
         inp.value = '';
         refresh();
+        try { inp.blur(); } catch (e) { }
         paintCards(id);
 
         try {
@@ -978,8 +1025,10 @@ window.Community = (function () {
     if (!row) return;
     const wrap = $('#view').querySelector('[data-cmts="' + id + '"]');
     if (!wrap) return;
+    /* 쓰던 글은 지키되, 방금 보낸 뒤라면 비어 있다 */
     const keep = wrap.querySelector('[data-cbar="' + id + '"]');
     const text = keep ? keep.value : '';
+    const hadFocus = keep && document.activeElement === keep;
     wrap.outerHTML = commentBlock(row);
     const fresh = $('#view').querySelector('[data-cmts="' + id + '"]');
     if (fresh) {
@@ -987,7 +1036,11 @@ window.Community = (function () {
       loadAvatars(fresh);
       clipCheck(fresh);
       const inp = fresh.querySelector('[data-cbar="' + id + '"]');
-      if (inp && text) { inp.value = text; inp.dispatchEvent(new Event('input')); }
+      if (inp && text) {
+        inp.value = text;
+        inp.dispatchEvent(new Event('input'));
+        if (hadFocus) inp.focus();
+      }
     }
     /* 「댓글 n개 모두 보기」 숫자도 맞춘다 */
     const acts = $('#view').querySelector('[data-acts="' + id + '"]');
@@ -1497,7 +1550,10 @@ window.Community = (function () {
       '<span class="tx">' + (c.hidden ? '<span class="mut">운영진이 숨긴 댓글이에요</span>' : hl(c.body)) + '</span>' +
       '<span class="cfoot">' +
       '<span class="at">' + relTime(c.created_at) + (c.edited_at ? ' · 수정됨' : '') + '</span>' +
-      (likes ? '<span class="at">좋아요 ' + num(likes) + '개</span>' : '') +
+      (likes
+        ? '<button class="clink" type="button" data-clwho="' + esc(c.id) + '">' +
+          '좋아요 ' + num(likes) + '개</button>'
+        : '') +
       '<button class="clink" type="button" data-reply="' + esc(c.id) + '" ' +
       'data-rname="' + esc(name) + '">답글 달기</button>' +
       (c.mine || AM_ADMIN
@@ -1506,8 +1562,8 @@ window.Community = (function () {
         : '') +
       '</span></span>' +
       '<button class="clike' + (c.liked ? ' on' : '') + '" type="button" ' +
-      'data-clike="' + esc(c.id) + '" aria-label="댓글 좋아요">' +
-      (c.liked ? '💗' : '🤍') + '</button>' +
+      'data-clike="' + esc(c.id) + '" aria-label="댓글 좋아요" ' +
+      'aria-pressed="' + (c.liked ? 'true' : 'false') + '">' + ic('heart') + '</button>' +
       '</div>';
   }
 
@@ -1590,15 +1646,46 @@ window.Community = (function () {
       }
     });
 
-    /* 반응을 길게 누르면 누가 눌렀는지 */
-    let hold = null;
+    /* 길게 누르기
+       ------------------------------------------------------------
+       · 반응 덩이를 길게 누르면 → 누가 눌렀는지
+       · 하트를 길게 누르면 → 다섯 가지 중 고르기
+       아이폰은 길게 누르면 글자 고르기·확대·메뉴를 먼저 띄워서
+       우리 손짓을 가로챈다. CSS 로 그걸 막고(.act, .react),
+       움직이면 취소한다. */
+    let hold = null, holdX = 0, holdY = 0;
     view.addEventListener('pointerdown', e => {
-      const b = e.target.closest('[data-react]');
-      if (!b) return;
-      hold = setTimeout(() => { hold = 'done'; whoSheet(b.dataset.react); }, 500);
-    });
+      const heart = e.target.closest('[data-heart]');
+      const re = e.target.closest('[data-react]');
+      if (!heart && !re) return;
+      holdX = e.clientX; holdY = e.clientY;
+      hold = setTimeout(() => {
+        hold = 'done';
+        if (heart) pickReaction(heart.dataset.heart);
+        else whoSheet(re.dataset.react);
+      }, 450);
+    }, { passive: true });
+    view.addEventListener('pointermove', e => {
+      if (!hold || hold === 'done') return;
+      if (Math.abs(e.clientX - holdX) > 8 || Math.abs(e.clientY - holdY) > 8) {
+        clearTimeout(hold); hold = null;
+      }
+    }, { passive: true });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
       view.addEventListener(ev, () => { if (hold && hold !== 'done') clearTimeout(hold); }));
+    /* 아이폰이 띄우는 길게 누르기 메뉴를 막는다 */
+    view.addEventListener('contextmenu', e => {
+      if (e.target.closest('[data-heart],[data-react],[data-clike]')) e.preventDefault();
+    });
+
+    /* 길게 누른 뒤에는 그 클릭을 삼킨다 — 고르기 창이 바로 닫히지 않게 */
+    view.addEventListener('click', e => {
+      if (hold === 'done' && e.target.closest('[data-heart],[data-react]')) {
+        hold = null;
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    }, true);
 
     /* 내려서 읽을 때는 + 버튼이 작아진다 — 칩 줄과 격자 아이콘을 가리지 않게 */
     let lastY = 0;
