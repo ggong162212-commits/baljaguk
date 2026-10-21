@@ -92,6 +92,15 @@ else
   exit 1
 fi
 
+echo ""
+echo "── 댓글 그리기가 갈라지지 않았나 (들여쓰기가 한쪽만 사라지던 버그)"
+if node "$HERE/check-comments.js"; then
+  :
+else
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
 # 만들어진 함수 목록을 파일로도 남긴다 — 실서버와 대조할 때 쓴다
 docker exec -i "$NAME" psql -U postgres -At -c   "select string_agg(p.proname, ',' order by p.proname) from pg_proc p
      join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public';"   > "$HERE/.functions.txt" 2>/dev/null || true

@@ -45,12 +45,19 @@ self.addEventListener('notificationclick', event => {
            **둘 다 하면** 글이 두 번 열리거나 페이지가 다시 로드된다 —
            같은 페이지면 알려 주기만, 다른 페이지일 때만 navigate. */
         const samePage = c.url.split('#')[0] === full.split('#')[0];
+        /* ★ 먼저 창을 앞으로 가져온 다음에 알려 준다.
+           반대로 하면 아직 뒤에 있는 창이 메시지를 받아
+           화면이 안 바뀐 채로 끝난다.
+           (「알림이 뜨면 바로 누르는데 그 글로 안 가요」) */
+        try { await c.focus(); } catch (e) { }
         if (samePage) {
           try { c.postMessage({ type: 'goto', url: url }); } catch (e) { }
+          /* 앱이 아직 다 안 켜졌을 수 있다 — 조금 뒤 한 번 더 */
+          setTimeout(() => { try { c.postMessage({ type: 'goto', url: url }); } catch (e) { } }, 1200);
         } else {
           try { await c.navigate(full); } catch (e) { }
         }
-        return c.focus();
+        return c;
       }
     }
     return self.clients.openWindow(full);

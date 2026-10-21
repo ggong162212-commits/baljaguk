@@ -611,9 +611,9 @@
       const ov2 = sheet({
         title: '답장하기',
         body: '<p class="mut sm" style="margin-bottom:10px">보낸 분에게 새 소식으로 가요.</p>' +
-          '<label class="field"><textarea class="input" id="frText" rows="4"></textarea></label>' +
-          '<div class="sheet-foot">' +
-          '<button class="btn primary lg block" type="button" id="frGo">보내기</button></div>'
+          '<label class="field"><textarea class="input" id="frText" rows="4"></textarea></label>',
+      foot:
+          '<button class="btn primary lg block" type="button" id="frGo">보내기</button>'
       });
       ov2.querySelector('#frGo').onclick = async () => {
         const t = ov2.querySelector('#frText').value.trim();
@@ -1032,7 +1032,8 @@
       const ov2 = sheet({
         title: '반려 사유', body:
           '<label class="field"><span class="lb">신청자에게 전할 메모 (선택)</span>' +
-          '<textarea class="input" id="rejMsg" placeholder="예: 입금 내역이 확인되지 않았어요"></textarea></label>' +
+          '<textarea class="input" id="rejMsg" placeholder="예: 입금 내역이 확인되지 않았어요"></textarea></label>',
+        foot:
           '<div class="row" style="gap:8px"><button class="btn ghost grow" data-no>취소</button>' +
           '<button class="btn danger grow" data-yes>반려하기</button></div>'
       });
@@ -2632,7 +2633,8 @@
         '<input class="input" id="idNote" maxlength="40" placeholder="명부 마지막 칸에 들어가요" value="' + esc(r.note || '') + '"></label>' +
         '<label class="check" id="idSync"><span class="box" aria-hidden="true"></span>' +
         '<input type="checkbox" hidden><span class="sm">구성원 정보의 연락처도 이 번호로 바꾸기</span></label>' +
-        '<div class="sp"></div>' +
+        '',
+      foot:
         '<button class="btn primary block" id="idSave">저장하기</button>' +
         (row ? '<button class="btn danger block" id="idDel" style="margin-top:10px">명부에서 빼기</button>' : '')
     });
@@ -2867,7 +2869,8 @@
             '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
           : '<div class="mut sm">아직 전달한 기록이 없어요</div>') +
 
-        '<div class="sp"></div>' +
+        '',
+      foot:
         '<div class="row" style="gap:8px">' +
         '<button class="btn primary grow" data-newpay>전달 기록 추가</button>' +
         '<button class="btn ghost" data-expcredit>엑셀</button></div>'
@@ -2922,6 +2925,8 @@
             '<input type="checkbox" hidden checked><span class="sm">동아리 재정에도 지출로 기록하기</span></label>' +
             '<div class="sp"></div>'
           : '') +
+        '',
+      foot:
         (isNew ? '<button class="btn primary block" data-save>기록하기</button>'
           : '<div class="row" style="gap:8px"><button class="btn danger" data-del>' + ic('trash') + '</button>' +
             '<button class="btn primary grow" data-save>저장하기</button></div>')
@@ -3620,8 +3625,8 @@
             '<span class="hint">커뮤니티 보호소 안내에 그대로 보여요.</span></label>' +
             '<label class="field"><span class="lb">주의사항</span>' +
             '<textarea class="input" id="plNote" rows="2" placeholder="강아지가 놀랄 수 있어 큰 소리는 삼가주세요">' +
-            esc(cur.note) + '</textarea></label>' +
-            '<button class="btn primary block" data-save>저장하기</button>'
+            esc(cur.note) + '</textarea></label>',
+          foot: '<button class="btn primary block" data-save>저장하기</button>'
         });
         ov.querySelector('[data-save]').onclick = async () => {
           const name = ov.querySelector('#plName').value.trim();

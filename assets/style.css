@@ -498,6 +498,10 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .cline.brief .tx{color:var(--ink)}
 /* 답글은 한 칸 들여서 */
 .replies{padding-left:34px}
+/* ★ 들여쓰기는 답글 줄 **자체**가 들고 있는다.
+   예전에는 .replies 껍데기에만 있어서, 껍데기를 안 쓰는 화면
+   (알림으로 연 글)에서는 답글이 원댓글처럼 보였다. */
+.cline.reply{padding-left:34px}
 .morerep{
   border:none;background:none;cursor:pointer;padding:4px 0;font-family:inherit;
   font-size:12px;font-weight:700;color:var(--ink-3);
@@ -1428,6 +1432,66 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .cal .wk span{font-size:12px}
 .amark{font-size:12px}
 .badge-nm{font-size:12px}
+/* ============================================================
+   프로필 사진 자르기 — 전체 화면 편집
+   ------------------------------------------------------------
+   편집 중에는 페이지가 같이 움직이면 안 된다 (touch-action:none).
+   이 화면에서만 끄고, 나가면 원래대로 돌아간다.
+   ============================================================ */
+.cropper{
+  position:fixed;inset:0;z-index:300;background:#000;color:#fff;
+  display:flex;flex-direction:column;
+  padding-bottom:env(safe-area-inset-bottom,0)
+}
+.crop-top{
+  padding:calc(14px + env(safe-area-inset-top,0)) 16px 10px;
+  text-align:center;font-size:14px;color:rgba(255,255,255,.85)
+}
+.crop-cv{
+  flex:1;width:100%;min-height:0;display:block;
+  touch-action:none;             /* 끌기·확대가 페이지와 안 싸우게 */
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent
+}
+.crop-bar{display:flex;align-items:center;gap:12px;padding:14px 20px 4px}
+.crop-ic{font-size:19px;color:rgba(255,255,255,.75);width:16px;text-align:center}
+.crop-zoom{flex:1;height:44px;accent-color:var(--brand);background:none}
+.crop-foot{display:flex;gap:10px;padding:8px 16px 16px}
+.crop-foot .btn{min-height:48px}
+.crop-foot .btn.ghost{background:rgba(255,255,255,.14);border-color:transparent;color:#fff}
+
+/* ============================================================
+   누르는 자리 44px — 보이는 크기는 그대로 두고 자리만 넓힌다
+   ------------------------------------------------------------
+   글 사이에 끼어 있는 작은 단추들이다. 보이는 네모를 키우면
+   줄이 벌어지고 글이 밀린다. 그래서 ::after 로 **안 보이는 자리**만
+   넓힌다 — .brandmark[data-home] 에서 쓰던 방법과 같다.
+   ============================================================ */
+
+/* 본문 「…더 보기」 — 높이는 44인데 폭이 37이었다 */
+.morebd{padding:2px 8px 0}
+.morebd{position:relative}
+.morebd::after{content:"";position:absolute;inset:0 -6px}
+
+/* 봉사지의 동물 칩 — 높이가 29였다 */
+.apaw{position:relative}
+.apaw::after{content:"";position:absolute;inset:-8px 0}
+
+/* 동그란 아이콘 단추 (시트 닫기 등) — 38x38 이었다.
+   이미 44 인 .sq·#profBtn·#wallBtn 은 더 넓히지 않는다 */
+.iconbtn:not(.sq){position:relative}
+.iconbtn:not(.sq)::after{content:"";position:absolute;inset:-3px}
+
+/* 글 안에 밑줄로 들어가는 작은 링크 — 폭이 22였다.
+   옆 글자와 겹치지 않게 좌우는 조금만 */
+.linkbtn{position:relative}
+.linkbtn::after{content:"";position:absolute;inset:-12px -5px}
+
+/* 「발자국 | 운영진」 전환 — 한 칸이 35 였다 */
+.sidesw button{min-width:44px}
+
+/* 둘 중 하나 고르는 띠 (「역별 / 권역별」 등) — 두 글자짜리가 35 였다 */
+.seg button{min-width:44px}
+
 /* 작은 보조 글 — 설명·단서·날짜처럼 본문 아래 붙는 한 줄.
    예전에는 JS 가 style="font-size:11.5px" 로 박아 두고 여기서 !important 로
    덮었다. 이제 JS 가 이 클래스를 붙이므로 덮을 것이 없다.

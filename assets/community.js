@@ -6,7 +6,7 @@
 window.Community = (function () {
   const {
     $, $$, esc, toast, sheet, closeSheet, confirmSheet,
-    won, num, credit, copy, fmtDate, fmtDateTime, relTime, avatar, resizeImage, cropSquare, cheer
+    won, num, credit, copy, fmtDate, fmtDateTime, relTime, avatar, resizeImage, cropSquare, cropPhoto, cheer
   } = UI;
 
   const TABS = [
@@ -105,8 +105,13 @@ window.Community = (function () {
     paintTabDot();
     /* 알림을 눌러 들어왔으면 그 글·봉사·설문으로 바로 보낸다.
        (주소에 #post=… 가 붙어 오는데 아무도 읽지 않아 늘 홈만 열렸다) */
+    /* 주소에 #post=… 가 붙어 왔으면 기억해 둔다 (아직 열지는 않는다) */
     openFromHash();
     window.addEventListener('hashchange', openFromHash);
+    /* 첫 화면이 다 그려진 다음에 연다 —
+       앱이 막 켜지는 중에 열려다 실패하던 것 */
+    appReady = true;
+    runDeepLink();
     /* 알림을 눌렀을 때 서비스워커가 알려 준다 — 주소만 바뀌면 화면이 안 바뀌어서 */
     try {
       navigator.serviceWorker.addEventListener('message', e => {
@@ -114,25 +119,69 @@ window.Community = (function () {
         if (!u) return;
         const i = String(u).indexOf('#');
         if (i < 0) return;
-        location.hash = String(u).slice(i + 1);
-        openFromHash();
+        /* ★ location.hash 를 건드리지 않는다 — 그러면 hashchange 까지
+           한 번 더 돌아 서로 주소를 지웠다. 목적지만 바로 넘긴다. */
+        deepTo = String(u).slice(i + 1);
+        runDeepLink();
       });
     } catch (e) { }
   }
 
-  /* 주소 끝의 #post=… 를 보고 그 화면을 연다 */
-  async function openFromHash() {
+  /* ============================================================
+     알림을 눌러 들어온 자리로 보내기
+     ------------------------------------------------------------
+     선고은님: 「알림이 뜨면 바로 누르는데 그 글로 안 가요」
+     찾아보니 두 가지가 겹쳐 있었다.
+       ① **열기도 전에 주소를 지웠다.** 아직 글을 못 받아온 때
+          (앱이 막 켜지는 중)에 실패하면 되돌아갈 자리가 없었다.
+       ② 서비스워커가 알려 줄 때 `location.hash` 를 바꾸고
+          `openFromHash()` 도 불렀다 — hashchange 까지 합쳐 **두 번** 돌고,
+          먼저 돈 쪽이 주소를 지워서 뒤쪽은 빈손이었다.
+     그래서 목적지를 **기억해 두고**, 앱이 준비되면 그때 연다.
+     한 번 실패하면 1초 뒤 한 번 더 — 갓 올라온 글일 수 있다.
+     ============================================================ */
+  let deepTo = null;      /* 아직 못 연 목적지 */
+  let deepBusy = false;
+  let appReady = false;   /* 첫 화면까지 그려졌나 */
+
+  function openFromHash() {
     const h = String(location.hash || '').replace(/^#/, '');
-    if (!h) return;
-    const m = /^(post|vol|poll|news)=(.+)$/.exec(h);
-    /* 한 번 쓰고 지운다 — 다시 눌렀을 때 또 열리지 않게 */
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
-    if (!m) return;
-    const [, what, id] = m;
-    if (what === 'post') { await openPost(decodeURIComponent(id)); return; }
-    if (what === 'vol') { go('vol'); return; }
-    if (what === 'poll') { go('poll'); return; }
-    if (what === 'news') { go('me'); return; }
+    if (h && /^(post|vol|poll|news)=(.+)$/.test(h)) {
+      deepTo = h;
+      /* 주소는 바로 지운다 (새로고침해도 또 열리지 않게) —
+         대신 목적지는 deepTo 가 들고 있는다 */
+      try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { }
+    }
+    runDeepLink();
+  }
+
+  async function runDeepLink() {
+    if (!deepTo || deepBusy || !appReady) return;
+    deepBusy = true;
+    const m = /^(post|vol|poll|news)=(.+)$/.exec(deepTo);
+    const [, what, rawId] = m;
+
+    try {
+      if (what === 'vol') { go('vol'); deepTo = null; return; }
+      if (what === 'poll') { go('poll'); deepTo = null; return; }
+      if (what === 'news') { go('me'); deepTo = null; return; }
+
+      const id = decodeURIComponent(rawId);
+      /* 오래 걸리면 기다리는 줄 알게 */
+      const slow = setTimeout(() => toast('글을 여는 중…'), 400);
+      let ok = await openPost(id, true);
+      if (!ok) {
+        /* 갓 올라온 글일 수 있다 — 한 번만 더 */
+        await new Promise(r => setTimeout(r, 1000));
+        ok = await openPost(id, true);
+      }
+      clearTimeout(slow);
+      /* 되든 안 되든 목적지는 비운다 — 안 그러면 없는 글을 계속 다시 연다 */
+      deepTo = null;
+      if (!ok) toast('글을 열지 못했어요. 피드에서 찾아봐 주세요', 'err');
+    } finally {
+      deepBusy = false;
+    }
   }
 
   /* ---------- 아바타 사진 채우기 ----------
@@ -201,10 +250,9 @@ window.Community = (function () {
         '<span class="hint">화면을 캡처해서 붙이면 어디인지 알기 쉬워요. 세 장까지.</span></div>' +
 
         /* 내가 보낸 의견과 답장 — 답장을 볼 곳이 없었다 */
-        '<div id="myIdeas"></div>' +
-
-        '<div class="sheet-foot">' +
-        '<button class="btn primary lg block" type="button" id="ideaGo">보내기</button></div>'
+        '<div id="myIdeas"></div>',
+      foot:
+        '<button class="btn primary lg block" type="button" id="ideaGo">보내기</button>'
     });
 
     /* 붙인 사진 */
@@ -596,8 +644,11 @@ window.Community = (function () {
       const f = (e.target.files || [])[0];
       if (!f) return;
       const big = ov.querySelector('#profBig');
+      file.value = '';     /* 같은 사진을 다시 골라도 열리게 */
       try {
-        const src = await cropSquare(f, 400, .86);
+        /* 직접 맞춰서 자른다 — 취소하면 아무 일도 안 일어난다 */
+        const src = await cropPhoto(f, 400, .86);
+        if (!src) return;
         big.style.backgroundImage = 'url("' + src + '")';
         big.classList.add('has-photo');
         const path = await DB.community.setMyPhoto(src);
@@ -1372,9 +1423,9 @@ window.Community = (function () {
         '지원하는 이유를 짧게 적어 주세요.<br>' +
         '운영진이 보고 연락드릴게요.</p>' +
         '<label class="field"><textarea class="input" id="saBody" rows="4" ' +
-        'placeholder="예: 봉사 일정 정리를 돕고 싶어요"></textarea></label>' +
-        '<div class="sheet-foot">' +
-        '<button class="btn primary lg block" type="button" id="saGo">지원하기</button></div>'
+        'placeholder="예: 봉사 일정 정리를 돕고 싶어요"></textarea></label>',
+      foot:
+        '<button class="btn primary lg block" type="button" id="saGo">지원하기</button>'
     });
 
     ov.querySelector('#saGo').onclick = async () => {
@@ -1413,6 +1464,22 @@ window.Community = (function () {
      목록은 위, 입력창은 맨 아래에 붙는다. 피드 자리는 그대로 둔다.
      ============================================================ */
   /* ============================================================
+     댓글 목록 그리기 — **이 함수 하나만** 쓴다
+     ------------------------------------------------------------
+     댓글 시트와 글 상세(알림으로 연 글)가 서로 다르게 그리는 바람에
+     답글 들여쓰기가 한쪽에만 있었다. 길을 하나로 둔다.
+     달린 순서 그대로, 답글은 .cline.reply 가 스스로 들여쓴다.
+     ============================================================ */
+  function commentListHTML(rows, emptyMsg) {
+    const list = (rows || []).slice().sort(
+      (a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    if (!list.length) {
+      return '<div class="mut sm">' + (emptyMsg || '아직 댓글이 없어요. 처음 남겨보세요.') + '</div>';
+    }
+    return list.map(c => commentLine(c)).join('');
+  }
+
+  /* ============================================================
      댓글 줄에 손가락을 잇는다 — 답글·하트·좋아요 목록·「…」
      ------------------------------------------------------------
      ★ 댓글 시트와 **글 상세(알림으로 연 글)** 가 같은 길을 타게 한다.
@@ -1426,17 +1493,6 @@ window.Community = (function () {
     const o = opts || {};
 
     box.addEventListener('click', async e => {
-      /* 나머지 답글까지 펴기 — 시트에만 있다 */
-      const mr = e.target.closest('[data-morerep]');
-      if (mr && o.kidsOf) {
-        const cid = mr.dataset.morerep;
-        const wrap = box.querySelector('[data-rep="' + cid + '"]');
-        if (!wrap) return;
-        wrap.innerHTML = (o.kidsOf(cid) || []).map(x => commentLine(x)).join('');
-        loadAvatars(wrap);
-        return;
-      }
-
       /* 답글 달기 → 입력창에 @이름 */
       const r = e.target.closest('[data-reply]');
       if (r) {
@@ -1546,9 +1602,7 @@ window.Community = (function () {
          답글인지는 들여쓰기로 알 수 있고, 누구에게 한 말인지는
          본문의 「@이름」으로 보인다. */
       kids = {};
-      const inOrder = rows.slice().sort(
-        (a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-      box.innerHTML = inOrder.map(c => commentLine(c)).join('');
+      box.innerHTML = commentListHTML(rows);
       loadAvatars(box);
 
       /* 카드 쪽 숫자도 보이는 수와 같게 맞춘다 */
@@ -2318,9 +2372,9 @@ window.Community = (function () {
         '운영진이 알려주는 여섯 자리 번호를 넣어주세요.<br>' +
         '찍어도 봉사 실적은 운영진이 확정해야 쌓여요.</p>' +
         '<label class="field"><input class="input lgin" id="ciCode" inputmode="numeric" ' +
-        'maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.28em"></label>' +
-        '<div class="sheet-foot">' +
-        '<button class="btn primary lg block" type="button" id="ciGo">출석 찍기</button></div>'
+        'maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.28em"></label>',
+      foot:
+        '<button class="btn primary lg block" type="button" id="ciGo">출석 찍기</button>'
     });
 
     const input = ov.querySelector('#ciCode');
@@ -2383,9 +2437,9 @@ window.Community = (function () {
         '</div>' +
         '<label class="field" style="margin-top:12px"><span class="lb">더 적을 말 ' +
         '<span class="mut">(선택)</span></span>' +
-        '<textarea class="input" id="rNote" rows="3"></textarea></label>' +
-        '<div class="sheet-foot">' +
-        '<button class="btn primary lg block" type="button" id="rSend">보내기</button></div>'
+        '<textarea class="input" id="rNote" rows="3"></textarea></label>',
+      foot:
+        '<button class="btn primary lg block" type="button" id="rSend">보내기</button>'
     });
 
     ov.querySelectorAll('[data-r]').forEach(b => b.onclick = () => {
@@ -2700,9 +2754,9 @@ window.Community = (function () {
       body:
         '<label class="field"><textarea class="input" id="qBody" rows="4" ' +
         'placeholder="궁금한 걸 짧게 물어봐요"></textarea></label>' +
-        '<div id="qMenu" class="mentbox" hidden></div>' +
-        '<div class="sheet-foot">' +
-        '<button class="btn primary lg block" type="button" id="qGo">질문 올리기</button></div>'
+        '<div id="qMenu" class="mentbox" hidden></div>',
+      foot:
+        '<button class="btn primary lg block" type="button" id="qGo">질문 올리기</button>'
     });
 
     /* @ 로 사람 부르기 */
@@ -3504,7 +3558,9 @@ window.Community = (function () {
   /* ============================================================
      글 상세 — 카드를 누르면 열린다. 댓글 전체와 입력칸은 여기에만.
      ============================================================ */
-  async function openPost(id) {
+  /* quiet 면 못 열었을 때 말풍선을 띄우지 않고 false 만 돌려준다
+     (알림으로 들어온 길은 한 번 더 해보고 나서 말한다) */
+  async function openPost(id, quiet) {
     let p = findRow(id);
     let gone = false;
     /* 맨 위에 고정된 공지는 목록(F.rows)에 없고 F.pins 에 따로 온다.
@@ -3520,8 +3576,10 @@ window.Community = (function () {
     }
     if (!p) {
       /* 지워진 글과 「못 받아온 것」은 다르다 */
-      toast(gone ? '지워진 글이에요' : '지금은 열 수 없어요. 잠시 뒤 다시 해주세요', 'err');
-      return;
+      if (!quiet) {
+        toast(gone ? '지워진 글이에요' : '지금은 열 수 없어요. 잠시 뒤 다시 해주세요', 'err');
+      }
+      return false;
     }
     const who = p.author || { name: '?' };
 
@@ -3548,9 +3606,12 @@ window.Community = (function () {
           : '') +
 
         '<div class="divider"></div>' +
-        '<div id="dList" class="mut sm">' + paws() + '</div>' +
+        '<div id="dList" class="mut sm">' + paws() + '</div>',
+      /* 입력줄은 아래에 붙여 둔다 — SE 처럼 짧은 화면에서
+         키보드가 올라와도 밀려 내려가지 않게 */
+      foot:
         '<div id="dMenu" class="mentbox" hidden></div>' +
-        '<div class="cwrite" style="margin-top:12px">' +
+        '<div class="cwrite">' +
         '<input class="input" type="text" id="dIn" placeholder="댓글 달기…" ' +
         'autocomplete="off" enterkeyhint="send" aria-label="댓글 입력">' +
         '<button class="btn primary sm" type="button" id="dSend">전송</button></div>'
@@ -3579,12 +3640,8 @@ window.Community = (function () {
         ov.querySelectorAll('[data-best]').forEach(b =>
           b.onclick = () => markBest(b.dataset.best, b.dataset.bc));
       } else {
-        /* 댓글 시트와 같게 — 달린 순서 그대로 */
-        const inOrder = shown.slice().sort(
-          (a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-        ov.querySelector('#dList').innerHTML = inOrder.length
-          ? inOrder.map(c => commentLine(c)).join('')
-          : '<div class="mut sm">아직 댓글이 없어요. 처음 남겨보세요.</div>';
+        /* 댓글 시트와 **같은 함수** */
+        ov.querySelector('#dList').innerHTML = commentListHTML(shown);
         dKids = {};
         loadAvatars(ov.querySelector('#dList'));
       }
@@ -3635,6 +3692,7 @@ window.Community = (function () {
     });
 
     draw();
+    return true;
   }
 
   /* ============================================================
@@ -3673,8 +3731,8 @@ window.Community = (function () {
           const ov2 = sheet({
             title: '댓글 고치기',
             body: '<label class="field"><textarea class="input" id="ceB" rows="3">' +
-              esc(found.body) + '</textarea></label>' +
-              '<button class="btn primary block" type="button" id="ceS">저장</button>'
+              esc(found.body) + '</textarea></label>',
+            foot: '<button class="btn primary block" type="button" id="ceS">저장</button>'
           });
           ov2.querySelector('#ceS').onclick = async () => {
             const v = ov2.querySelector('#ceB').value.trim();
@@ -3910,9 +3968,9 @@ window.Community = (function () {
         '<label class="field"><span class="lb">사는 곳 <span class="mut">(가까운 지하철역)</span></span>' +
         '<input class="input" id="eStation" value="' + esc(r.station || '') + '"></label>' +
         '<label class="field"><span class="lb">하고 싶은 말</span>' +
-        '<textarea class="input" id="eOpinion" rows="4">' + esc(r.opinion || '') + '</textarea></label>' +
-        '<div class="sheet-foot">' +
-        '<button class="btn primary lg block" type="button" id="eSave">저장하기</button></div>'
+        '<textarea class="input" id="eOpinion" rows="4">' + esc(r.opinion || '') + '</textarea></label>',
+      foot:
+        '<button class="btn primary lg block" type="button" id="eSave">저장하기</button>'
     });
 
     ov.querySelectorAll('#eParty [data-p]').forEach(b => b.onclick = () => {

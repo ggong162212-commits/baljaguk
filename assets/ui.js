@@ -407,6 +407,203 @@
 
   /* 정사각형으로 잘라서 줄인다 (프로필 사진용).
      캔버스를 거치면 위치정보(EXIF)도 함께 떨어진다 */
+  /* ============================================================
+     프로필 사진 자르기 — 카톡·인스타처럼 직접 맞춘다
+     ------------------------------------------------------------
+     가운데 동그라미 틀, 바깥은 어둡게.
+     손가락으로 끌어 옮기고, 두 손가락으로 키우고 줄인다(아래 막대도).
+     틀 밖으로 빈 곳이 생기지 않게 **가장 작게 키운 상태**가 바닥이다.
+     라이브러리 없이 canvas + pointer 로만.
+     ============================================================ */
+  async function loadBitmap(file) {
+    /* 아이폰 사진은 똑바로 세워서 읽는다 (EXIF 회전) */
+    if (typeof createImageBitmap === 'function') {
+      try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+      catch (e) { /* 아래 길로 */ }
+    }
+    return await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onerror = () => rej(new Error('파일을 읽지 못했어요'));
+      fr.onload = () => {
+        const im = new Image();
+        im.onerror = () => rej(new Error('이미지를 열지 못했어요'));
+        im.onload = () => res(im);
+        im.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  /* 고르면 dataURL, 취소하면 null */
+  async function cropPhoto(file, outSize, quality) {
+    if (!file || !/^image\//.test(file.type)) throw new Error('이미지 파일만 올릴 수 있어요');
+    const img = await loadBitmap(file);
+    const iw = img.width, ih = img.height;
+    if (!iw || !ih) throw new Error('이미지를 열지 못했어요');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'cropper';
+    wrap.innerHTML =
+      '<div class="crop-top">사진을 끌어서 맞춰 주세요</div>' +
+      '<canvas class="crop-cv"></canvas>' +
+      '<div class="crop-bar">' +
+      '<span class="crop-ic" aria-hidden="true">−</span>' +
+      '<input type="range" class="crop-zoom" min="1" max="4" step="0.01" value="1" ' +
+      'aria-label="사진 크기">' +
+      '<span class="crop-ic" aria-hidden="true">+</span></div>' +
+      '<div class="crop-foot">' +
+      '<button class="btn ghost grow" type="button" data-cancel>취소</button>' +
+      '<button class="btn primary grow" type="button" data-ok>확인</button></div>';
+    document.body.appendChild(wrap);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const cv = wrap.querySelector('.crop-cv');
+    const zoom = wrap.querySelector('.crop-zoom');
+    const ctx = cv.getContext('2d');
+
+    let W = 0, H = 0, D = 0, cx = 0, cy = 0;     /* 보는 칸 · 동그라미 */
+    let minS = 1, scale = 1, ox = 0, oy = 0;     /* 확대 배율 · 사진 왼쪽 위 자리 */
+
+    function layout() {
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      W = Math.max(1, Math.round(r.width));
+      H = Math.max(1, Math.round(r.height));
+      cv.width = Math.round(W * dpr);
+      cv.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      D = Math.max(80, Math.min(W, H) - 48);
+      cx = W / 2; cy = H / 2;
+      /* 동그라미를 반드시 덮는 가장 작은 배율 */
+      minS = Math.max(D / iw, D / ih);
+      if (scale < minS) scale = minS;
+      zoom.min = '1';
+      zoom.max = '4';
+      clamp();
+      draw();
+    }
+
+    function clamp() {
+      const w = iw * scale, h = ih * scale;
+      const left = cx - D / 2, right = cx + D / 2;
+      const top = cy - D / 2, bottom = cy + D / 2;
+      /* 사진이 동그라미를 완전히 덮게 가둔다 — 빈 곳이 생기지 않게 */
+      ox = Math.min(left, Math.max(right - w, ox));
+      oy = Math.min(top, Math.max(bottom - h, oy));
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(img, ox, oy, iw * scale, ih * scale);
+      /* 동그라미 바깥만 어둡게 — 가운데는 그대로 보인다 */
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, W, H);
+      ctx.arc(cx, cy, D / 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.58)';
+      ctx.fill('evenodd');
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(cx, cy, D / 2, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,.9)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    /* 가운데를 기준으로 키우고 줄인다 — 보던 자리가 안 튀게 */
+    function zoomTo(next, px, py) {
+      const s2 = Math.max(minS, Math.min(minS * 4, next));
+      const k = s2 / scale;
+      ox = px - (px - ox) * k;
+      oy = py - (py - oy) * k;
+      scale = s2;
+      clamp();
+      draw();
+    }
+
+    const pts = new Map();
+    let lastMid = null, lastDist = 0;
+
+    cv.addEventListener('pointerdown', e => {
+      cv.setPointerCapture(e.pointerId);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      lastMid = null; lastDist = 0;
+    });
+    cv.addEventListener('pointermove', e => {
+      if (!pts.has(e.pointerId)) return;
+      e.preventDefault();
+      const prev = pts.get(e.pointerId);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const all = Array.from(pts.values());
+      const box = cv.getBoundingClientRect();
+
+      if (all.length === 1) {
+        ox += e.clientX - prev.x;
+        oy += e.clientY - prev.y;
+        clamp(); draw();
+        return;
+      }
+      /* 두 손가락 — 벌린 만큼 키운다 */
+      const [a, b] = all;
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2 - box.left, y: (a.y + b.y) / 2 - box.top };
+      if (lastDist && lastMid) {
+        ox += mid.x - lastMid.x;
+        oy += mid.y - lastMid.y;
+        zoomTo(scale * (dist / lastDist), mid.x, mid.y);
+        zoom.value = String(Math.max(1, Math.min(4, scale / minS)));
+      }
+      lastDist = dist; lastMid = mid;
+    });
+    const up = e => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) { lastDist = 0; lastMid = null; }
+    };
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+
+    zoom.addEventListener('input', () => {
+      zoomTo(minS * Number(zoom.value), cx, cy);
+    });
+
+    const onResize = () => layout();
+    window.addEventListener('resize', onResize);
+
+    /* 칸 크기가 정해진 뒤에 자리를 잡는다 */
+    requestAnimationFrame(() => {
+      scale = 0;            /* layout 이 minS 로 올려 준다 */
+      layout();
+      ox = cx - iw * scale / 2;
+      oy = cy - ih * scale / 2;
+      clamp(); draw();
+    });
+
+    return await new Promise(resolve => {
+      const shut = val => {
+        window.removeEventListener('resize', onResize);
+        wrap.remove();
+        document.body.style.overflow = prevOverflow;
+        resolve(val);
+      };
+      wrap.querySelector('[data-cancel]').onclick = () => shut(null);
+      wrap.querySelector('[data-ok]').onclick = () => {
+        const n = outSize || 400;
+        const out = document.createElement('canvas');
+        out.width = n; out.height = n;
+        const o = out.getContext('2d');
+        /* 동그라미가 들어 있는 네모만 잘라 낸다 (저장은 정사각형) */
+        const sx = (cx - D / 2 - ox) / scale;
+        const sy = (cy - D / 2 - oy) / scale;
+        const sSide = D / scale;
+        o.drawImage(img, sx, sy, sSide, sSide, 0, 0, n, n);
+        shut(out.toDataURL('image/jpeg', quality || 0.86));
+      };
+    });
+  }
+
   function cropSquare(file, size, quality) {
     return new Promise((res, rej) => {
       if (!file || !/^image\//.test(file.type)) return rej(new Error('이미지 파일만 올릴 수 있어요'));
@@ -507,6 +704,6 @@
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
     copy, wizard, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
-    resizeImage, cropSquare, downloadCSV, cheer, debounce, onEnter, human, toLocalInput, fromLocalInput
+    resizeImage, cropSquare, cropPhoto, downloadCSV, cheer, debounce, onEnter, human, toLocalInput, fromLocalInput
   };
 })();

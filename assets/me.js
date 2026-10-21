@@ -210,6 +210,8 @@
           '<p class="mut xs" style="margin:0 0 16px;line-height:1.7">' +
           '아래 버튼을 누르면 카카오가 <b>어느 계정으로 들어갈지 다시 물어봐요.</b><br>' +
           '카카오톡에서 쓰는 계정을 고르면 바로 들어와요.</p>' +
+          '',
+        foot:
           '<div style="display:grid;gap:8px">' +
           '<button class="btn primary lg block" type="button" id="tkRe">' +
           '카카오 계정 다시 고르기</button>' +
