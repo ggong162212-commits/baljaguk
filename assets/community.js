@@ -1396,8 +1396,12 @@ window.Community = (function () {
       /* ★ 이미 그려 둔 것과 같으면 **다시 그리지 않는다.**
          댓글 하나 달 때 낙관적으로 한 번, 서버 결과로 또 한 번 —
          같은 그림을 두 번 그리느라 카드가 두 번 떨렸다 (223ms) */
+      /* 눈에 보이는 것만 견준다 — id 는 뺀다.
+         방금 올린 댓글은 **임시 id** 라 서버에서 온 진짜 id 와 다르다.
+         id 까지 견주면 글자가 똑같아도 늘 다시 그리게 된다. */
       const sig = x => (x.comment_count || 0) + '|' +
-        (x.recent_comments || []).map(c => c.id + ':' + (c.body || '')).join(',');
+        (x.recent_comments || []).map(c =>
+          ((c.author && c.author.name) || c.author || '') + ':' + (c.body || '')).join(',');
       const before = sig(row);
       row.comment_count = live.length;
       row.recent_comments = live.slice(-2);
