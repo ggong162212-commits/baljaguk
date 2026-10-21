@@ -43,6 +43,12 @@
   /* id 까지 넘긴다 — 아바타를 누르면 그 사람 프로필이 열리게
      (UI.avatar 가 data-member 를 붙인다) */
   const face = p => avatar({ id: p.id, name: p.name, photo: p.photo, role: p.role });
+  /* ★ 카드의 **얼굴 묶음**은 다르다 — 여기 아바타에는 「누구」를 안 싣는다.
+     아바타마다 누르는 자리를 44px 로 넓혀 둔 탓에 26px 얼굴 다섯 개가
+     묶음 전체를 덮어, 어디를 눌러도 「신청자 목록」이 아니라
+     그 한 사람 프로필이 열렸다. 묶음은 단추 하나다 — 목록을 연다.
+     (댓글·카드 머리·칭찬 머리의 아바타 누르기는 그대로다) */
+  const miniFace = p => avatar({ name: p.name, photo: p.photo });
   const genOf = p => p.gen ? String(p.gen).replace(/기$/, '') + '기' : '';
 
   const CSS =
@@ -86,7 +92,7 @@
       line.innerHTML = '<span>' + txt + '</span>' +
         (going.length
           ? '<button class="vw-faces" type="button" aria-label="신청한 사람 ' + going.length + '명 보기">' +
-            shown.map(face).join('') +
+            shown.map(miniFace).join('') +
             (more > 0 ? '<span class="vw-more">+' + more + '</span>' : '') + '</button>'
           : '<button class="vw-faces" type="button" aria-label="대기한 사람 보기"><span class="vw-more">대기 ' + waiting.length + '명</span></button>');
       line.querySelector('.vw-faces').onclick = () => openSheet(card, going, waiting);
