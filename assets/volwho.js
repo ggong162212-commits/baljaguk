@@ -40,7 +40,9 @@
       } catch (e) { }
     }
   }
-  const face = p => avatar({ name: p.name, photo: p.photo });
+  /* id 까지 넘긴다 — 아바타를 누르면 그 사람 프로필이 열리게
+     (UI.avatar 가 data-member 를 붙인다) */
+  const face = p => avatar({ id: p.id, name: p.name, photo: p.photo, role: p.role });
   const genOf = p => p.gen ? String(p.gen).replace(/기$/, '') + '기' : '';
 
   const CSS =

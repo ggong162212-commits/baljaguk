@@ -14,6 +14,29 @@
      다시 받으면 피드 한 번에 수십 번이 된다. */
   const signCache = new Map();
   const signFlight = new Map();
+
+  /* dataURL 을 더 작게 — 피드에 쓸 640px 짜리를 만든다 */
+  function shrinkDataUrl(dataUrl, maxSide, quality) {
+    return new Promise(res => {
+      try {
+        const im = new Image();
+        im.onerror = () => res(null);
+        im.onload = () => {
+          try {
+            const side = Math.max(im.width, im.height) || 1;
+            if (side <= maxSide) return res(dataUrl);   /* 이미 작으면 그대로 */
+            const k = maxSide / side;
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(im.width * k));
+            c.height = Math.max(1, Math.round(im.height * k));
+            c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+            res(c.toDataURL('image/jpeg', quality || 0.72));
+          } catch (e) { res(null); }
+        };
+        im.src = dataUrl;
+      } catch (e) { res(null); }
+    });
+  }
   const uid = () => 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   /* 한국 날짜. toISOString 은 UTC 라서 0~9시에 「오늘」이 어제가 된다.
      그 시간에 승인한 가입일이 하루 밀리고, 현장 출석이 안 됐다. */
@@ -1094,20 +1117,28 @@
         .sort((x, y) => x.name.localeCompare(y.name, 'ko')),
       photos: d.post_photos.filter(f => f.post_id === p.id)
         .sort((a, b) => a.sort - b.sort).map(f => f.path),
-      /* 실서버와 같은 모양 — 어느 것이 영상인지 */
+      /* 실서버와 같은 모양 — 어느 것이 영상인지 · 작은 사진이 있는지 */
       media: d.post_photos.filter(f => f.post_id === p.id)
         .sort((a, b) => a.sort - b.sort)
-        .map(f => ({ path: f.path, kind: f.kind || 'photo', poster: f.poster || null })),
+        .map(f => ({
+          path: f.path, kind: f.kind || 'photo',
+          poster: f.poster || null, thumb: f.thumb || null
+        })),
       comment_count: d.comments.filter(c => c.post_id === p.id && !c.hidden).length,
       recent_comments: d.comments
         .filter(c => c.post_id === p.id && !c.hidden)
         .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
         .slice(-2)
-        .map(c => ({
-          id: c.id, created_at: c.created_at, body: c.body,
-          mine: c.author_id === meId,
-          author: (demoMember(c.author_id) || {}).name || '?'
-        })),
+        .map(c => {
+          /* 실서버와 같은 모양 — 이름만이 아니라 누구인지까지.
+             이름 글자만 주면 아바타를 눌러도 누구인지 알 수 없다 */
+          const w = demoMember(c.author_id) || {};
+          return {
+            id: c.id, created_at: c.created_at, body: c.body,
+            mine: c.author_id === meId,
+            author: { id: w.id, name: w.name || '?', role: w.role, photo: w.photo }
+          };
+        }),
       reactions: counts,
       my_reactions: rs.filter(r => r.member_id === meId).map(r => r.kind),
       /* 퀴즈는 발표 전까지 정답도 분포도 내보내지 않는다 (실서버 feed() 와 같은 규칙) */
@@ -1396,6 +1427,14 @@
     return await rest('rpc/unlinked_logins', { method: 'POST', body: {} }) || [];
   };
 
+  /* 안 이어진 로그인을 그 구성원에게 이어 준다 (운영진) */
+  DB.linkLogin = async function (memberId, nick, at) {
+    if (!HAS_SB) return { ok: true, name: '체험' };
+    return await rest('rpc/link_login', {
+      method: 'POST', body: { p_member: memberId, p_nick: nick || '', p_at: at }
+    });
+  };
+
   DB.oldVideos = async function (n) {
     if (!HAS_SB) {
       const d = cdemo();
@@ -1626,10 +1665,14 @@
           throw new Error(e.message || '영상을 올리지 못했어요');
         }
       }
+      const thumbs = [];
       if (photos.length) {
         try {
           for (let i = 0; i < photos.length; i++) {
-            paths.push(await DB.community.uploadPhoto(id, photos[i], i));
+            const r = await DB.community.uploadPhoto(id, photos[i], i);
+            paths.push(r.path);
+            thumbs.push(r.thumb || null);
+            if (r.thumb) paths.push(r.thumb);   /* 실패하면 같이 치우려고 */
           }
         } catch (e) {
           /* 올라간 것만 치운다 — 고아 파일을 남기지 않는다 */
@@ -1658,10 +1701,14 @@
         }
       });
       if (!(rows && rows[0] && rows[0].id)) throw new Error('글을 올리지 못했어요');
-      const rows2 = paths.map((pth, i) => ({ post_id: id, path: pth, sort: i, kind: 'photo' }));
+      /* paths 에는 작은 것도 섞여 있다 — 줄은 큰 것 기준으로 만든다 */
+      const bigs = paths.filter(x => !/-s\.jpg$/.test(x));
+      const rows2 = bigs.map((pth, i) => ({
+        post_id: id, path: pth, thumb: thumbs[i] || null, sort: i, kind: 'photo'
+      }));
       if (vpath) {
         rows2.push({
-          post_id: id, path: vpath, sort: rows2.length,
+          post_id: id, path: vpath, thumb: null, sort: rows2.length,
           kind: 'video', poster: (v.video && v.video.poster) || null
         });
       }
@@ -1731,23 +1778,37 @@
 
       if (photos) {
         /* 지금 올라가 있는 것 */
-        const now = await rest('post_photos?select=id,path,sort&post_id=eq.' + enc(id)) || [];
+        const now = await rest('post_photos?select=id,path,thumb,sort&post_id=eq.' + enc(id)) || [];
         const keep = photos.filter(x => !/^data:/.test(x));
-        const gone = now.filter(f => keep.indexOf(f.path) < 0).map(f => f.path);
+        const gone = [];
+        now.forEach(f => {
+          if (keep.indexOf(f.path) >= 0) return;
+          gone.push(f.path);
+          if (f.thumb) gone.push(f.thumb);   /* 작은 것도 같이 치운다 */
+        });
+        /* 남는 사진의 작은 것은 그대로 들고 간다 */
+        const thumbOf = {};
+        now.forEach(f => { if (f.thumb) thumbOf[f.path] = f.thumb; });
 
         /* 새로 고른 것을 먼저 올린다 — 올리다 실패해도 글은 그대로다 */
-        const paths = [];
+        const rows3 = [];
         for (let i = 0; i < photos.length; i++) {
-          paths.push(/^data:/.test(photos[i])
-            ? await DB.community.uploadPhoto(id, photos[i], Date.now() + i)
-            : photos[i]);
+          if (/^data:/.test(photos[i])) {
+            const r = await DB.community.uploadPhoto(id, photos[i], Date.now() + i);
+            rows3.push({ path: r.path, thumb: r.thumb || null });
+          } else {
+            rows3.push({ path: photos[i], thumb: thumbOf[photos[i]] || null });
+          }
         }
+        const paths = rows3.map(r => r.path);
 
         await rest('post_photos?post_id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
-        if (paths.length) {
+        if (rows3.length) {
           await rest('post_photos', {
             method: 'POST', prefer: 'return=minimal',
-            body: paths.map((path, i) => ({ post_id: id, path, sort: i }))
+            body: rows3.map((r, i) => ({
+              post_id: id, path: r.path, thumb: r.thumb, sort: i, kind: 'photo'
+            }))
           });
         }
         /* 뺀 사진은 파일도 지운다 */
@@ -2497,15 +2558,38 @@
 
     /* ---------- 사진 ---------- */
     /* 비공개 버킷에 올리고, 볼 때는 서명된 주소를 받아온다 */
+    /* 사진 한 장 — **큰 것과 작은 것을 같이** 올린다.
+       피드에는 작은 것(640px)만 쓴다. 폰 화면 폭이 360~430 이라
+       1280px 짜리는 네 배쯤 크고, 그만큼 늦게 뜨고 버벅였다.
+       크게 보기에서만 큰 것을 받는다.
+       돌려주는 것: { path, thumb } */
     async uploadPhoto(postId, dataUrl, i) {
+      const stamp = Date.now() + '-' + i;
       const blob = await (await fetch(dataUrl)).blob();
-      const path = postId + '/' + Date.now() + '-' + i + '.jpg';
+      const path = postId + '/' + stamp + '.jpg';
       await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path, {
         method: 'POST',
         headers: { 'Content-Type': blob.type || 'image/jpeg' },
         body: blob
       });
-      return path;
+
+      /* 작은 것 — 못 만들어도 글은 올라간다 (그때는 큰 것을 쓴다) */
+      let thumb = null;
+      try {
+        const small = await shrinkDataUrl(dataUrl, 640, 0.72);
+        if (small && small !== dataUrl) {
+          const tb = await (await fetch(small)).blob();
+          const tpath = postId + '/' + stamp + '-s.jpg';
+          await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community/' + tpath, {
+            method: 'POST',
+            headers: { 'Content-Type': 'image/jpeg' },
+            body: tb
+          });
+          thumb = tpath;
+        }
+      } catch (e) { /* 작은 것 없이 간다 */ }
+
+      return { path, thumb };
     },
 
     /* 영상 하나를 지운다 — 파일도, 글에 붙은 줄도. 글은 남는다 */

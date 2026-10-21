@@ -257,6 +257,13 @@ a{color:inherit;text-decoration:none}
 /* 사진이 채워지면 글자는 가린다 */
 
 /* 상단바 프로필 동그라미 */
+/* 누를 수 있는 아바타 — 어디에 있든 */
+.avatar[data-member]{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.avatar[data-member]:active{opacity:.75}
+/* 누르는 자리를 44px 로 — 작은 아바타도 손가락에 맞게 */
+.avatar[data-member]{position:relative}
+.avatar[data-member]::after{content:"";position:absolute;inset:-6px;border-radius:50%}
+
 .avatar.tiny{width:32px;height:32px;font-size:15px;border-width:1.5px;cursor:pointer}
 .prof-big{
   width:132px;height:132px;border-radius:50%;margin:0 auto;display:grid;place-items:center;
@@ -663,6 +670,22 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .fab.typing{opacity:0;pointer-events:none;transform:scale(.8)}
 /* 스크롤을 내리는 중엔 작게 — 아래 카드의 「…」 버튼을 덮지 않게 */
 .fab.small{width:46px;height:46px;border-radius:16px}
+/* ★ 짧은 화면(SE 667)에서는 + 버튼이 카드의 「…」·「게시」를 덮었다.
+   조금 작게 해서 자리를 비켜 준다 — 그래도 46px 이라 누르기 좋다. */
+@media (max-height:700px){
+  .fab{width:46px;height:46px;border-radius:16px;
+       bottom:calc(var(--tab-h) + 10px + env(safe-area-inset-bottom))}
+}
+/* 피드 맨 아래 — 마지막 카드가 + 버튼에 갇히지 않게 자리를 둔다.
+   어느 버튼이든 살짝 굴리면 + 버튼 밖으로 나온다 */
+#list{padding-bottom:74px}
+
+/* 「…」 와 겹치는 순간에만 왼쪽으로 비켜 준다 (JS 가 붙인다).
+   비켜 간 자리는 글자뿐이라 아무것도 안 가린다 */
+.fab.dodge{transform:translateX(-62px)}
+.fab.dodge:active{transform:translateX(-62px) scale(.94)}
+@media (prefers-reduced-motion:reduce){.fab{transition:none}}
+
 /* 작아져도 44px 아래로는 안 내려가게 */
 .fab{min-width:44px;min-height:44px}
 .fab.small .svg{width:21px;height:21px}

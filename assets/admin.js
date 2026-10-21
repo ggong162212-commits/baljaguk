@@ -1185,14 +1185,22 @@
           '카카오로는 들어왔는데 이름·뒤 4자리 확인을 안 했어요.<br>' +
           '이대로면 알림도 안 가고 커뮤니티도 못 봐요.</div></div></div>' +
           '<div class="kvlist" style="margin-top:9px">' +
-          unl.slice(0, 8).map(u =>
+          unl.slice(0, 8).map((u, i) =>
             '<div class="kv"><span class="k">' + esc(u.nick || '(닉네임 없음)') + '</span>' +
-            '<span class="v">' + fmtDate(u.at) + '</span></div>').join('') +
+            '<span class="v">' + fmtDate(u.at) +
+            ' <button class="linkbtn" type="button" data-linkone="' + i + '">이 사람과 잇기</button>' +
+            '</span></div>').join('') +
           (unl.length > 8 ? '<div class="mut xs">외 ' + (unl.length - 8) + '개</div>' : '') +
           '</div>' +
           '<button class="btn ghost sm block" type="button" id="copyUnlink" style="margin-top:10px">' +
           ic('clipboard') + '<span>본인 확인 안내 문구 복사</span></button></div>'
         : '';
+      /* 「이 사람과 잇기」 — 구성원을 골라 이어 준다 */
+      unlBox.querySelectorAll('[data-linkone]').forEach(b => b.onclick = () => {
+        const u = unl[Number(b.dataset.linkone)];
+        if (u) linkLoginSheet(u);
+      });
+
       const cu = $('#copyUnlink');
       if (cu) cu.onclick = () => copy(
         [new URL('me.html', location.href).href,
@@ -3379,6 +3387,72 @@
   /* ============================================================
      7. 설정
      ============================================================ */
+  /* ── 안 이어진 로그인을 구성원에게 이어 주기
+     운영진이 대신 「본인 확인」을 해 줄 수는 없다 — 그건 그 사람의
+     카카오 계정이라야 한다. 대신 그 사람이 **이미 한 번 들어와서 생긴**
+     계정을 명부에 이어 준다.
+     ★ 아직 아무와도 안 이어진 구성원에게만 (남의 계정을 빼앗지 않게) */
+  function linkLoginSheet(u) {
+    const free = (S.members || [])
+      .filter(m => m.status !== 'left' && !m.auth_user_id)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));
+
+    const ov = sheet({
+      title: '이 로그인을 누구와 이을까요?',
+      body:
+        '<div class="card flat" style="padding:11px 13px;margin-bottom:12px">' +
+        '<div class="kv"><span class="k">카카오 닉네임</span>' +
+        '<span class="v">' + esc(u.nick || '(닉네임 없음)') + '</span></div>' +
+        '<div class="kv"><span class="k">처음 들어온 날</span>' +
+        '<span class="v">' + fmtDateTime(u.at) + '</span></div></div>' +
+        '<p class="mut xs" style="margin:0 0 12px;line-height:1.65">' +
+        '아직 아무 계정과도 안 이어진 구성원만 보여요.<br>' +
+        '이으면 그 사람은 바로 커뮤니티에 들어올 수 있어요.</p>' +
+        (free.length
+          ? '<label class="field"><span class="lb">구성원</span>' +
+            '<select class="input" id="llWho">' +
+            '<option value="">고르세요</option>' +
+            free.map(m => '<option value="' + esc(m.id) + '">' + esc(m.name) +
+              (m.student_id ? '' : '') + '</option>').join('') +
+            '</select></label>'
+          : '<div class="mut sm">이을 수 있는 구성원이 없어요 — 모두 이미 이어져 있어요</div>'),
+      foot: free.length
+        ? '<button class="btn primary lg block" type="button" id="llGo">잇기</button>'
+        : ''
+    });
+
+    const go = ov.querySelector('#llGo');
+    if (!go) return;
+    go.onclick = async () => {
+      const id = ov.querySelector('#llWho').value;
+      if (!id) return toast('구성원을 골라주세요', 'err');
+      const who = free.filter(m => m.id === id)[0] || {};
+      if (!await confirmSheet(
+        '「' + (u.nick || '이 로그인') + '」 을 ' + who.name + '님과 이을까요?',
+        '이으면 그 카카오 계정으로 들어올 때 ' + who.name + '님으로 보여요. ' +
+        '잘못 이으면 구성원 상세에서 「카카오 연결 풀기」로 되돌릴 수 있어요.',
+        '잇기')) return;
+      go.disabled = true; go.textContent = '잇는 중…';
+      try {
+        const r = await DB.linkLogin(id, u.nick, u.at);
+        if (!r || !r.ok) {
+          throw new Error(({
+            already: '그 구성원은 이미 다른 계정과 이어져 있어요',
+            notone: '그 로그인을 찾지 못했어요. 목록을 새로 받아 주세요',
+            nomember: '명부에서 찾지 못했어요'
+          })[(r && r.why) || ''] || '잇지 못했어요');
+        }
+        closeSheet();
+        toast(who.name + '님과 이었어요', 'ok');
+        S.unlinked = null;
+        await load();
+      } catch (e) {
+        toast(e.message || '잇지 못했어요', 'err');
+        go.disabled = false; go.textContent = '잇기';
+      }
+    };
+  }
+
   /* ---------- 사용 현황 · 저장 공간 · 백업 ----------
      무료 플랜 한도에 가까워지면 미리 알아야 한다.
      개인별로 누가 무엇을 봤는지는 세지 않는다 — 숫자만 본다. */

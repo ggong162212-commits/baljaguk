@@ -402,8 +402,20 @@
        운영진 화면 구성원 목록이 photo_path 라 사진이 안 나왔다. */
     const path = (m && (m.photo || m.photo_path)) || '';
     const photo = path ? ' data-avatar="' + esc(path) + '"' : '';
-    return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '"' + photo +
-      ' aria-hidden="true">' + esc(face) + '</div>';
+    /* ★ 누구인지 늘 실어 둔다 — 아바타가 나오는 **어느 화면에서든**
+       눌러서 그 사람 프로필을 열 수 있게. (댓글·답글·좋아요 목록·
+       봉사 신청자·@이름·질문 답·구성원 목록까지 한 번에)
+       화면 쪽에서 [data-member] 하나만 보면 된다. */
+    const id = (m && m.id) || '';
+    const who = id
+      ? ' data-member="' + esc(id) + '"' +
+        ' data-mname="' + esc(name) + '"' +
+        ' data-mphoto="' + esc(path) + '"' +
+        ' data-mrole="' + esc((m && m.role) || '') + '"' +
+        ' role="button" tabindex="0" aria-label="' + esc(name) + ' 프로필"'
+      : ' aria-hidden="true"';
+    return '<div class="avatar ' + tone + (cls ? ' ' + cls : '') + '"' + photo + who +
+      '>' + esc(face) + '</div>';
   }
 
   /* 정사각형으로 잘라서 줄인다 (프로필 사진용).

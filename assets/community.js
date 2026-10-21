@@ -90,7 +90,7 @@ window.Community = (function () {
       tb.insertAdjacentHTML('beforeend',
         '<button id="profBtn" type="button" aria-label="내 프로필" ' +
         'style="border:none;background:none;padding:0;cursor:pointer">' +
-        avatar(ME, 'tiny') + '</button>');
+        avatar({ name: ME.name, photo: ME.photo }, 'tiny') + '</button>');
       tb.querySelector('#profBtn').onclick = profileSheet;
       loadAvatars(tb);
     }
@@ -115,6 +115,11 @@ window.Community = (function () {
 
     /* 남이 한 것이 바로 보이게 */
     startLive();
+
+    /* + 버튼이 카드의 「…」 를 덮지 않게 */
+    watchFab();
+    /* 아바타는 어디서든 눌러서 그 사람 프로필을 연다 */
+    watchAvatarTaps();
     /* 알림을 눌렀을 때 서비스워커가 알려 준다 — 주소만 바뀌면 화면이 안 바뀌어서 */
     try {
       navigator.serviceWorker.addEventListener('message', e => {
@@ -704,7 +709,7 @@ window.Community = (function () {
   function refreshProfileBtn() {
     const btn = document.querySelector('#profBtn');
     if (!btn) return;
-    btn.innerHTML = avatar(ME, 'tiny');
+    btn.innerHTML = avatar({ name: ME.name, photo: ME.photo }, 'tiny');
     loadAvatars(btn);
   }
 
@@ -771,6 +776,7 @@ window.Community = (function () {
   async function renderHome(reset) {
     if (reset) {
       F.rows = []; F.cursor = null; F.done = false;
+      preDone = {};
       const sv = savedFilter();
       if (F.kind === undefined || F.kind === null) { F.kind = sv.kind; F.place = sv.place; }
     }
@@ -965,6 +971,8 @@ window.Community = (function () {
     loadPhotos($('#list'));
     wireCbar($('#list'));
     clipCheck($('#list'));
+    /* 한가할 때 다음에 볼 사진 주소를 미리 받아 둔다 */
+    prefetchPhotos();
   }
 
   function paintMoreButton() {
@@ -1655,7 +1663,7 @@ window.Community = (function () {
       body: '<div id="cbox" class="mut sm" style="padding:6px 0">불러오는 중…</div>',
       foot: '<div id="cmenu" class="mentbox" hidden></div>' +
         '<div class="cwrite2">' +
-        avatar(ME) +
+        avatar({ name: ME.name, photo: ME.photo }) +
         '<div class="cfield">' +
         '<textarea id="cin" class="cinput" rows="1" placeholder="댓글 달기…" ' +
         'aria-label="댓글 쓰기"></textarea>' +
@@ -2087,6 +2095,13 @@ window.Community = (function () {
       const m = media.filter(x => x.path === path)[0];
       return m || { kind: 'photo' };
     };
+    /* ★ 피드에는 작은 사진(640px)을 쓴다.
+       전에 올린 사진은 작은 것이 없으니 그때는 원본을 쓴다.
+       크게 보기(openShots)에서는 늘 원본을 받는다. */
+    const feedPath = path => {
+      const m = media.filter(x => x.path === path)[0];
+      return (m && m.thumb) || path;
+    };
     return '<div class="shots" data-shots="' + esc(p.id) + '">' +
       ph.map((path, i) => {
         const m = kindOf(path);
@@ -2101,7 +2116,7 @@ window.Community = (function () {
            사진이 오기 전에 「봉사 사진 1」 글자가 보였다 (선고은님 지적).
            사진은 꾸밈이고 뜻은 본문에 있으니 alt="" 가 맞다.
            loading/decoding 으로 보이는 것부터 천천히 받는다. */
-        return '<img alt="" draggable="false" data-path="' + esc(path) + '" ' +
+        return '<img alt="" draggable="false" data-path="' + esc(feedPath(path)) + '" ' +
           'loading="lazy" decoding="async" ' +
           'data-big="' + esc(p.id) + '" data-at="' + i + '">';
       }).join('') +
@@ -2175,7 +2190,7 @@ window.Community = (function () {
       '<div data-clist="' + esc(p.id) + '">' + list.map(c => commentLine(c, true)).join('') + '</div>' +
       /* 카드에서 바로 쓸 수 있게 입력줄을 늘 둔다 — 누를 필요 없이 */
       '<div class="mentbox" data-cmenu-for="' + esc(p.id) + '" hidden></div>' +
-      '<div class="cbar">' + avatar(ME) +
+      '<div class="cbar">' + avatar({ name: ME.name, photo: ME.photo }) +
       '<input class="cbarin" type="text" inputmode="text" ' +
       'data-cbar="' + esc(p.id) + '" placeholder="댓글 달기…" aria-label="댓글 쓰기">' +
       '<button class="cbarsend" type="button" data-csend="' + esc(p.id) + '" disabled>게시</button>' +
@@ -2290,6 +2305,11 @@ window.Community = (function () {
         id: b.dataset.peek, name: b.dataset.pname,
         photo: b.dataset.pphoto, role: b.dataset.prole
       });
+      /* 아바타는 어디에 있든 누르면 열린다 (UI.avatar 가 실어 둔 것) */
+      if ((b = hit('data-member'))) return peekPerson({
+        id: b.dataset.member, name: b.dataset.mname,
+        photo: b.dataset.mphoto, role: b.dataset.mrole
+      });
       if ((b = hit('data-hint'))) {
         try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }
         return renderHome(true);
@@ -2390,6 +2410,103 @@ window.Community = (function () {
   /* 글을 찾는다. 못 찾으면 **조용히 끝내지 않는다** —
      「대기 신청」이 아무 반응 없던 것과 같은 종류를 막는다.
      부른 쪽에서 챙기지 못하면 missWarn 이 사람에게 알려 준다. */
+  /* ============================================================
+     + 버튼이 「…」 를 덮지 않게
+     ------------------------------------------------------------
+     선고은님(SE 375): 「+ 버튼이 첫 글의 … 를 가려요」
+     오른쪽 아래 + 버튼과 카드 오른쪽 위 「…」 가 **같은 오른쪽 줄**에
+     있어서, 글이 어느 높이에 오느냐에 따라 겹쳤다.
+     겹치는 순간에만 + 를 왼쪽으로 살짝 비켜 준다 —
+     그 자리는 글자뿐이라 아무것도 안 가린다.
+     ============================================================ */
+  /* ============================================================
+     다음에 볼 사진을 미리 받아 둔다
+     ------------------------------------------------------------
+     사진은 비공개 보관함이라 주소(서명)를 받아야 보인다.
+     아래로 내렸을 때 그제야 받기 시작하면 한 박자 늦는다.
+     한가할 때 **아직 안 보이는 다음 글들의 주소**를 미리 받아 둔다.
+     (받아 둔 것은 50분 캐시라 내려가면 바로 뜬다)
+     ============================================================ */
+  let preDone = {};
+  function prefetchPhotos() {
+    const idle = window.requestIdleCallback ||
+      (fn => setTimeout(() => fn({ timeRemaining: () => 20 }), 600));
+    idle(() => {
+      /* 화면에 아직 안 그려진 글들 — 뒤쪽 12개까지 */
+      const rows = (F.rows || []).slice(-12);
+      const want = [];
+      rows.forEach(r => {
+        if (preDone[r.id]) return;
+        preDone[r.id] = 1;
+        const media = r.media || [];
+        (r.photos || []).forEach(path => {
+          const m = media.filter(x => x.path === path)[0];
+          want.push((m && m.thumb) || path);
+        });
+      });
+      if (!want.length) return;
+      /* 한 번에 묶어 받는다 — 요청 한 번이면 된다 */
+      DB.community.photoUrls(want.slice(0, 24)).catch(() => { });
+    });
+  }
+
+  /* 시트·오버레이 안의 아바타도 누르면 열린다.
+     #view 위임은 시트를 못 덮는다 — 문서 전체에 한 번만 건다. */
+  function watchAvatarTaps() {
+    if (window.__avTap) return;
+    window.__avTap = true;
+    document.addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('[data-member]');
+      if (!b) return;
+      /* 피드 안쪽은 #view 위임이 이미 맡는다 — 두 번 열리지 않게 */
+      if (b.closest('#view')) return;
+      /* 사진 크게 보기 안에서는 열지 않는다 */
+      if (b.closest('.avv') || b.closest('.shotview') || b.closest('.cropper')) return;
+      e.stopPropagation();
+      peekPerson({
+        id: b.dataset.member, name: b.dataset.mname,
+        photo: b.dataset.mphoto, role: b.dataset.mrole
+      });
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const b = e.target.closest && e.target.closest('[data-member]');
+      if (!b) return;
+      e.preventDefault();
+      b.click();
+    });
+  }
+
+  function watchFab() {
+    const fab = $('#fab');
+    if (!fab || fab.__dodge) return;
+    fab.__dodge = true;
+    let tick = false;
+    const look = () => {
+      if (tick) return;
+      tick = true;
+      requestAnimationFrame(() => {
+        tick = false;
+        if (fab.hidden) return;
+        const f = fab.getBoundingClientRect();
+        let hit = false;
+        document.querySelectorAll('[data-menu],[data-pin]').forEach(b => {
+          if (hit) return;
+          const r = b.getBoundingClientRect();
+          if (!r.width || !r.height) return;
+          hit = !(r.right < f.left || r.left > f.right ||
+                  r.bottom < f.top || r.top > f.bottom);
+        });
+        fab.classList.toggle('dodge', hit);
+      });
+    };
+    window.addEventListener('scroll', look, { passive: true });
+    window.addEventListener('resize', look, { passive: true });
+    setTimeout(look, 300);
+    fabLook = look;
+  }
+  let fabLook = null;
+
   /* ============================================================
      실시간 — 남이 한 것이 내 화면에 바로 뜨게
      ------------------------------------------------------------
