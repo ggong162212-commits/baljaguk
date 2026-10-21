@@ -1380,7 +1380,7 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 /* 로고(홈으로) — 높이 30px. 누르는 로고(JS 가 data-home 을 붙인 것)만.
    앞쪽 .brandmark{pointer-events:none} 이 「로고 → 홈」 까지 막고 있었다 */
 .brandmark[data-home]{pointer-events:auto;position:relative}
-.brandmark[data-home]::after{content:"";position:absolute;inset:-7px 0}
+.brandmark[data-home]::after{content:"";position:absolute;inset:-7px}
 
 /* --- 글자 --- */
 .post .bd, .sheet-body .bd{font-size:15px}
@@ -1397,3 +1397,7 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .chip .n{font-size:12px}
 .cal .wk span{font-size:12px}
 .amark{font-size:12px}
+.badge-nm{font-size:12px}
+/* JS 가 글자 크기를 직접 박아 둔 흐린 글(11~11.5px) — 여기서는 덮기만 한다.
+   깔끔하게는 community.js·admin.js 의 style="font-size:11.5px" 를 빼면 된다 */
+[style*="font-size:11px"],[style*="font-size:11.5px"]{font-size:12px !important}
