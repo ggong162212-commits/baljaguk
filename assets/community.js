@@ -189,7 +189,16 @@ window.Community = (function () {
         /* 켰을 때만 보이는 한 줄 */
         '<p class="mut anonnote" id="anonNote" hidden ' +
         'style="font-size:11.5px;margin:8px 2px 0;line-height:1.55">' +
-        '이름 없이 보내면 운영진이 답장할 수 없어요</p>' +
+        '이름 없이 보내면 운영진이 답장할 수 없어요<br>' +
+        '캡처에 내 이름이 보이면 익명이 아닐 수 있어요</p>' +
+
+        /* 화면 캡처를 붙이면 어디인지 알기 쉽다 */
+        '<div class="field" style="margin-top:12px"><span class="lb">사진 (선택)</span>' +
+        '<div id="ideaShots" class="editshots"></div>' +
+        '<input type="file" id="ideaFile" accept="image/*" multiple hidden>' +
+        '<button class="btn ghost sm block" type="button" id="ideaAdd" style="margin-top:8px">' +
+        ic('image') + '<span>사진 붙이기</span></button>' +
+        '<span class="hint">화면을 캡처해서 붙이면 어디인지 알기 쉬워요. 세 장까지.</span></div>' +
 
         /* 내가 보낸 의견과 답장 — 답장을 볼 곳이 없었다 */
         '<div id="myIdeas"></div>' +
@@ -197,6 +206,36 @@ window.Community = (function () {
         '<div class="sheet-foot">' +
         '<button class="btn primary lg block" type="button" id="ideaGo">보내기</button></div>'
     });
+
+    /* 붙인 사진 */
+    const pics = [];
+    function drawPics() {
+      const box = ov.querySelector('#ideaShots');
+      if (!box) return;
+      box.innerHTML = pics.length
+        ? pics.map((src, i) =>
+            '<div class="eshot"><img src="' + esc(src) + '" alt="붙인 사진 ' + (i + 1) + '">' +
+            '<button class="x" type="button" data-rm="' + i + '" aria-label="이 사진 빼기">' +
+            ic('x') + '</button></div>').join('')
+        : '';
+      box.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+        pics.splice(Number(b.dataset.rm), 1); drawPics();
+      });
+    }
+    const ideaFile = ov.querySelector('#ideaFile');
+    const ideaAdd = ov.querySelector('#ideaAdd');
+    if (ideaAdd && ideaFile) {
+      ideaAdd.onclick = () => ideaFile.click();
+      ideaFile.onchange = async () => {
+        for (const f of Array.prototype.slice.call(ideaFile.files || [])) {
+          if (pics.length >= 3) { toast('사진은 세 장까지예요', 'err'); break; }
+          try { pics.push(await resizeImage(f, 1280, 0.8)); }
+          catch (e) { toast('사진을 읽지 못했어요', 'err'); }
+        }
+        ideaFile.value = '';
+        drawPics();
+      };
+    }
 
     const anonBtn = ov.querySelector('#ideaAnon');
     const note = ov.querySelector('#anonNote');
@@ -250,11 +289,11 @@ window.Community = (function () {
     ov.querySelector('#ideaGo').onclick = async () => {
       const btn = ov.querySelector('#ideaGo');
       const t = ov.querySelector('#ideaBody').value.trim();
-      if (!t) return toast('내용을 적어주세요', 'err');
+      if (!t && !pics.length) return toast('내용을 적어주세요', 'err');
       const anon = anonBtn.classList.contains('on');
       btn.disabled = true; btn.textContent = '보내는 중…';
       try {
-        const r = await DB.feedback.send(t, anon);
+        const r = await DB.feedback.send(t, anon, pics);
         if (r && r.ok === false) {
           toast(r.why === 'toomany'
             ? '이름 없이 보내는 건 하루 세 번까지예요'
@@ -1770,14 +1809,114 @@ window.Community = (function () {
     }
   }
 
+  /* ============================================================
+     짧은 영상
+     ------------------------------------------------------------
+     글 하나에 한 개, 30초 이하·20MB 이하.
+     사진 줄 안에 같이 들어가 옆으로 넘긴다.
+     화면에 보이면 소리 끈 채 저절로 돌고, 안 보이면 멈춘다.
+     ============================================================ */
+  const VIDEO_MAX_SEC = 30;
+  const VIDEO_MAX_MB = 20;
+
+  /* 고른 파일이 올릴 수 있는 영상인지 본다 */
+  function readVideo(file) {
+    return new Promise((resolve, reject) => {
+      if (file.size > VIDEO_MAX_MB * 1024 * 1024) {
+        return reject(new Error(VIDEO_MAX_MB + 'MB 이하로 줄여서 올려 주세요'));
+      }
+      const url = URL.createObjectURL(file);
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.muted = true;
+      v.playsInline = true;
+      v.onerror = () => { URL.revokeObjectURL(url); reject(new Error('이 영상은 열 수 없어요')); };
+      v.onloadedmetadata = () => {
+        if (v.duration > VIDEO_MAX_SEC + 0.5) {
+          URL.revokeObjectURL(url);
+          return reject(new Error(VIDEO_MAX_SEC + '초 이하로 잘라서 올려 주세요'));
+        }
+        /* 첫 프레임을 그림으로 — 불러오기 전 자리를 잡아 화면이 안 흔들리게 */
+        v.currentTime = 0.1;
+        v.onseeked = () => {
+          let poster = '';
+          try {
+            const c = document.createElement('canvas');
+            const w = 640, h = Math.round(640 * (v.videoHeight / v.videoWidth || 0.75));
+            c.width = w; c.height = h;
+            c.getContext('2d').drawImage(v, 0, 0, w, h);
+            poster = c.toDataURL('image/jpeg', 0.7);
+          } catch (e) { /* 포스터를 못 만들어도 올릴 수는 있다 */ }
+          URL.revokeObjectURL(url);
+          resolve({ file, poster, seconds: Math.round(v.duration) });
+        };
+      };
+      v.src = url;
+    });
+  }
+
+  /* 화면에 보이는 영상만 돌린다 — 데이터를 아끼려고 */
+  let videoWatch = null;
+  function wireVideos(root) {
+    const vids = (root || document).querySelectorAll('video[data-vsrc]');
+    if (!vids.length) return;
+    if (!videoWatch && typeof IntersectionObserver === 'function') {
+      videoWatch = new IntersectionObserver(entries => {
+        entries.forEach(en => {
+          const v = en.target;
+          if (en.isIntersecting) {
+            if (!v.src && v.dataset.vsrc) v.src = v.dataset.vsrc;
+            v.play().catch(() => { });
+          } else {
+            v.pause();
+          }
+        });
+      }, { threshold: 0.5 });
+    }
+    vids.forEach(v => {
+      if (v.__wired) return;
+      v.__wired = true;
+      v.muted = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      v.setAttribute('webkit-playsinline', '');
+      v.preload = 'none';
+      /* 누르면 소리 켜기·끄기 */
+      v.addEventListener('click', e => {
+        e.stopPropagation();
+        v.muted = !v.muted;
+        const btn = v.parentElement && v.parentElement.querySelector('.vsound');
+        if (btn) btn.textContent = v.muted ? '🔇' : '🔊';
+        if (!v.muted) v.play().catch(() => { });
+      });
+      if (videoWatch) videoWatch.observe(v);
+    });
+  }
+
   /* 사진은 주소를 따로 받아와야 해서 자리만 먼저 만든다 */
   function photoStrip(p) {
     const ph = p.photos || [];
     if (!ph.length) return '';
+    /* 영상이 섞여 있으면 그 자리만 영상으로 그린다 */
+    const media = p.media || [];
+    const kindOf = path => {
+      const m = media.filter(x => x.path === path)[0];
+      return m || { kind: 'photo' };
+    };
     return '<div class="shots" data-shots="' + esc(p.id) + '">' +
-      ph.map((path, i) =>
-        '<img alt="봉사 사진 ' + (i + 1) + '" draggable="false" data-path="' + esc(path) + '" ' +
-        'data-big="' + esc(p.id) + '" data-at="' + i + '">').join('') +
+      ph.map((path, i) => {
+        const m = kindOf(path);
+        if (m.kind === 'video') {
+          return '<div class="vwrap" data-at="' + i + '">' +
+            '<video data-vpath="' + esc(path) + '" muted loop playsinline ' +
+            (m.poster ? 'data-poster="' + esc(m.poster) + '" ' : '') +
+            'aria-label="봉사 영상"></video>' +
+            '<span class="vsound" aria-hidden="true">🔇</span></div>';
+        }
+        return '<img alt="봉사 사진 ' + (i + 1) + '" draggable="false" data-path="' + esc(path) + '" ' +
+          'data-big="' + esc(p.id) + '" data-at="' + i + '">';
+      }).join('') +
       '</div>' +
       /* 점이 열 개면 줄이 길어져 알아보기 어렵다. 여섯 장 넘으면 숫자로 센다 */
       (ph.length > 1
@@ -1793,6 +1932,21 @@ window.Community = (function () {
   async function loadPhotos(root) {
     /* 사진 자리가 생기자마자 밀기를 붙인다 — 첫 손가락부터 먹히게 */
     wireSwipe(root);
+
+    /* 영상 — 포스터를 먼저 깔아 자리를 잡고, 보일 때 받아온다 */
+    const vids = Array.prototype.slice.call(root.querySelectorAll('video[data-vpath]'));
+    for (const v of vids) {
+      const path = v.getAttribute('data-vpath');
+      v.removeAttribute('data-vpath');
+      const poster = v.getAttribute('data-poster');
+      if (poster) { v.poster = poster; v.removeAttribute('data-poster'); }
+      try {
+        const url = await DB.community.photoUrl(path);
+        if (url) v.dataset.vsrc = url;
+      } catch (e) { }
+    }
+    if (vids.length) wireVideos(root);
+
     const imgs = Array.prototype.slice.call(root.querySelectorAll('img[data-path]'));
     for (let i = 0; i < imgs.length; i++) {
       const el = imgs[i], path = el.getAttribute('data-path');
@@ -2879,7 +3033,9 @@ window.Community = (function () {
         '<div class="sm mut" style="margin-top:4px">눌러서 고르세요. 알아서 줄여서 올려요</div></div>' +
         '<div class="row" id="wThumbs" style="gap:6px;flex-wrap:wrap;justify-content:center"></div>' +
         '</div>' +
-        '<input type="file" id="wPhotos" accept="image/*" multiple hidden>' +
+        '<input type="file" id="wPhotos" accept="image/*,video/mp4,video/quicktime" multiple hidden>' +
+        '<p class="mut" style="font-size:11.5px;margin:8px 2px 0;line-height:1.5">' +
+        '짧은 영상도 한 개까지 올릴 수 있어요 (30초·20MB 이하)</p>' +
         (withInsta
           ? '<button type="button" class="check" id="wInsta" style="margin-top:12px;width:100%;text-align:left">' +
             '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
@@ -2978,9 +3134,20 @@ window.Community = (function () {
           /* 여러 장이면 줄이는 데 시간이 걸린다 — 몇 장째인지 보여준다 */
           const out = [];
           for (let i = 0; i < fs.length; i++) {
+            const f = fs[i];
+            /* 영상은 한 개까지 — 길이와 크기를 보고 받는다 */
+            if (/^video\//.test(f.type)) {
+              if (r.__video) { toast('영상은 한 개까지예요', 'err'); continue; }
+              thumbs.innerHTML = '<span class="mut sm">영상을 보는 중…</span>';
+              try {
+                r.__video = await readVideo(f);
+                out.push('video:' + (r.__video.poster || ''));
+              } catch (err) { toast(err.message || '영상을 읽지 못했어요', 'err'); }
+              continue;
+            }
             thumbs.innerHTML = '<span class="mut sm">사진 줄이는 중… ' +
               (i + 1) + '/' + fs.length + '</span>';
-            try { out.push(await resizeImage(fs[i], 1280, .8)); }
+            try { out.push(await resizeImage(f, 1280, .8)); }
             catch (err) { toast(err.message || '사진 하나를 못 읽었어요', 'err'); }
           }
           r.__shots = r.__shots.concat(out);
@@ -2990,6 +3157,7 @@ window.Community = (function () {
       },
       read: r => ({
         list: r.__shots || [],
+        video: r.__video || null,
         insta: !!(r.querySelector('#wInsta') && r.querySelector('#wInsta').classList.contains('on'))
       }),
       fill: (r, v) => {
@@ -3035,6 +3203,7 @@ window.Community = (function () {
         }
         const made = await DB.community.createPost({
           type: 'free', body: v.body.text, photos: v.photos.list,
+          video: v.photos.video,
           poll: pollPayload(v.body.poll)
         });
         await tellMentioned(made, v.body.mentions, v.body.text);
@@ -3234,6 +3403,7 @@ window.Community = (function () {
           type: 'review', event_id: when.event_id,
           date: when.date, place: when.place,
           body: v.body.text, photos: v.photos.list,
+          video: v.photos.video,
           insta_ok: v.photos.insta, poll: pollPayload(v.body.poll),
           animals: (v.body.animals || []).map(a => a.id)
         });
@@ -4349,5 +4519,5 @@ window.Community = (function () {
       '</div></div>';
   }
 
-  return { start };
+  return { start, __readVideo: readVideo };
 })();

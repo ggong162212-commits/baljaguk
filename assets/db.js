@@ -1060,6 +1060,10 @@
         .sort((x, y) => x.name.localeCompare(y.name, 'ko')),
       photos: d.post_photos.filter(f => f.post_id === p.id)
         .sort((a, b) => a.sort - b.sort).map(f => f.path),
+      /* 실서버와 같은 모양 — 어느 것이 영상인지 */
+      media: d.post_photos.filter(f => f.post_id === p.id)
+        .sort((a, b) => a.sort - b.sort)
+        .map(f => ({ path: f.path, kind: f.kind || 'photo', poster: f.poster || null })),
       comment_count: d.comments.filter(c => c.post_id === p.id && !c.hidden).length,
       recent_comments: d.comments
         .filter(c => c.post_id === p.id && !c.hidden)
@@ -1155,9 +1159,43 @@
 
   /* ---------- 의견 보내기 ---------- */
   DB.feedback = {
-    async send(body, anon) {
+    /* 의견에 붙이는 사진 — 운영진만 볼 수 있는 곳에 담는다.
+       ★ 이름 없이 보낼 때는 경로에 member_id 를 쓰지 않는다 —
+         경로만 봐도 누군지 알면 익명이 아니다. */
+    async uploadFeedbackShot(dataUrl, anon) {
+      if (!HAS_SB) return dataUrl;
+      const blob = await (await fetch(dataUrl)).blob();
+      const who = anon
+        ? 'x' + Math.random().toString(36).slice(2, 10)
+        : (await DB.community.myId());
+      const path = who + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 6) + '.jpg';
+      await storageFetch(C.SUPABASE_URL + '/storage/v1/object/feedback/' + path, {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
+        body: blob
+      });
+      return path;
+    },
+
+    /* 운영진이 의견 사진을 볼 주소 */
+    async feedbackShotUrl(path) {
+      if (!HAS_SB) return path;
+      if (!path || /^data:/.test(path)) return path || '';
+      try {
+        const r = await storageFetch(C.SUPABASE_URL + '/storage/v1/object/sign/feedback/' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn: 3600 })
+        });
+        const j = await r.json().catch(() => ({}));
+        return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
+      } catch (e) { return ''; }
+    },
+
+    async send(body, anon, shots) {
       const t = String(body || '').trim();
-      if (!t) throw new Error('내용을 적어주세요');
+      const pics = (shots || []).slice(0, 3);
+      if (!t && !pics.length) throw new Error('내용을 적어주세요');
       if (!HAS_SB) {
         const d = cdemo();
         d.feedback = d.feedback || [];
@@ -1170,20 +1208,27 @@
           localStorage.setItem(key, String(n));
           d.feedback.push({
             id: uid(), created_at: new Date().toISOString(),
-            member_id: null, anon: true, body: t, done_at: null
+            member_id: null, anon: true, body: t, done_at: null,
+            kind: 'idea', photos: pics
           });
           demoWrite(d);
           return { ok: true, anon: true, left: 3 - n };
         }
         d.feedback.push({
           id: uid(), created_at: new Date().toISOString(),
-          member_id: myDemoId(), anon: false, body: t, done_at: null
+          member_id: myDemoId(), anon: false, body: t, done_at: null,
+          kind: 'idea', photos: pics
         });
         demoWrite(d);
         return { ok: true, anon: false };
       }
+      /* 사진을 먼저 올린다 — 올리다 끊기면 의견도 안 남는다 */
+      const paths = [];
+      for (const pic of pics) {
+        paths.push(await DB.feedback.uploadFeedbackShot(pic, !!anon));
+      }
       return await rest('rpc/feedback_send', {
-        method: 'POST', body: { p_body: t, p_anon: !!anon }
+        method: 'POST', body: { p_body: t, p_anon: !!anon, p_photos: paths }
       });
     },
 
@@ -1287,8 +1332,11 @@
           id: f.id, created_at: f.created_at, body: f.body,
           anon: !!f.anon,
           who: f.anon ? null : (demoMember(f.member_id) || {}).name,
+          who_photo: f.anon ? null : (demoMember(f.member_id) || {}).photo || null,
           can_reply: !f.anon && !!f.member_id,
-          replied: !!f.replied_at
+          reply: f.reply || null,
+          replied: !!f.replied_at,
+          shots: f.photos || []
         })).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       }
       return await rest('rpc/feedback_open', { method: 'POST', body: {} });
@@ -1305,6 +1353,21 @@
   };
 
   /* ---------- 사용 현황 (운영진만) ---------- */
+  /* 오래된 영상 목록 (운영진) */
+  DB.oldVideos = async function (n) {
+    if (!HAS_SB) {
+      const d = cdemo();
+      return (d.post_photos || []).filter(f => f.kind === 'video').map(f => {
+        const p = (d.posts || []).filter(x => x.id === f.post_id)[0] || {};
+        return {
+          path: f.path, post_id: f.post_id, created_at: p.created_at,
+          body: String(p.body || '').slice(0, 40), bytes: 0
+        };
+      }).slice(0, n || 20);
+    }
+    return await rest('rpc/old_videos', { method: 'POST', body: { p_limit: n || 20 } });
+  };
+
   DB.usageStats = async function () {
     if (!HAS_SB) {
       const d = cdemo();
@@ -1460,7 +1523,8 @@
     /* ---------- 글 ---------- */
     /* 사진은 이미 줄여둔 dataURL 배열로 받는다 */
     async createPost(v) {
-      const photos = (v.photos || []).slice(0, 10);
+      /* 「video:…」 는 영상 자리 표시다 — 사진 목록에서 뺀다 */
+      const photos = (v.photos || []).filter(x => !/^video:/.test(String(x))).slice(0, 10);
       if (!HAS_SB) {
         const d = cdemo(), meId = myDemoId();
         if (!meId) throw new Error('로그인이 풀렸어요');
@@ -1504,6 +1568,15 @@
          올리다 만 파일은 치운다. */
       const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : uid();
       const paths = [];
+      /* 영상이 있으면 먼저 올린다 — 제일 무겁고 제일 잘 끊긴다 */
+      let vpath = null;
+      if (v.video && v.video.file) {
+        try {
+          vpath = await DB.community.uploadVideo(id, v.video.file);
+        } catch (e) {
+          throw new Error(e.message || '영상을 올리지 못했어요');
+        }
+      }
       if (photos.length) {
         try {
           for (let i = 0; i < photos.length; i++) {
@@ -1536,11 +1609,15 @@
         }
       });
       if (!(rows && rows[0] && rows[0].id)) throw new Error('글을 올리지 못했어요');
-      if (paths.length) {
-        await rest('post_photos', {
-          method: 'POST', prefer: 'return=minimal',
-          body: paths.map((pth, i) => ({ post_id: id, path: pth, sort: i }))
+      const rows2 = paths.map((pth, i) => ({ post_id: id, path: pth, sort: i, kind: 'photo' }));
+      if (vpath) {
+        rows2.push({
+          post_id: id, path: vpath, sort: rows2.length,
+          kind: 'video', poster: (v.video && v.video.poster) || null
         });
+      }
+      if (rows2.length) {
+        await rest('post_photos', { method: 'POST', prefer: 'return=minimal', body: rows2 });
       }
       if ((v.animals || []).length) {
         await rest('post_animals', {
@@ -2378,6 +2455,40 @@
         method: 'POST',
         headers: { 'Content-Type': blob.type || 'image/jpeg' },
         body: blob
+      });
+      return path;
+    },
+
+    /* 영상 하나를 지운다 — 파일도, 글에 붙은 줄도. 글은 남는다 */
+    async deleteVideo(path) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        d.post_photos = (d.post_photos || []).filter(f => f.path !== path);
+        demoWrite(d);
+        return { ok: true };
+      }
+      /* 파일부터 — 줄만 지우면 파일이 떠돌아 공간만 먹는다 */
+      try {
+        await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path,
+          { method: 'DELETE' });
+      } catch (e) { }
+      await rest('post_photos?path=eq.' + encodeURIComponent(path),
+        { method: 'DELETE', prefer: 'return=minimal' });
+      return { ok: true };
+    },
+
+    /* 영상 올리기 — 파일 그대로 (줄이지 않는다) */
+    async uploadVideo(postId, file) {
+      if (!HAS_SB) {
+        /* 체험 모드는 브라우저 안에서만 — 주소를 만들어 쓴다 */
+        return URL.createObjectURL(file);
+      }
+      const ext = /quicktime|mov/i.test(file.type) ? 'mov' : 'mp4';
+      const path = postId + '/v-' + Date.now() + '.' + ext;
+      await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type || 'video/mp4' },
+        body: file
       });
       return path;
     },

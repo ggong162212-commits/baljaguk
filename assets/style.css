@@ -1164,6 +1164,23 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .shots img:active{opacity:.92}
 
 /* 구성원 줄 — 카카오 연결 여부 */
+/* 의견에 붙인 사진 — 운영진만 */
+.fbshots{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:9px}
+.fbshot{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:9px;
+  background:var(--surface-2);cursor:zoom-in}
+
+/* 짧은 영상 — 사진 줄 안에 같이 */
+.vwrap{
+  position:relative;width:100%;flex:none;scroll-snap-align:center;
+  aspect-ratio:1/1;border-radius:15px;overflow:hidden;background:var(--surface-2)
+}
+.vwrap video{width:100%;height:100%;object-fit:cover;display:block;background:#000}
+.vsound{
+  position:absolute;right:8px;bottom:8px;
+  background:rgba(0,0,0,.5);color:#fff;border-radius:999px;
+  padding:3px 8px;font-size:13px;line-height:1.4;pointer-events:none
+}
+
 /* 글 고칠 때 사진 — 빼기·순서 바꾸기 */
 .editshots{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
 .eshot{position:relative;aspect-ratio:1/1;border-radius:11px;overflow:hidden;

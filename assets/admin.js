@@ -559,6 +559,12 @@
       (f.anon ? '<span class="badge">익명</span>' : esc(f.who || '(알 수 없음)')) + '</div>' +
       '<div style="margin-top:7px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
       esc(f.body) + '</div>' +
+      /* 붙인 사진 — 운영진만 본다 */
+      ((f.shots || []).length
+        ? '<div class="fbshots">' + f.shots.map((pth, i) =>
+            '<img class="fbshot" data-fbshot="' + esc(pth) + '" alt="붙인 사진 ' + (i + 1) + '">').join('') +
+          '</div>'
+        : '') +
       (f.anon
         ? '<p class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.55">' +
           '익명 의견이라 답장할 수 없어요 · 필요하면 공지로 답해 주세요</p>'
@@ -570,6 +576,29 @@
             'data-freply="' + esc(f.id) + '">답장하기</button>')) +
       '<button class="btn soft sm block" type="button" style="margin-top:8px" ' +
       'data-fdone="' + esc(f.id) + '">확인했어요</button></div>').join('');
+
+    /* 붙인 사진 주소를 받아 채운다 — 누르면 크게 */
+    box.querySelectorAll('[data-fbshot]').forEach(async im => {
+      const pth = im.getAttribute('data-fbshot');
+      im.removeAttribute('data-fbshot');
+      try {
+        const url = await DB.feedback.feedbackShotUrl(pth);
+        if (url) {
+          im.src = url;
+          im.onclick = () => {
+            const big = document.createElement('div');
+            big.className = 'shotview';
+            big.innerHTML = '<button class="x" type="button" aria-label="닫기">' + ic('x') + '</button>' +
+              '<div class="shotview-track"><img src="' + esc(url) + '" alt="붙인 사진"></div>';
+            document.body.appendChild(big);
+            document.body.style.overflow = 'hidden';
+            const shut = () => { big.remove(); document.body.style.overflow = ''; };
+            big.querySelector('.x').onclick = shut;
+            big.onclick = e => { if (e.target === big) shut(); };
+          };
+        }
+      } catch (e) { }
+    });
 
     box.querySelectorAll('[data-fdone]').forEach(b => b.onclick = async () => {
       try { await DB.feedback.done(b.dataset.fdone); toast('확인했어요', 'ok'); closeSheet(); render(); }
@@ -3307,7 +3336,7 @@
       num(u.comments_week) + '개</span></div>' +
 
       '<div class="divider"></div>' +
-      '<div class="lb" style="margin-bottom:8px">저장 공간 (사진)</div>' +
+      '<div class="lb" style="margin-bottom:8px">저장 공간 (사진·영상)</div>' +
       '<div class="bar' + (warn ? ' warn' : '') + '">' +
       '<span style="width:' + Math.max(2, pct) + '%"></span></div>' +
       '<div class="row between" style="margin-top:7px">' +
@@ -3316,6 +3345,11 @@
 
       '<div class="kv"><span class="k">사진</span><span class="v">' +
       num(u.photos) + '장 · 평균 ' + mb(avg) + '</span></div>' +
+      /* 영상은 사진보다 훨씬 무겁다 — 따로 보여준다 */
+      (u.videos
+        ? '<div class="kv"><span class="k">영상</span><span class="v">' +
+          num(u.videos) + '개 · ' + mb(u.video_bytes) + '</span></div>'
+        : '') +
       '<div class="kv"><span class="k">글·댓글·반응 줄</span><span class="v">' +
       num(u.rows) + '줄</span></div>' +
 
@@ -3323,11 +3357,71 @@
         ? '<p class="pill-note warn" style="margin-top:12px">' +
           '<b>저장 공간이 ' + pct + '% 찼어요.</b><br>' +
           '오래된 봉사 사진을 내려받아 보관한 뒤 글을 지우거나, ' +
-          '유료 플랜으로 올리는 걸 생각해 보세요.</p>'
+          '유료 플랜으로 올리는 걸 생각해 보세요.</p>' +
+          (u.videos
+            ? '<button class="btn ghost sm block" type="button" id="oldVid" ' +
+              'style="margin-top:8px">오래된 영상부터 정리하기</button>'
+            : '')
         : '') +
 
       '<p class="mut" style="font-size:11.5px;margin-top:12px;line-height:1.65">' +
       '누가 무엇을 봤는지는 세지 않아요. 숫자만 봐요.</p>';
+
+    const vb = box.querySelector('#oldVid');
+    if (vb) vb.onclick = oldVideoSheet;
+  }
+
+  /* ── 오래된 영상부터 정리 — 영상만 지우고 글은 남는다 */
+  async function oldVideoSheet() {
+    let list = [];
+    try { list = (await DB.oldVideos(20)) || []; } catch (e) { }
+    if (!list.length) return toast('정리할 영상이 없어요', 'ok');
+
+    const mb2 = n => (Number(n) || 0) >= 1048576
+      ? (Number(n) / 1048576).toFixed(1) + 'MB'
+      : Math.round((Number(n) || 0) / 1024) + 'KB';
+
+    const ov = sheet({
+      title: '오래된 영상부터 정리',
+      body:
+        '<p class="mut sm" style="margin-bottom:12px;line-height:1.65">' +
+        '영상만 지워요. 글과 사진, 댓글은 그대로 남아요.<br>' +
+        '한 번 지우면 되돌릴 수 없어요.</p>' +
+        '<div class="list">' + list.map(v =>
+          '<label class="check" style="width:100%;text-align:left">' +
+          '<input type="checkbox" class="vpick" value="' + esc(v.path) + '" hidden>' +
+          '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
+          '<span class="grow"><span class="sm" style="font-weight:700">' +
+          esc(v.body || '(글 없음)') + '</span>' +
+          '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+          fmtDate(v.created_at) + ' · ' + mb2(v.bytes) + '</span></span></label>').join('') +
+        '</div>',
+      foot: '<button class="btn danger lg block" type="button" id="vGo">고른 영상 지우기</button>'
+    });
+
+    ov.querySelectorAll('.check').forEach(l => l.onclick = e => {
+      if (e.target.tagName === 'INPUT') return;
+      e.preventDefault();
+      const cb = l.querySelector('input');
+      cb.checked = !cb.checked;
+      l.classList.toggle('on', cb.checked);
+    });
+
+    ov.querySelector('#vGo').onclick = async () => {
+      const picks = Array.prototype.slice.call(ov.querySelectorAll('.vpick'))
+        .filter(c => c.checked).map(c => c.value);
+      if (!picks.length) return toast('지울 영상을 골라주세요', 'err');
+      const btn = ov.querySelector('#vGo');
+      btn.disabled = true; btn.textContent = '지우는 중…';
+      let done = 0;
+      for (const path of picks) {
+        try { await DB.community.deleteVideo(path); done++; }
+        catch (e) { }
+      }
+      closeSheet();
+      toast(done + '개를 지웠어요', 'ok');
+      paintUsage();
+    };
   }
 
   /* 전체 백업 — 표마다 JSON 하나씩, 한 파일로 묶어 내려받는다.

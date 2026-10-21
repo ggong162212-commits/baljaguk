@@ -52,7 +52,10 @@ create schema if not exists storage;
 create table if not exists storage.buckets (
   id      text primary key,
   name    text not null,
-  public  boolean not null default false
+  public  boolean not null default false,
+  /* 실서버에 있는 칸들 — 올릴 수 있는 크기와 형식 */
+  file_size_limit    bigint,
+  allowed_mime_types text[]
 );
 
 create table if not exists storage.objects (
