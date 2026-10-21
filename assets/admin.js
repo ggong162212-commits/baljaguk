@@ -365,7 +365,6 @@
 
   function profileSheet() {
     const m = MEINFO || {};
-    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     const ov = sheet({
       title: '내 프로필',
       body:
@@ -380,14 +379,11 @@
           : '') +
         '<div class="divider"></div>' +
         '<div style="display:grid;gap:8px">' +
-        '<button class="btn ghost block" type="button" id="apTheme">' +
-        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=admin">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="apOut">로그아웃</button>' +
         '</div>'
     });
     fillAvatars(ov);
-    ov.querySelector('#apTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
     ov.querySelector('#apOut').onclick = () => { DB.memberLogout(); DB.logout(); location.reload(); };
   }
 

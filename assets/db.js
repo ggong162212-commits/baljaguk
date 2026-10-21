@@ -2533,5 +2533,7 @@
     }
   };
 
+  /* 새 파일(pastvol.js 등)이 서버 함수를 부를 때 — 401 다시 받기·쉬운 말 오류를 그대로 쓴다 */
+  DB.rpc = (name, body) => rest('rpc/' + name, { method: 'POST', body: body || {} });
   window.DB = DB;
 })();

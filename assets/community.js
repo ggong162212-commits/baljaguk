@@ -549,7 +549,6 @@ window.Community = (function () {
   }
 
   function profileSheet() {
-    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     const ov = sheet({
       title: '내 프로필',
       body:
@@ -584,8 +583,6 @@ window.Community = (function () {
           ? '<button class="btn ghost block" type="button" id="pfBell">' +
             ic('alert') + '<span>알림 설정</span></button>'
           : '') +
-        '<button class="btn ghost block" type="button" id="pfTheme">' +
-        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="pfIdea">' +
         ic('mail') + '<span>운영진에게 의견 보내기</span></button>' +
@@ -636,7 +633,6 @@ window.Community = (function () {
 
     ov.querySelector('#pfMe').onclick = () => { closeSheet(); go('me'); };
     ov.querySelector('#pfOut').onclick = () => { DB.memberLogout(); location.reload(); };
-    ov.querySelector('#pfTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
 
     const file = ov.querySelector('#pfFile');
     ov.querySelector('#pfPick').onclick = () => file.click();
@@ -4265,6 +4261,7 @@ window.Community = (function () {
             : '<span class="rt">후기 ' + e.reviews + '개</span>') + '</button>').join('') +
         '</div>'
       : '';
+    if (window.PastVol) PastVol.mount($('#past'), { mine: false });  /* 지난 봉사 최근 3개 + 전체 보기 (pastvol.js) */
 
     paintShelters();
   }
@@ -4455,6 +4452,7 @@ window.Community = (function () {
       '');
     loadNews();
     await loadActivity();
+    if (window.PastVol) PastVol.mount($('#act'), { mine: true, append: true });  /* 내가 간 봉사 (pastvol.js) */
   }
 
   /* ---------- 새 소식 ----------
@@ -4679,5 +4677,5 @@ window.Community = (function () {
       '</div></div>';
   }
 
-  return { start, __readVideo: readVideo };
+  return { start, __readVideo: readVideo, openPast };  /* openPast — pastvol.js 전체 보기에서 */
 })();
