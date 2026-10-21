@@ -1,8 +1,8 @@
 /* ============================================================
    발자국 서비스워커
    알림을 받아 띄우고, 누르면 그 화면으로 보낸다.
-   화면을 통째로 저장해 두지는 않는다 — 글·사진은 늘 새로 받아야 하고,
-   오래된 화면이 남아 있으면 더 헷갈린다.
+   앱 껍데기(글꼴·그림틀·프로그램 파일)는 담아 두고,
+   글·사진 같은 **내용**은 늘 새로 받는다.
    ============================================================ */
 /* 알림 처리 버전 — 화면 설정에서 이 숫자를 보고
    폰이 새 서비스워커로 바뀌었는지 바로 알 수 있다 */
@@ -17,15 +17,86 @@ self.addEventListener('message', e => {
   if (e.data && e.data.type === 'clearPhotos') {
     e.waitUntil(caches.delete('baljaguk-photos-1'));
   }
+  /* 화면이 알려 준 「앱 껍데기」를 담아 둔다 */
+  if (e.data && e.data.type === 'shell') {
+    e.waitUntil(keepShell(e.data.urls));
+  }
 });
+
+/* ============================================================
+   앱 껍데기를 담아 둔다 — 「앱이 늦게 켜져요」
+   ------------------------------------------------------------
+   GitHub Pages 는 파일을 **10분만** 담아 두라고 알려 준다
+   (Cache-Control: max-age=600). 그래서 10분 뒤에 앱을 열면
+   브라우저가 파일 열몇 개를 **하나하나 다시 물어본다** —
+   폰에서는 그 왕복만으로 1초가 넘는다.
+
+   우리 파일 주소에는 번호가 붙어 있다 (…/community.js?v=202610212146).
+   **내용이 바뀌면 번호가 바뀐다** — 그러니 번호가 같으면 다시 물어볼
+   까닭이 없다. 담긴 것을 그냥 준다.
+
+   · 번호 붙은 assets/*.js·css → 담긴 것 먼저, 없으면 받아서 담는다
+   · 화면(me.html 등) → 받아 오기 먼저, 안 되면 담긴 것 (인터넷이 없을 때)
+   · 새 번호가 담기면 **같은 파일의 옛 번호는 지운다** — 저절로 치워진다
+   ★ 주의: 알림 설정과 상관없이 **모두** 서비스워커를 두어야 뜻이 있다
+     (community.js 의 keepSwFresh 가 등록한다)
+   ============================================================ */
+const SHELL = 'baljaguk-shell-1';
+
+/* ★ 담아 두기는 **없어도 되는 것**이다.
+   사생활 보호 모드·저장 공간 부족·기기 문제로 caches.open 이 통째로
+   실패할 수 있다. 그때 respondWith 가 거절되면 **앱이 아예 안 켜진다**
+   (파일마다 ERR_FAILED). 그러니 보관함은 「열리면 쓰고 아니면 만다」. */
+async function box(name) {
+  try { return await caches.open(name); } catch (e) { return null; }
+}
+
+/* 번호가 붙은 우리 파일인가 */
+function versioned(url) {
+  try {
+    const u = new URL(url);
+    return u.origin === self.location.origin &&
+      /\/assets\/[^/]+\.(js|css)$/.test(u.pathname) &&
+      /^[0-9]{12}$/.test(u.searchParams.get('v') || '');
+  } catch (e) { return false; }
+}
+
+/* 같은 파일의 **다른 번호**는 지운다 */
+async function dropOld(cache, url) {
+  const u = new URL(url);
+  for (const k of await cache.keys()) {
+    let o;
+    try { o = new URL(k.url); } catch (e) { continue; }
+    if (o.pathname === u.pathname && o.search !== u.search) await cache.delete(k);
+  }
+}
+
+/* 화면이 「내가 쓰는 파일들이에요」 하고 알려 주면 미리 담아 둔다.
+   처음 켤 때는 서비스워커가 아직 자리를 안 잡아 그 요청들을 못 본다 —
+   그래서 화면이 끝나고 한 번 알려 준다. 두 번째 켤 때부터 네트워크가 0 이다. */
+async function keepShell(urls) {
+  const cache = await box(SHELL);
+  if (!cache) return;
+  for (const u of (urls || []).slice(0, 40)) {
+    if (!versioned(u)) continue;
+    if (await cache.match(u)) continue;
+    try {
+      const res = await fetch(u, { credentials: 'same-origin' });
+      if (res && res.ok) { await cache.put(u, res.clone()); await dropOld(cache, u); }
+    } catch (e) { /* 인터넷이 없으면 다음에 */ }
+  }
+}
+
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil((async () => {
   await self.clients.claim();
   /* 옛 사진 보관함은 치운다 */
-  const names = await caches.keys();
+  let names = [];
+  try { names = await caches.keys(); } catch (e) { return; }
   await Promise.all(names
-    .filter(n => n.indexOf('baljaguk-photos-') === 0 && n !== PHOTOS)
+    .filter(n => (n.indexOf('baljaguk-photos-') === 0 && n !== PHOTOS) ||
+                 (n.indexOf('baljaguk-shell-') === 0 && n !== SHELL))
     .map(n => caches.delete(n)));
 })()));
 
@@ -83,10 +154,66 @@ async function trim(cache) {
 
 self.addEventListener('fetch', event => {
   const req = event.request;
-  if (req.method !== 'GET' || !isPhoto(req.url)) return;
+  if (req.method !== 'GET') return;
+
+  /* ── 번호 붙은 앱 파일: 담긴 것을 그냥 준다 (네트워크 0) */
+  if (versioned(req.url)) {
+    event.respondWith((async () => {
+      const cache = await box(SHELL);
+      if (!cache) return fetch(req);                 /* 담아 둘 수 없으면 그냥 받아 온다 */
+      let hit = null;
+      try { hit = await cache.match(req); } catch (e) { }
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res && res.ok) {
+        const copy = res.clone();
+        event.waitUntil((async () => {
+          try { await cache.put(req, copy); await dropOld(cache, req.url); } catch (e) { }
+        })());
+      }
+      return res;
+    })());
+    return;
+  }
+
+  /* ── 화면(me.html 등): 받아 오기 먼저, 안 되면 담긴 것.
+       새로 배포한 것이 **바로** 보여야 하고(번호가 여기 적혀 있다),
+       인터넷이 없을 때는 지난번 화면이라도 떠야 한다. */
+  if (req.mode === 'navigate') {
+    event.respondWith((async () => {
+      try {
+        const res = await fetch(req);
+        /* 담아 두는 것은 **맨 주소**뿐이다 (me.html).
+           ?무엇=... 이 붙은 주소까지 담으면 보관함이 끝없이 늘어난다 */
+        if (res && res.ok && !new URL(req.url).search) {
+          const copy = res.clone();
+          event.waitUntil((async () => {
+            const c = await box(SHELL);
+            if (c) { try { await c.put(req, copy); } catch (e) { } }
+          })());
+        }
+        return res;
+      } catch (e) {
+        /* 인터넷이 안 될 때 — 지난번 화면이라도 */
+        const cache = await box(SHELL);
+        if (!cache) throw e;
+        let hit = null;
+        try {
+          hit = (await cache.match(req)) ||
+                (await cache.match(new URL('me.html', self.registration.scope).href));
+        } catch (err) { }
+        if (hit) return hit;
+        throw e;
+      }
+    })());
+    return;
+  }
+
+  if (!isPhoto(req.url)) return;
 
   event.respondWith((async () => {
-    const cache = await caches.open(PHOTOS);
+    const cache = await box(PHOTOS);
+    if (!cache) return fetch(req);
     const key = photoKey(req.url);
     const hit = await cache.match(key);
 

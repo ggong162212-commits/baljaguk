@@ -2563,6 +2563,27 @@ window.Community = (function () {
   let swVersion = '';
   function keepSwFresh() {
     if (!('serviceWorker' in navigator)) return;
+    /* ★ 알림을 안 켠 사람도 서비스워커를 둔다.
+       예전에는 **알림을 켤 때만** 등록해서, 담아 두기(앱 껍데기·사진)가
+       알림 켠 몇 사람에게만 돌았다. 등록만으로는 아무것도 묻지 않는다 —
+       알림 허락 창도 안 뜬다. */
+    try {
+      navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' })
+        .catch(() => { });
+    } catch (e) { }
+
+    /* 내가 쓰는 파일 목록을 알려 둔다.
+       처음 켤 때는 서비스워커가 아직 자리를 안 잡아 그 요청들을 못 본다 —
+       그래서 한 번 알려 주고, 두 번째 켤 때부터 네트워크가 0 이 된다. */
+    const tellShell = () => {
+      const sw = navigator.serviceWorker.controller;
+      if (!sw) return;
+      const urls = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href]')]
+        .map(el => el.src || el.href)
+        .filter(u => u && u.indexOf(location.origin) === 0);
+      if (urls.length) { try { sw.postMessage({ type: 'shell', urls: urls }); } catch (e) { } }
+    };
+
     const look = () => {
       navigator.serviceWorker.getRegistration().then(reg => {
         if (!reg) return;
@@ -2573,6 +2594,9 @@ window.Community = (function () {
       }).catch(() => { });
     };
     look();
+    /* 화면이 다 뜬 뒤에 알린다 — 켜는 길을 막지 않게 */
+    if (document.readyState === 'complete') setTimeout(tellShell, 1200);
+    else window.addEventListener('load', () => setTimeout(tellShell, 1200), { once: true });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) look(); });
     window.addEventListener('focus', look);
 
@@ -2584,6 +2608,7 @@ window.Community = (function () {
       swVersion = '';
       const sw = navigator.serviceWorker.controller;
       if (sw) { try { sw.postMessage({ type: 'version' }); } catch (e) { } }
+      tellShell();
       if (deepTo) runDeepLink();
     });
   }
