@@ -1117,7 +1117,9 @@ window.Community = (function () {
     const d = String(date || '').slice(0, 10);
     const today = DB.today();
     if (d === today) return '오늘';
-    const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    /* 한국 날짜로 — UTC 로 자르면 한국 0~9시에 「어제」가 그저께가 된다 */
+    const y = new Date(Date.now() - 86400000)
+      .toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
     if (d === y) return '어제';
     const t = new Date(d + 'T00:00:00');
     return (t.getMonth() + 1) + '월 ' + t.getDate() + '일';

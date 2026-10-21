@@ -28,8 +28,6 @@
   --pink-soft:#FCE6E9;
   --danger:#E0685C;
   --danger-soft:#FBE5E2;
-  --purple:#A78BD0;
-  --purple-soft:#EFE8F8;
   /* 누른 하트 색 — 초록 테마와 부딪히지 않게 코랄로 */
   --like:#E8544E;
 
@@ -59,7 +57,6 @@ html[data-theme="dark"]{
   --sky-soft:#22303C;
   --pink-soft:#3B2A2D;
   --danger-soft:#3C2723;
-  --purple-soft:#2F2A3A;
   --shadow:0 8px 26px rgba(0,0,0,.32);
   --shadow-sm:0 3px 12px rgba(0,0,0,.26);
   --shadow-pop:0 14px 40px rgba(0,0,0,.45);
@@ -75,7 +72,6 @@ body{
   -webkit-font-smoothing:antialiased;
   padding-bottom:calc(var(--tab-h) + 18px + env(safe-area-inset-bottom));
 }
-body.no-tabbar{padding-bottom:32px}
 h1,h2,h3,h4,.title{font-family:var(--font-title);font-weight:400;letter-spacing:-.01em;margin:0}
 button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
 /* 두 번 빠르게 눌러도 화면이 확대되지 않게 — 폰에서 버튼이 밀리는 느낌을 없앤다 */
@@ -124,7 +120,6 @@ a{color:inherit;text-decoration:none}
 .pagehead{position:relative;padding:24px 4px 16px;overflow:hidden}
 .pagehead h1{font-size:32px;line-height:1.15;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pagehead p{margin:5px 0 0;color:var(--ink-2);font-size:14px}
-.pagehead .deco{position:absolute;right:-4px;top:12px;font-size:52px;opacity:.9;transform:rotate(-6deg)}
 .paw{color:var(--brand);font-size:.62em;letter-spacing:-2px}
 
 .topbar{
@@ -190,7 +185,6 @@ a{color:inherit;text-decoration:none}
 .ic.gold{background:var(--gold-soft);color:var(--gold)}
 .ic.sky{background:var(--sky-soft);color:var(--sky)}
 .ic.pink{background:var(--pink-soft);color:var(--pink)}
-.ic.purple{background:var(--purple-soft);color:var(--purple)}
 .ic.danger{background:var(--danger-soft);color:var(--danger)}
 
 /* ---------- 버튼 ---------- */
@@ -278,6 +272,11 @@ a{color:inherit;text-decoration:none}
 /* 누르는 자리를 44px 로 — 작은 아바타도 손가락에 맞게 */
 .avatar[data-member]{position:relative}
 .avatar[data-member]::after{content:"";position:absolute;inset:-6px;border-radius:50%}
+/* 카드 안 미리보기 댓글의 아바타는 26px 이라 -6 으로는 38px 밖에 안 된다.
+   그 자리만 더 넓혀 44px 을 맞춘다 (26 + 9*2 = 44) */
+.cline.brief .avatar[data-member]::after{inset:-9px}
+/* 봉사 신청자 얼굴 겹침도 작다 — 같은 이유로 넓힌다 */
+.vw-faces .avatar[data-member]::after{inset:-9px}
 
 .avatar.tiny{width:32px;height:32px;font-size:15px;border-width:1.5px;cursor:pointer}
 .prof-big{
@@ -317,17 +316,6 @@ html[data-theme="dark"] .avatar.av3{background-color:#3C5131;color:#C6EBAD}
 .kingbar .cnt{font-family:var(--font-title);font-size:22px;color:var(--brand-deep);text-align:right;line-height:1.15}
 .kingbar .cnt small{font-size:13px}
 
-/* 참여왕 (세로형, 예비) */
-.kingcard{
-  background:linear-gradient(165deg,var(--brand-soft),var(--surface));
-  border:1px solid var(--brand-soft);border-radius:var(--r-lg);
-  padding:20px;text-align:center;box-shadow:var(--shadow);position:relative;overflow:hidden
-}
-.kingcard::after{content:"🐾";position:absolute;right:12px;bottom:6px;font-size:34px;opacity:.16}
-.kingcard .ttl{font-family:var(--font-title);font-size:16px;color:var(--brand-deep);margin-bottom:12px}
-.kingcard .nm{font-family:var(--font-title);font-size:20px;margin-top:10px}
-.kingcard .cnt{font-family:var(--font-title);font-size:29px;color:var(--brand-deep);line-height:1.1;margin-top:6px}
-.kingcard .cnt small{font-size:15px}
 
 /* ---------- 폼 ---------- */
 .field{display:block;margin-bottom:15px}
@@ -365,8 +353,7 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .dt2 .input:empty{color:var(--ink-3)}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-@media(max-width:560px){.grid2,.grid3{grid-template-columns:1fr;gap:0}}
+@media(max-width:560px){.grid2{grid-template-columns:1fr;gap:0}}
 .dropzone{
   border:2px dashed var(--line);border-radius:var(--r-md);padding:22px;text-align:center;
   cursor:pointer;transition:.16s;background:var(--surface-2)
@@ -388,8 +375,6 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 /* 체크 표시는 켜졌을 때만. 다크에서 흰 체크가 미리 보이던 것 */
 .check .box.tick .svg{opacity:0;transition:.14s}
 .check.on .box.tick .svg{opacity:1}
-.check .hr{width:56px;flex:none}
-.check .hr input{width:100%;padding:6px 8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);text-align:center;font-size:16px}
 
 /* 누르는 자리는 44px 이상 — 보이는 크기는 그대로 두고
    가운데 맞춰 넓힌다. 손가락이 빗나가지 않게. */
@@ -1105,8 +1090,6 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
   background:linear-gradient(to top,var(--bg) 62%,transparent);pointer-events:none}
 .stickycta .in{max-width:480px;margin:0 auto;pointer-events:auto}
 
-/* 요약 타임라인 */
-.tl{display:grid;gap:0}
 .tl .n{display:flex;gap:12px;padding:11px 0;border-bottom:1px dashed var(--line-2)}
 .tl .n:last-child{border-bottom:none}
 .tl .dot{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;flex:none}
@@ -1378,15 +1361,6 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .pushban .t{display:block;font-size:13.5px;font-weight:700;line-height:1.35}
 .pushban .b{display:block;font-size:12.5px;color:var(--ink-3);line-height:1.5;margin-top:2px}
 
-/* 지운 뒤 되돌릴 틈 — 아래에서 올라온다 */
-.undobar{position:fixed;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);
-  z-index:420;display:flex;align-items:center;gap:12px;background:var(--ink);color:#fff;
-  border-radius:16px;padding:13px 16px;font-size:13.5px;
-  box-shadow:0 10px 28px rgba(27,29,26,.28);transform:translateY(140%);transition:.26s}
-.undobar.in{transform:translateY(0)}
-.undobar span{flex:1}
-.undobar button{flex:none;min-height:0;border:none;background:none;cursor:pointer;
-  color:var(--brand);font-size:13.5px;font-weight:800;padding:4px 2px}
 
 /* 저장 공간 막대 */
 .bar{height:9px;border-radius:999px;background:var(--surface-2);overflow:hidden}

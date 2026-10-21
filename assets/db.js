@@ -90,7 +90,9 @@
 
   /* ---------------- 체험 모드 저장소 ---------------- */
   function seed() {
-    const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+    /* 한국 날짜로 — UTC 로 자르면 한국 0~9시에 하루가 밀린다 */
+    const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n);
+      return t.toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); };
     const DEPT = (C.FALLBACK && C.FALLBACK.department) || '산업경영융합학과';
     const m = (name, dept, sid, role, status, joined, phone) =>
       ({ id: uid(), name, department: dept, student_id: sid, phone, role, status, joined_on: joined, emoji: '', memo: '', created_at: new Date().toISOString() });
@@ -448,16 +450,6 @@
     logout() {
       if (HAS_SB) { session = null; localStorage.removeItem(SKEY); }
       else localStorage.removeItem('baljaguk.demoAuth');
-    },
-    async changePassword(next) {
-      if (!HAS_SB) { const d = demoRead(); d.password = String(next); demoWrite(d); return true; }
-      const r = await fetch(C.SUPABASE_URL + '/auth/v1/user', {
-        method: 'PUT',
-        headers: { apikey: C.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: String(next) })
-      });
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.msg || '비밀번호를 바꾸지 못했어요'); }
-      return true;
     },
 
     settings: {
@@ -828,20 +820,6 @@
         demoWrite(d); return 'ok';
       }
       return await rest('rpc/event_signup', { method: 'POST', body: { p_event: eventId, p_name: name, p_sid: sid || '' } });
-    },
-    async eventCancel(eventId, name, sid) {
-      if (!HAS_SB) {
-        const d = demoRead();
-        const hits = (d.members || []).filter(m => String(m.name).trim() === String(name).trim()
-          && (!sid || m.student_id === sid));
-        if (!hits.length) return 'nomatch';
-        if (hits.length > 1) return 'many';
-        const before = (d.attendance || []).length;
-        d.attendance = (d.attendance || []).filter(a => !(a.event_id === eventId && a.member_id === hits[0].id));
-        demoWrite(d);
-        return d.attendance.length < before ? 'ok' : 'none';
-      }
-      return await rest('rpc/event_cancel', { method: 'POST', body: { p_event: eventId, p_name: name, p_sid: sid || '' } });
     },
 
     /* 설문 응답 본인 수정 — 이름이 똑같은 응답만 찾아준다 */
@@ -2365,7 +2343,8 @@
         const d = cdemo(), me = myDemoId();
         if (!me) return null;
         const today = DB.today();
-        const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const weekAgo = new Date(Date.now() - 7 * 86400000)
+          .toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
         const mine = (d.attendance || []).filter(a => a.member_id === me);
         const cands = mine
           .map(a => (d.events || []).find(e => e.id === a.event_id))
@@ -2452,20 +2431,6 @@
       return await rest('rpc/vol_board', { method: 'POST', body: { p_days: 120 } });
     },
 
-    /* ---------- 대기 신청 ---------- */
-    async myWaitlist() {
-      if (!HAS_SB) {
-        const d = cdemo(), me = myDemoId();
-        if (!me) return [];
-        const w = d.event_waitlist || [];
-        return w.filter(x => x.member_id === me).map(x => ({
-          event_id: x.event_id,
-          pos: w.filter(y => y.event_id === x.event_id &&
-            String(y.created_at) <= String(x.created_at)).length
-        }));
-      }
-      return await rest('rpc/my_waitlist', { method: 'POST', body: {} }) || [];
-    },
 
     async waitJoin(eventId) {
       if (!HAS_SB) {
@@ -2577,16 +2542,6 @@
     },
 
     /* ---------- 봉사 신청 (로그인한 구성원) ---------- */
-    /* 이름이 아니라 내 id 로 한다. 동명이인이 있어도 섞이지 않는다 */
-    async mySignups() {
-      if (!HAS_SB) {
-        const id = myDemoId();
-        if (!id) return [];
-        return (cdemo().attendance || [])
-          .filter(a => a.member_id === id).map(a => a.event_id);
-      }
-      return await rest('rpc/my_signups', { method: 'POST', body: {} }) || [];
-    },
 
     async signup(eventId) {
       if (!HAS_SB) {
