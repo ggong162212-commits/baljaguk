@@ -50,6 +50,21 @@ run "community.sql" "$HERE/community.sql"
 if [ -f "$HERE/feed-credit.sql" ]; then
   run "feed-credit.sql" "$HERE/feed-credit.sql"
 fi
+if [ -f "$HERE/fix-1.sql" ]; then
+  run "fix-1.sql" "$HERE/fix-1.sql"
+fi
+if [ -f "$HERE/fix-2.sql" ]; then
+  run "fix-2.sql" "$HERE/fix-2.sql"
+fi
+
+echo ""
+echo "── 없는 것을 부르는 곳 (버튼이 조용히 죽는 버그)"
+if node "$HERE/check-js.js"; then
+  :
+else
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 echo ""
 echo "── 만들어진 함수"

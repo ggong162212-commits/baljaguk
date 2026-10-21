@@ -104,7 +104,7 @@ create index if not exists posts_question_idx on posts (is_question, created_at 
 create table if not exists reactions (
   post_id   uuid not null references posts(id) on delete cascade,
   member_id uuid not null references members(id) on delete cascade,
-  kind      text not null check (kind in ('heart','paw','haha','moved','clap','best')),
+  kind      text not null check (kind in ('heart','paw','haha','moved','clap')),
   created_at timestamptz not null default now(),
   primary key (post_id, member_id, kind)
 );

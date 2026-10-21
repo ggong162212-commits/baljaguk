@@ -906,7 +906,7 @@
      체험 모드는 같은 모양을 브라우저 안에서 만든다.
      ============================================================ */
 
-  const REACTIONS = ['heart', 'paw', 'haha', 'moved', 'clap', 'best'];
+  const REACTIONS = ['heart', 'paw', 'haha', 'moved', 'clap'];
 
   /* 체험 모드 저장소 — 없으면 빈 칸을 만들어 둔다 */
   function cdemo() {
@@ -1177,6 +1177,15 @@
     return await rest('rpc/usage_stats', { method: 'POST', body: {} });
   };
 
+  /* 누가 알림을 켰나 — 운영진만. 기기 수만 받는다 (주소·키는 안 받는다) */
+  DB.pushWho = async function () {
+    if (!HAS_SB) {
+      const d = cdemo();
+      return (d.members || []).map(m => ({ id: m.id, devices: 0 }));
+    }
+    return await rest('rpc/push_who', { method: 'POST', body: {} }) || [];
+  };
+
   DB.adminTodo = async function () {
     if (!HAS_SB) {
       const d = cdemo();
@@ -1428,16 +1437,62 @@
           id: uid(), created_at: new Date().toISOString(), post_id: postId,
           parent_id: parentId || null, author_id: meId, body: text, hidden: false, edited_at: null
         });
-        demoWrite(d); return true;
+        const made = d.comments[d.comments.length - 1];
+        demoWrite(d); return { id: made.id };
       }
-      await rest('comments', {
-        method: 'POST', prefer: 'return=minimal',
+      /* 만든 댓글의 id 를 돌려준다 — @ 로 부른 사람을 그 댓글에 매단다 */
+      const r = await rest('comments', {
+        method: 'POST', prefer: 'return=representation',
         body: {
           post_id: postId, parent_id: parentId || null,
           body: text, author_id: await DB.community.myId()
         }
       });
-      return true;
+      return (Array.isArray(r) ? r[0] : r) || { id: null };
+    },
+
+    /* 댓글 좋아요 — 눌렀다 뗐다 */
+    async likeComment(commentId) {
+      if (!HAS_SB) {
+        const d = cdemo(), me = myDemoId();
+        if (!me) return { ok: false, why: 'nomember' };
+        d.comment_likes = d.comment_likes || [];
+        const i = d.comment_likes.findIndex(x => x.comment_id === commentId && x.member_id === me);
+        if (i >= 0) d.comment_likes.splice(i, 1);
+        else d.comment_likes.push({ comment_id: commentId, member_id: me, created_at: new Date().toISOString() });
+        demoWrite(d);
+        return { ok: true, on: i < 0, n: d.comment_likes.filter(x => x.comment_id === commentId).length };
+      }
+      return await rest('rpc/comment_like_toggle', {
+        method: 'POST', body: { p_comment: commentId }
+      });
+    },
+
+    /* @ 를 칠 때 보여 줄 이름들 */
+    async mentionPeople(q) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        const s2 = String(q || '').trim();
+        return (d.members || [])
+          .filter(m => m.status !== 'left' && (!s2 || String(m.name).indexOf(s2) >= 0))
+          .slice(0, 20)
+          .map(m => ({ id: m.id, name: m.name, photo: m.photo_path || null }));
+      }
+      return await rest('rpc/mention_people', {
+        method: 'POST', body: { p_q: String(q || '') }
+      }) || [];
+    },
+
+    /* 부른 사실을 적는다 — 불린 사람에게 알림이 간다 */
+    async mentionAdd(ids, postId, commentId, detail) {
+      if (!HAS_SB) return { ok: true, n: (ids || []).length };
+      return await rest('rpc/mention_add', {
+        method: 'POST',
+        body: {
+          p_ids: ids || [], p_post: postId || null,
+          p_comment: commentId || null, p_detail: String(detail || '')
+        }
+      });
     },
 
     async updateComment(id, body) {
@@ -1498,7 +1553,9 @@
       if (!HAS_SB) {
         const d = cdemo();
         return d.reactions.filter(r => r.post_id === postId && r.kind === kind)
-          .map(r => (demoMember(r.member_id) || {}).name).filter(Boolean).sort();
+          .map(r => demoMember(r.member_id)).filter(Boolean)
+          .map(m => ({ name: m.name, photo: m.photo_path || null }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
       }
       return await rest('rpc/reaction_who', {
         method: 'POST', body: { p_post: postId, p_kind: kind }
@@ -1560,7 +1617,9 @@
       if (!HAS_SB) {
         const d = cdemo();
         return d.poll_votes.filter(v => v.option_id === optionId)
-          .map(v => (demoMember(v.member_id) || {}).name).filter(Boolean).sort();
+          .map(v => demoMember(v.member_id)).filter(Boolean)
+          .map(m => ({ name: m.name, photo: m.photo_path || null }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
       }
       return await rest('rpc/poll_who', {
         method: 'POST', body: { p_option: optionId }

@@ -453,8 +453,14 @@
     document.querySelectorAll('.todobox').forEach(x => { if (x !== box) x.innerHTML = ''; });
 
     let t = null;
-    try { t = await DB.adminTodo(); } catch (e) { }
-    if (!t) { box.innerHTML = ''; return; }
+    try { t = await DB.adminTodo(); }
+    catch (e) { console.warn('[발자국] 할 일을 못 받아왔어요:', e); }
+    if (!t) {
+      /* 못 받아온 것과 「챙길 게 없는 것」은 다르다 */
+      box.innerHTML = '<div class="pill-note">할 일을 불러오지 못했어요. ' +
+        '잠시 뒤 새로고침 해주세요</div>';
+      return;
+    }
 
     const items = [
       ['vol', 'calendar', '확정 안 한 봉사', t.unconfirmed],
@@ -482,10 +488,21 @@
   /* 받은 의견 — 구성원이 「불편한 점 알려 주기」로 보낸 것 */
   async function feedbackSheet() {
     const ov = sheet({ title: '받은 의견', body: '<div id="fbList" class="mut sm">불러오는 중…</div>' });
-    let list = [];
-    try { list = await DB.feedback.open(); } catch (e) { }
+    /* 못 받아온 것과 「없는 것」은 다르다.
+       예전에는 실패해도 「아직 받은 의견이 없어요」로 보여서
+       의견이 쌓여 있는데도 없는 줄 알았다. */
+    let list = null;
+    try { list = await DB.feedback.open(); }
+    catch (e) { console.warn('[발자국] 받은 의견을 못 받아왔어요:', e); }
     const box = ov.querySelector('#fbList');
     if (!box) return;
+    if (list === null) {
+      box.innerHTML = '<div class="card center" style="padding:22px 18px">' +
+        '<div class="sm">의견을 불러오지 못했어요</div>' +
+        '<div class="sm mut" style="margin-top:5px">잠시 뒤 다시 열어 주세요</div></div>';
+      toast('의견을 불러오지 못했어요', 'err');
+      return;
+    }
     if (!list.length) { box.innerHTML = '<div class="mut sm">아직 받은 의견이 없어요</div>'; return; }
 
     box.innerHTML = list.map(f =>
@@ -931,7 +948,7 @@
   /* ============================================================
      3. 구성원
      ============================================================ */
-  function renderMembers() {
+  async function renderMembers() {
     const all = S.members;
     const admins = all.filter(m => m.role === 'admin').length;
 
@@ -939,14 +956,31 @@
     const linked = m => !!m.auth_user_id;
     const nLinked = all.filter(linked).length;
 
+    /* 누가 알림을 켰는지 — 기기 수만 받아 온다. 주소·키는 안 받는다 */
+    if (!S.pushWho) {
+      try { S.pushWho = await DB.pushWho(); }
+      catch (e) { console.warn('[발자국] 알림 켠 사람을 못 받아왔어요:', e); S.pushWho = []; }
+    }
+    const devOf = id => {
+      const hit = (S.pushWho || []).filter(x => x.id === id)[0];
+      return hit ? Number(hit.devices) || 0 : 0;
+    };
+    const nPush = all.filter(m => devOf(m.id) > 0).length;
+
     $('#memberStats').innerHTML =
       '<div class="statcard">' +
       stat('green', 'users', '전체', all.length + '명') +
       stat('gold', 'star', '운영진', admins + '명') +
-      stat('sky', 'link', '연결', nLinked + ' / ' + all.length) + '</div>';
+      stat('sky', 'link', '연결', nLinked + ' / ' + all.length) +
+      stat('green', 'megaphone', '알림 켬', nPush + ' / ' + all.length) + '</div>';
 
-    const counts = { all: all.length, admin: admins, nolink: all.length - nLinked };
-    const chips = [['all', '전체'], ['admin', '운영진'], ['nolink', '연결 안 함']];
+    const counts = {
+      all: all.length, admin: admins,
+      nolink: all.length - nLinked,
+      nopush: all.filter(m => devOf(m.id) === 0).length
+    };
+    const chips = [['all', '전체'], ['admin', '운영진'],
+                   ['nolink', '연결 안 함'], ['nopush', '알림 안 켬']];
     $('#memberChips').innerHTML = chips.map(([k, l]) =>
       '<button class="chip' + (F.member === k ? ' on' : '') + '" data-m="' + k + '">' + l + '<span class="n">' + counts[k] + '</span></button>').join('');
     $$('#memberChips [data-m]').forEach(b => b.addEventListener('click', () => { F.member = b.dataset.m; renderMembers(); }));
@@ -959,6 +993,21 @@
           ic('clipboard') + '<span>연결 안 한 ' + (all.length - nLinked) +
           '명에게 보낼 안내 문구 복사</span></button>'
         : '';
+      /* 알림을 안 켠 사람에게 보낼 안내 — 이름 목록은 넣지 않는다.
+         알림은 브라우저 권한이라 운영진이 대신 켜 줄 수 없다. */
+      const noPush = all.filter(m => devOf(m.id) === 0).length;
+      if (noPush) {
+        inviteBox.insertAdjacentHTML('beforeend',
+          '<button class="btn ghost sm block" type="button" id="copyPush" style="margin-top:8px">' +
+          ic('megaphone') + '<span>알림 안 켠 ' + noPush + '명에게 보낼 안내 문구 복사</span></button>');
+        const cp = $('#copyPush');
+        if (cp) cp.onclick = () => copy(
+          [new URL('me.html', location.href).href,
+           '크롬이나 사파리로 열고 → 오른쪽 위 동그라미 → 알림 설정 → 알림 켜기',
+           '아이폰은 홈 화면에 추가를 먼저 해주세요'].join(String.fromCharCode(10)),
+          '안내 문구를 복사했어요');
+      }
+
       const ci = $('#copyInvite');
       if (ci) ci.onclick = () => copy(
         [new URL('me.html', location.href).href,
@@ -974,6 +1023,7 @@
     let list = all.slice();
     if (F.member === 'admin') list = list.filter(m => m.role === 'admin');
     if (F.member === 'nolink') list = list.filter(m => !linked(m));
+    if (F.member === 'nopush') list = list.filter(m => devOf(m.id) === 0);
     const q = F.q2.trim();
     if (q) list = list.filter(m => (m.name + (m.department || '') + (m.student_id || '')).includes(q));
     if (F.sort === 'name') list.sort((a, b) =>
@@ -1000,6 +1050,9 @@
       (linked(m)
         ? '<span class="linkdot on">연결됨</span>'
         : '<span class="linkdot">아직</span>') +
+      '<span class="belldot' + (devOf(m.id) ? ' on' : '') + '" ' +
+      'title="' + (devOf(m.id) ? '알림 켬 · 기기 ' + devOf(m.id) + '대' : '알림 안 켬') + '">' +
+      ic('megaphone') + '</span>' +
       '</div></div>' +
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('users', '해당하는 구성원이 없어요'));
@@ -3175,6 +3228,14 @@
   function renderSettings() {
     const s = S.settings;
     $('#settingsPanel').innerHTML =
+      /* 할 일이 0이면 할 일 카드가 숨어서 지난 의견·신고를 볼 곳이 없었다 */
+      '<div class="card"><h3>받은 것들</h3>' +
+      '<div class="sub">할 일이 없을 때도 여기서 지난 것을 볼 수 있어요.</div><div class="sp"></div>' +
+      '<button class="btn ghost block" type="button" id="goFeedback">' +
+      ic('heart') + '<span>받은 의견 보기</span></button>' +
+      '<button class="btn ghost block" type="button" id="goReports" style="margin-top:8px">' +
+      ic('alert') + '<span>신고 보기</span></button></div>' +
+
       '<div class="card"><h3>사용 현황</h3>' +
       '<div class="sub">이번 주 움직임과 남은 저장 공간이에요.</div><div class="sp"></div>' +
       '<div id="usageBox" class="mut sm">불러오는 중…</div>' +
@@ -3245,6 +3306,8 @@
       toast('저장했어요', 'ok'); renderSettings();
     };
     $('#goFormSettings').onclick = () => go('apply');
+    const gf = $('#goFeedback'); if (gf) gf.onclick = feedbackSheet;
+    const gr = $('#goReports');  if (gr) gr.onclick = reportsSheet;
     function paintPlaces() {
       const list = volPlaces();
       $('#placeList').innerHTML = list.map((pl, i) =>
