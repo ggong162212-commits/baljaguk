@@ -116,8 +116,6 @@ window.Community = (function () {
     /* 남이 한 것이 바로 보이게 */
     startLive();
 
-    /* + 버튼이 카드의 「…」 를 덮지 않게 */
-    watchFab();
     /* 아바타는 어디서든 눌러서 그 사람 프로필을 연다 */
     watchAvatarTaps();
     /* 알림 처리가 옛것으로 남지 않게 */
@@ -1136,8 +1134,11 @@ window.Community = (function () {
        그릴 때 실제로 안 넘치면 「더 보기」를 치운다 (clipCheck) */
     const long = !!body;
 
+    /* 칭찬 글은 머리를 통째로 다르게 쓴다 — 한 줄로 두 사람을 보여 준다 */
+    const przHead = (p.type === 'praise' && window.Praise) ? Praise.head(p) : '';
+
     return '<article class="card post' + (p.type === 'praise' || p.type === 'fame' ? ' ' + p.type : '') + '" data-post="' + esc(p.id) + '">' +
-      '<div class="who">' +
+      (przHead ? przHead : '<div class="who">' +
       '<button class="facebtn" type="button" data-peek="' + esc(who.id || '') + '" ' +
       'data-pname="' + esc(who.name) + '" data-pphoto="' + esc(who.photo || who.photo_path || '') + '" ' +
       'data-prole="' + esc(who.role || '') + '" aria-label="' + esc(who.name) + ' 프로필">' +
@@ -1147,7 +1148,7 @@ window.Community = (function () {
       '<div class="at">' + relTime(p.created_at) +
       (p.edited_at ? ' · 수정됨' : '') + '</div></div>' +
       '<button class="iconbtn sq" type="button" data-menu="' + esc(p.id) + '" aria-label="이 글 메뉴">' +
-      ic('more') + '</button></div>' +
+      ic('more') + '</button></div>') +
 
       (p.type === 'notice'
         ? '<div class="meta">' + ic('pin') + '공지</div>'
@@ -1157,7 +1158,6 @@ window.Community = (function () {
           (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '')) +
 
-      (p.type === 'praise' && window.Praise ? Praise.head(p) : '') +  /* 칭찬해요 줄 (praise.js) */
       (p.type === 'fame' && window.Fame ? Fame.head(p) : '') +  /* 명예의 전당 (fame.js) */
 
       /* 사진이 먼저 — 두 번 톡 누르면 하트 */
@@ -2551,35 +2551,17 @@ window.Community = (function () {
     });
   }
 
-  function watchFab() {
-    const fab = $('#fab');
-    if (!fab || fab.__dodge) return;
-    fab.__dodge = true;
-    let tick = false;
-    const look = () => {
-      if (tick) return;
-      tick = true;
-      requestAnimationFrame(() => {
-        tick = false;
-        if (fab.hidden) return;
-        const f = fab.getBoundingClientRect();
-        let hit = false;
-        document.querySelectorAll('[data-menu],[data-pin]').forEach(b => {
-          if (hit) return;
-          const r = b.getBoundingClientRect();
-          if (!r.width || !r.height) return;
-          hit = !(r.right < f.left || r.left > f.right ||
-                  r.bottom < f.top || r.top > f.bottom);
-        });
-        fab.classList.toggle('dodge', hit);
-      });
-    };
-    window.addEventListener('scroll', look, { passive: true });
-    window.addEventListener('resize', look, { passive: true });
-    setTimeout(look, 300);
-    fabLook = look;
-  }
-  let fabLook = null;
+  /* ============================================================
+     + 버튼은 **늘 같은 자리에** 둔다
+     ------------------------------------------------------------
+     한동안 「…」 와 겹치면 옆으로 비켜서게 했는데,
+     선고은님: 「피드를 내리다 보면 + 버튼이 불안정해, 떴다 안 떴다 해」
+     굴릴 때마다 겹침을 다시 재다 보니 켰다 껐다 했다.
+     이제 움직이지 않는다. 겹침은 **자리**로 푼다 —
+     피드 맨 아래에 + 버튼 높이만큼 여백을 둬서,
+     어느 카드든 조금만 굴리면 + 밖으로 나온다.
+     숨기는 건 **키보드가 올라왔을 때**뿐이다 (.typing).
+     ============================================================ */
 
   /* ============================================================
      실시간 — 남이 한 것이 내 화면에 바로 뜨게
@@ -3965,18 +3947,21 @@ window.Community = (function () {
     const ov = sheet({
       title: '',
       body:
-        '<div class="who" style="margin-bottom:10px">' + avatar(who, p.type === 'fame' ? 'fame-logo' : '') +
-        '<div class="grow"><div class="nm">' + esc(who.name) +
-        (who.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
-        '<div class="at">' + relTime(p.created_at) +
-        (p.edited_at ? ' · 수정됨' : '') + '</div></div></div>' +
+        /* 칭찬 글은 피드 카드와 **같은 머리**를 쓴다 (한 줄로 두 사람) */
+        ((p.type === 'praise' && window.Praise)
+          ? Praise.head(p)
+          : '<div class="who" style="margin-bottom:10px">' + avatar(who, p.type === 'fame' ? 'fame-logo' : '') +
+            '<div class="grow"><div class="nm">' + esc(who.name) +
+            (who.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
+            '<div class="at">' + relTime(p.created_at) +
+            (p.edited_at ? ' · 수정됨' : '') + '</div></div></div>') +
 
         (p.date || p.place
           ? '<div class="meta">' + ic('calendar') +
           (p.date ? fmtDate(p.date) : '') +
           (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '') +
-        (p.type === 'praise' && window.Praise ? Praise.head(p) : '') + (p.type === 'fame' && window.Fame ? Fame.head(p) : '') +  /* praise.js · fame.js */
+        (p.type === 'fame' && window.Fame ? Fame.head(p) : '') +  /* fame.js */
 
         (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
         photoStrip(p) +

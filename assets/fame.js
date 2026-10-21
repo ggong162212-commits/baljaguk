@@ -31,8 +31,9 @@
     '.famebar .facebtn{display:block;margin:10px auto 6px;border:none;background:none;padding:0;' +
     'border-radius:50%;cursor:pointer;min-width:84px;min-height:84px}' +
     '.famebar .avatar{width:84px;height:84px;font-size:30px;box-shadow:0 0 0 3px var(--gold)}' +
-    '.famebar .nm{font-weight:800;font-size:16px;color:var(--ink)}' +
-    '.famebar .bdg{display:flex;justify-content:center;gap:10px;margin-top:10px}' +
+    '.famebar .nm{font-weight:800;font-size:16px;color:var(--ink);' +
+    'overflow-wrap:anywhere;word-break:break-word;padding:0 8px}' +
+    '.famebar .bdg{display:flex;justify-content:center;gap:10px;margin-top:10px;flex-wrap:wrap}' +
     '.famebar .bdg span{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12px;' +
     'font-weight:700;color:var(--ink-2);min-width:52px}' +
     '.famebar .bdg i{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;' +

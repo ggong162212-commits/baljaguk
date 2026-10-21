@@ -14,7 +14,7 @@
      Praise.mountMe(box)                — renderMe 에서
    ============================================================ */
 (function () {
-  const { esc, avatar } = UI;
+  const { esc, avatar, relTime } = UI;
   const isDemo = () => !!(DB.isDemo && DB.isDemo());
   const demoData = () => { try { return JSON.parse(localStorage.getItem('baljaguk.demo') || '{}'); } catch (e) { return {}; } };
   const demoMe = () => { try { return localStorage.getItem('baljaguk.demoMe'); } catch (e) { return null; } };
@@ -65,16 +65,22 @@
   const CSS =
     '.card.post.praise{background:var(--surface);' +
     'background:color-mix(in srgb,var(--brand-soft) 45%,var(--surface))}' +
-    '.praisebar{display:flex;align-items:center;gap:12px;margin:2px 0 12px;padding:10px 12px;' +
-    'border-radius:16px;background:var(--brand-soft)}' +
-    '.praisebar .facebtn{flex:none;border:none;background:none;padding:0;min-width:52px;min-height:52px;' +
-    'display:grid;place-items:center;border-radius:50%;cursor:pointer}' +
-    '.praisebar .avatar{width:52px;height:52px;font-size:19px}' +
-    '.praisebar .tx{font-size:15px;line-height:1.45;color:var(--ink)}' +
-    '.praisebar .tx b{font-weight:800}' +
-    '.praisebar .tag{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;' +
-    'color:var(--brand-deep);margin-bottom:2px}' +
-    '.praisebar .tag svg,.praisebar .tag .svg{width:14px;height:14px}' +
+    /* 칭찬 글 머리 — 한 줄로 [사진]이름 → [사진]이름 · 칭찬해요 */
+    '.przwho{display:flex;align-items:center;gap:8px;margin-bottom:2px}' +
+    '.prz-line{display:flex;align-items:center;gap:6px;flex:1;min-width:0}' +
+    '.prz-one{display:flex;align-items:center;gap:6px;border:none;background:none;padding:0;' +
+    'cursor:pointer;color:var(--ink);min-width:0;font-family:inherit}' +
+    '.prz-one .avatar{width:32px;height:32px;font-size:14px;flex:none}' +
+    /* ★ 이름만 줄여 쓴다 — 사진·화살표·「칭찬해요」는 늘 보인다 */
+    '.prz-one .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;' +
+    'text-overflow:ellipsis;min-width:0}' +
+    '.prz-ar{flex:none;display:grid;place-items:center;color:var(--ink-3)}' +
+    '.prz-ar svg,.prz-ar .svg{width:15px;height:15px}' +
+    '.prz-tag{flex:none;font-size:12px;font-weight:800;color:var(--brand-deep);' +
+    'white-space:nowrap;margin-left:2px}' +
+    '.prz-at{font-size:12px;color:var(--ink-3);margin:0 0 10px 40px}' +
+    /* 아주 좁으면 이름을 더 줄인다 */
+    '@media (max-width:370px){.prz-one .nm{max-width:64px}.prz-one .avatar{width:28px;height:28px}}' +
     '.pr-search{position:relative}' +
     '.pr-list{display:grid;gap:2px;margin-top:10px;max-height:46vh;overflow:auto}' +
     '.pr-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 8px;border:none;' +
@@ -180,17 +186,40 @@
   }
 
   /* ---------- 피드 카드 위 줄 ---------- */
+  /* ── 칭찬 글의 **카드 머리** (일반 글 머리 대신 이것을 쓴다)
+     선고은님: 「프로필 보이면서 『선고은 → 한예원 칭찬해요』 이런 식으로 간단하게」
+       [사진] 선고은  →  [사진] 한예원 · 칭찬해요        […]
+       그 아래 작은 회색 시간
+     ★ 360 폭에서 이름이 길면 **이름만** 말줄임(…).
+       사진·화살표·「칭찬해요」는 늘 보인다. */
   function head(p) {
     css();
     const who = p.author || {};
     const to = p.praised || (p.praised_member_id ? { id: p.praised_member_id, name: '구성원' } : null);
     if (!to) return '';
-    return '<div class="praisebar">' +
-      '<button class="facebtn" type="button" data-peek="' + esc(to.id || '') + '" ' +
-      'data-pname="' + esc(to.name || '') + '" data-pphoto="' + esc(to.photo || '') + '" ' +
-      'aria-label="' + esc(to.name || '') + ' 프로필">' + avatar({ name: to.name, photo: to.photo }) + '</button>' +
-      '<div class="tx"><div class="tag">' + window.ic('paw') + '<span>칭찬해요</span></div>' +
-      '<b>' + esc(who.name || '누군가') + '</b>님이 <b>' + esc(to.name || '') + '</b>님을 칭찬해요</div></div>';
+
+    const one = (m, cls) =>
+      '<button class="prz-one ' + cls + '" type="button" ' +
+      'data-member="' + esc(m.id || '') + '" ' +
+      'data-mname="' + esc(m.name || '') + '" ' +
+      'data-mphoto="' + esc(m.photo || m.photo_path || '') + '" ' +
+      'data-mrole="' + esc(m.role || '') + '" ' +
+      'aria-label="' + esc(m.name || '') + ' 프로필">' +
+      avatar({ name: m.name, photo: m.photo || m.photo_path }) +
+      '<span class="nm">' + esc(m.name || '') + '</span></button>';
+
+    return '<div class="who przwho">' +
+      '<div class="prz-line">' +
+      one(who, 'from') +
+      '<span class="prz-ar" aria-hidden="true">' + window.ic('chevron') + '</span>' +
+      one(to, 'to') +
+      '<span class="prz-tag">칭찬해요</span>' +
+      '</div>' +
+      '<button class="iconbtn sq" type="button" data-menu="' + esc(p.id) + '" ' +
+      'aria-label="이 글 메뉴">' + window.ic('more') + '</button>' +
+      '</div>' +
+      '<div class="prz-at">' + relTime(p.created_at) +
+      (p.edited_at ? ' · 수정됨' : '') + '</div>';
   }
 
   /* ---------- 나 탭 ---------- */
