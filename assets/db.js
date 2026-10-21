@@ -1677,6 +1677,15 @@
               ? made[v.poll.answer_index].id : null
           });
         }
+        /* 칭찬 글이면 받은 사람 「새 소식」에 한 줄 — 서버와 같은 모양 (fix-18) */
+        if (p.type === 'praise' && p.praised_member_id) {
+          d.member_notices = d.member_notices || [];
+          d.member_notices.push({
+            id: uid(), created_at: p.created_at, member_id: p.praised_member_id,
+            kind: 'praise', body: String(v.body || '').trim().slice(0, 40),
+            post_id: p.id, actor_id: meId
+          });
+        }
         demoWrite(d);
         return { id: p.id };
       }
@@ -2533,8 +2542,9 @@
           }));
         (d.member_notices || []).filter(n => n.member_id === me)
           .forEach(n => out.push({
-            kind: n.kind, at: n.created_at, post_id: null,
-            who: null, detail: n.detail, react: null
+            kind: n.kind, at: n.created_at, post_id: n.post_id || null,
+            who: n.actor_id ? (demoMember(n.actor_id) || {}).name : null,
+            detail: n.body || n.detail, react: null
           }));
         return out.sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30);
       }

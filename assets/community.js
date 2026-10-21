@@ -4966,6 +4966,12 @@ window.Community = (function () {
         return '<b>' + esc(n.who || '?') + '</b>님이 내 글을 좋아해요';
       if (n.kind === 'promoted')
         return '대기에서 신청으로 올라갔어요 — <b>' + esc(n.detail || '') + '</b>';
+      /* 칭찬·명예의 전당 — 알림을 안 켠 사람도 여기서는 본다 (fix-18) */
+      if (n.kind === 'praise')
+        return '<b>' + esc(n.who || '누군가') + '</b>님이 회원님을 칭찬했어요' +
+          (n.detail ? ' — ' + esc(cut(n.detail, 28)) : '');
+      if (n.kind === 'fame')
+        return '🏆 <b>' + esc(cut(n.detail || '명예의 전당에 올랐어요', 30)) + '</b>';
       return esc(n.detail || '새 소식이 있어요');
     };
 
