@@ -184,6 +184,16 @@
     return (await DB.isAdmin()) ? enter() : gate('denied', me.name);
   }
 
+  /* 들어온 뒤에 로그인이 풀렸을 때 — 빈 화면 대신 알려 준다 */
+  let lostShown = false;
+  function lostSession() {
+    if (lostShown) return;
+    lostShown = true;
+    $('#admin').hidden = true;
+    $('#tabbar').hidden = true;
+    gate('login', '로그인이 풀렸어요. 다시 들어와 주세요.');
+  }
+
   /* 못 들어온 사람에게 보여줄 화면들 */
   function gate(kind, arg) {
     $('#login').hidden = false;
@@ -487,7 +497,10 @@
 
     let t = null;
     try { t = await DB.adminTodo(); }
-    catch (e) { console.warn('[발자국] 할 일을 못 받아왔어요:', e); }
+    catch (e) {
+      console.warn('[발자국] 할 일을 못 받아왔어요:', e);
+      if (e && e.code === 'noauth') return lostSession();
+    }
     if (!t) {
       /* 못 받아온 것과 「챙길 게 없는 것」은 다르다 */
       box.innerHTML = '<div class="pill-note">할 일을 불러오지 못했어요. ' +
@@ -994,7 +1007,13 @@
     /* 누가 알림을 켰는지 — 기기 수만 받아 온다. 주소·키는 안 받는다 */
     if (!S.pushWho) {
       try { S.pushWho = await DB.pushWho(); }
-      catch (e) { console.warn('[발자국] 알림 켠 사람을 못 받아왔어요:', e); S.pushWho = []; }
+      catch (e) {
+        console.warn('[발자국] 알림 켠 사람을 못 받아왔어요:', e);
+        /* 로그인이 풀렸으면 빈 목록을 보여 주지 않는다 —
+           데이터가 사라진 것처럼 보인다 */
+        if (e && e.code === 'noauth') return lostSession();
+        S.pushWho = [];
+      }
     }
     const devOf = id => {
       const hit = (S.pushWho || []).filter(x => x.id === id)[0];

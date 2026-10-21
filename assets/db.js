@@ -221,7 +221,13 @@
     let j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = null; }
     if (!r.ok) {
       const msg = (j && (j.message || j.hint)) || ('요청 실패 (' + r.status + ')');
-      const err = new Error(msg); err.status = r.status; throw err;
+      const err = new Error(msg); err.status = r.status;
+      /* 로그인이 풀린 것인지 알아보게 표시를 단다 —
+         화면이 「0명」처럼 보이지 않게 하려고 (2026-10-21) */
+      if (r.status === 401 || r.status === 403 || /permission denied|JWT/i.test(msg)) {
+        err.code = 'noauth';
+      }
+      throw err;
     }
     return j;
   }

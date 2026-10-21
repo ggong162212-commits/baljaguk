@@ -732,6 +732,19 @@ window.Community = (function () {
       });
     } catch (e) {
       F.busy = false;
+      /* 로그인이 풀린 것이면 「연결이 엉켰다」가 아니라 그렇다고 말한다 */
+      if (e && e.code === 'noauth') {
+        $('#list').innerHTML =
+          '<div class="card center" style="padding:28px 22px">' +
+          illus('error') +
+          '<h3 style="margin-top:12px;font-size:16px">로그인이 풀렸어요</h3>' +
+          '<p class="mut sm" style="margin-top:7px">다시 들어와 주세요</p>' +
+          '<div style="margin-top:15px">' +
+          '<button class="btn primary" type="button" data-relogin>다시 들어가기</button></div></div>';
+        const lb = $('#list').querySelector('[data-relogin]');
+        if (lb) lb.onclick = () => { try { DB.memberLogout(); } catch (err) { } location.reload(); };
+        return;
+      }
       if (first) {
         $('#list').innerHTML =
           '<div class="card center" style="padding:28px 22px">' +
