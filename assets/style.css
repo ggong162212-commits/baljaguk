@@ -711,6 +711,14 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   overscroll-behavior-x:contain
 }
 .shots::-webkit-scrollbar{display:none}
+/* 사진이 오기 전 자리 — 글자 없이 연한 단색.
+   오면 0.15초에 걸쳐 떠오른다 (툭 바뀌지 않게) */
+.shots img.fading{opacity:0}
+.shots img{transition:opacity .15s ease-out}
+@media (prefers-reduced-motion:reduce){
+  .shots img{transition:none}
+  .shots img.fading{opacity:1}
+}
 .shots img{
   width:100%;flex:none;scroll-snap-align:center;
   /* 사진을 끌어 옮기려는 몸짓으로 잡히지 않게 */
@@ -1434,6 +1442,16 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .cal .wk span{font-size:12px}
 .amark{font-size:12px}
 .badge-nm{font-size:12px}
+/* 펼친 공지 오른쪽 위 「…」 — 운영진만 */
+.pinfull{position:relative}
+.pinfull .pinmenu{
+  position:absolute;top:6px;right:6px;
+  width:38px;height:38px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--line)
+}
+/* 글이 「…」 밑으로 들어가지 않게 */
+.pinfull{padding-right:52px}
+
 /* 「새 글 n개 ↑」 — 보던 자리를 밀지 않고 위에 띄워만 둔다 */
 .newpill{
   position:fixed;left:50%;transform:translateX(-50%);

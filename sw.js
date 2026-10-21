@@ -37,9 +37,14 @@ self.addEventListener('notificationclick', event => {
 
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    /* 이미 열려 있는 창이 있으면 그 창을 쓴다 — 창이 여러 개 생기지 않게 */
-    for (const c of all) {
-      if (c.url.indexOf(self.registration.scope) === 0) {
+    /* 이미 열려 있는 창이 있으면 그 창을 쓴다 — 창이 여러 개 생기지 않게.
+       ★ 운영진 화면(admin.html)에 있으면 거기서는 글을 못 연다 —
+         커뮤니티 쪽으로 옮겨 준다. */
+    const inApp = all.filter(c => c.url.indexOf(self.registration.scope) === 0 &&
+                                  c.url.indexOf('admin.html') < 0);
+    const any = all.filter(c => c.url.indexOf(self.registration.scope) === 0);
+    for (const c of (inApp.length ? inApp : any)) {
+      {
         /* 주소가 #post=… 만 다르면 navigate 로는 화면이 안 바뀐다.
            그래서 열린 창에 직접 알려 준다.
            **둘 다 하면** 글이 두 번 열리거나 페이지가 다시 로드된다 —

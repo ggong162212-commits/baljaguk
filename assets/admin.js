@@ -317,9 +317,12 @@
       };
     }
     try { localStorage.setItem('baljaguk.side', 'admin'); } catch (e) { }
-    /* 다크 버튼은 프로필 시트 안으로 */
-    const th = tb.querySelector('[data-theme-btn]');
-    if (th) th.hidden = true;
+    /* ★ 360px 폭에서는 로고·스위치·테마·톱니·프로필이 다 들어가지 않는다
+       (스위치와 톱니 사이가 10px 까지 좁아졌다).
+       톱니(설정)는 내 프로필 시트 안 「운영진 설정」 줄로 옮긴다.
+       상단에는 로고·스위치·테마·프로필만 남는다. */
+    const gear = tb.querySelector('#gearBtn');
+    if (gear) gear.hidden = true;
     tb.insertAdjacentHTML('beforeend',
       '<button id="profBtn" type="button" aria-label="내 프로필" ' +
       'style="border:none;background:none;padding:0;cursor:pointer;margin-left:2px">' +
@@ -365,7 +368,6 @@
 
   function profileSheet() {
     const m = MEINFO || {};
-    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     const ov = sheet({
       title: '내 프로필',
       body:
@@ -380,14 +382,15 @@
           : '') +
         '<div class="divider"></div>' +
         '<div style="display:grid;gap:8px">' +
-        '<button class="btn ghost block" type="button" id="apTheme">' +
-        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
+        /* 상단 톱니를 여기로 옮겼다 — 좁은 폭에서 상단이 빡빡해서 */
+        '<button class="btn ghost block" type="button" id="apSet">' +
+        ic('settings') + '<span>운영진 설정</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=admin">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="apOut">로그아웃</button>' +
         '</div>'
     });
     fillAvatars(ov);
-    ov.querySelector('#apTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
+    ov.querySelector('#apSet').onclick = () => { closeSheet(); go('settings'); };
     ov.querySelector('#apOut').onclick = () => { DB.memberLogout(); DB.logout(); location.reload(); };
   }
 

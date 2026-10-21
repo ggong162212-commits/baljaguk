@@ -1515,9 +1515,16 @@
         return {
           rows: list.map(p => demoPostRow(d, p, meId)),
           cursor: list.length ? list[list.length - 1].created_at : null,
+          /* 실서버와 같은 모양 — 「…」 메뉴가 쓰는 칸까지 */
           pinned: pins.slice(0, 3).map(p => ({
             id: p.id, body: p.body, created_at: p.created_at,
-            author: (demoMember(p.author_id) || {}).name
+            author: (demoMember(p.author_id) || {}).name,
+            type: 'notice', pinned: true, hidden: false,
+            mine: p.author_id === meId,
+            photos: (d.post_photos || []).filter(f => f.post_id === p.id)
+              .sort((a, b) => a.sort - b.sort).map(f => f.path),
+            comment_count: (d.comments || [])
+              .filter(c => c.post_id === p.id && !c.hidden).length
           })),
           pinned_total: pins.length
         };
@@ -2623,5 +2630,7 @@
     }
   };
 
+  /* 새 파일(pastvol.js 등)이 서버 함수를 부를 때 — 401 다시 받기·쉬운 말 오류를 그대로 쓴다 */
+  DB.rpc = (name, body) => rest('rpc/' + name, { method: 'POST', body: body || {} });
   window.DB = DB;
 })();

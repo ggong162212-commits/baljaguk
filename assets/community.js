@@ -146,6 +146,7 @@ window.Community = (function () {
   let deepTo = null;      /* 아직 못 연 목적지 */
   let deepBusy = false;
   let appReady = false;   /* 첫 화면까지 그려졌나 */
+  let deepDone = { to: '', at: 0 };   /* 방금 연 것 — 같은 걸 또 열지 않게 */
 
   function openFromHash() {
     const h = String(location.hash || '').replace(/^#/, '');
@@ -160,6 +161,15 @@ window.Community = (function () {
 
   async function runDeepLink() {
     if (!deepTo || deepBusy || !appReady) return;
+    /* ★ 서비스워커가 같은 목적지를 두 번 보낸다 (바로 한 번, 1.2초 뒤 한 번).
+       앱이 이미 켜져 있으면 첫 번째로 글이 열리고, 두 번째가
+       그 시트를 닫고 다시 열다 꼬였다 —
+       선고은님: 「앱이 켜져 있을 때 누르면 안 가」.
+       3초 안에 같은 곳을 또 열라고 하면 무시한다. */
+    if (deepTo === deepDone.to && Date.now() - deepDone.at < 3000) {
+      deepTo = null;
+      return;
+    }
     deepBusy = true;
     const m = /^(post|vol|poll|news)=(.+)$/.exec(deepTo);
     const [, what, rawId] = m;
@@ -170,6 +180,12 @@ window.Community = (function () {
       if (what === 'news') { go('me'); deepTo = null; return; }
 
       const id = decodeURIComponent(rawId);
+      /* 다른 시트(댓글·글쓰기)가 열려 있으면 먼저 닫는다 —
+         그 위로는 못 열어서 아무 일도 안 일어난 것처럼 보였다 */
+      if (document.querySelector('.overlay')) {
+        closeSheet();
+        await new Promise(r => setTimeout(r, 260));
+      }
       /* 오래 걸리면 기다리는 줄 알게 */
       const slow = setTimeout(() => toast('글을 여는 중…'), 400);
       let ok = await openPost(id, true);
@@ -180,6 +196,7 @@ window.Community = (function () {
       }
       clearTimeout(slow);
       /* 되든 안 되든 목적지는 비운다 — 안 그러면 없는 글을 계속 다시 연다 */
+      if (ok) deepDone = { to: deepTo, at: Date.now() };
       deepTo = null;
       if (!ok) toast('글을 열지 못했어요. 피드에서 찾아봐 주세요', 'err');
     } finally {
@@ -554,7 +571,6 @@ window.Community = (function () {
   }
 
   function profileSheet() {
-    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
     const ov = sheet({
       title: '내 프로필',
       body:
@@ -589,8 +605,6 @@ window.Community = (function () {
           ? '<button class="btn ghost block" type="button" id="pfBell">' +
             ic('alert') + '<span>알림 설정</span></button>'
           : '') +
-        '<button class="btn ghost block" type="button" id="pfTheme">' +
-        ic(dark ? 'sun' : 'moon') + '<span>' + (dark ? '밝게 보기' : '어둡게 보기') + '</span></button>' +
         '<a class="btn ghost block" href="guide.html?from=app">' + ic('clipboard') + '<span>사용법</span></a>' +
         '<button class="btn ghost block" type="button" id="pfIdea">' +
         ic('mail') + '<span>운영진에게 의견 보내기</span></button>' +
@@ -641,7 +655,6 @@ window.Community = (function () {
 
     ov.querySelector('#pfMe').onclick = () => { closeSheet(); go('me'); };
     ov.querySelector('#pfOut').onclick = () => { DB.memberLogout(); location.reload(); };
-    ov.querySelector('#pfTheme').onclick = () => { UI.toggleTheme(); closeSheet(); };
 
     const file = ov.querySelector('#pfFile');
     ov.querySelector('#pfPick').onclick = () => file.click();
@@ -1032,8 +1045,22 @@ window.Community = (function () {
     row.insertAdjacentHTML('afterend',
       /* 「글로 열기」는 없앴다 — 펼치면 여기서 다 보이고,
          글로 가 봐야 같은 내용이라 갈 곳이 없었다 (선고은님 확인) */
-      '<div class="pinfull">' + esc(p.body) +
-      '<div class="who">' + esc(p.author || '운영진') + ' · ' + relTime(p.created_at) + '</div></div>');
+      '<div class="pinfull">' +
+      /* 운영진만 — 고치기·공지 내리기·삭제. 글 메뉴와 같은 것을 쓴다 */
+      (AM_ADMIN
+        ? '<button class="iconbtn sq pinmenu" type="button" ' +
+          'data-menu="' + esc(p.id) + '" aria-label="이 공지 메뉴">' + ic('more') + '</button>'
+        : '') +
+      esc(p.body) +
+      ((p.photos || []).length ? photoStrip(p) : '') +
+      '<div class="who">' + esc(p.author || '운영진') + ' · ' + relTime(p.created_at) +
+      (p.comment_count
+        ? ' · <button class="linkbtn" type="button" data-cmt="' + esc(p.id) + '">댓글 ' +
+          num(p.comment_count) + '개</button>'
+        : '') +
+      '</div></div>');
+    const full = row.nextElementSibling;
+    if (full) { loadPhotos(full); clipCheck(full); }
   }
 
   const cut = (s, n) => {
@@ -1507,7 +1534,34 @@ window.Community = (function () {
     if (!list.length) {
       return '<div class="mut sm">' + (emptyMsg || '아직 댓글이 없어요. 처음 남겨보세요.') + '</div>';
     }
-    return list.map(c => commentLine(c)).join('');
+
+    /* ★ 답글은 **자기 원댓글 바로 밑**에 붙는다 (인스타와 같게).
+       한동안 전부 시간순 한 줄로 늘어놓았더니, 답글이 자기 원댓글이
+       아니라 **바로 위에 있던 남의 댓글** 밑에 붙어 보였다.
+       답글의 답글도 위로 거슬러 올라가 원댓글 줄기에 붙인다. */
+    const byId = {};
+    list.forEach(c => { byId[c.id] = c; });
+    const rootOf = c => {
+      let cur2 = c, hop = 0;
+      while (cur2.parent_id && byId[cur2.parent_id] && hop < 30) {
+        cur2 = byId[cur2.parent_id]; hop++;
+      }
+      return cur2.id;
+    };
+
+    const tops = list.filter(c => !c.parent_id);
+    const kids = {};
+    const orphans = [];        /* 부모를 못 찾은 답글 — 버리지 않고 맨 아래 */
+    list.filter(c => c.parent_id).forEach(c => {
+      const root = rootOf(c);
+      if (root === c.id) { orphans.push(c); return; }
+      (kids[root] = kids[root] || []).push(c);
+    });
+
+    let out = tops.map(c =>
+      commentLine(c) + (kids[c.id] || []).map(k => commentLine(k)).join('')).join('');
+    if (orphans.length) out += orphans.map(c => commentLine(c)).join('');
+    return out;
   }
 
   /* ============================================================
@@ -1727,7 +1781,7 @@ window.Community = (function () {
       '</div>' +
       '<div class="shotview-track">' +
       p.photos.map((path, i) =>
-        '<div class="shotview-cell"><img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(path) + '"></div>'
+        '<div class="shotview-cell"><img alt="" decoding="async" data-path="' + esc(path) + '"></div>'
       ).join('') + '</div>';
     document.body.appendChild(box);
     document.body.style.overflow = 'hidden';
@@ -1816,53 +1870,33 @@ window.Community = (function () {
      그래서 첫 손가락부터 우리가 직접 scrollLeft 를 움직인다.
      세로로 미는 것이면 바로 손을 떼고 페이지에 돌려준다.
      ============================================================ */
+  /* ============================================================
+     사진 줄 — **브라우저에 맡긴다**
+     ------------------------------------------------------------
+     선고은님: 「사진 스크롤하면 렉 걸려」
+     예전에는 손가락이 움직일 때마다 JS 가 scrollLeft 를 직접 계산해
+     넣었다. CSS 에 이미 touch-action:pan-x · scroll-snap 이 있는데도
+     **둘이 같은 일을 겹쳐서** 했고, 매 프레임 자리를 다시 재느라(리플로)
+     버벅였다.
+     이제 미는 것은 브라우저가 한다. JS 는 **어느 사진인지 표시만** 한다.
+     ============================================================ */
   function wireSwipe(root) {
     const strips = (root || document).querySelectorAll('.shots');
     strips.forEach(box => {
       if (box.__swipe) return;
       box.__swipe = true;
 
-      let id = null, x0 = 0, y0 = 0, left0 = 0, dir = '';
-
-      box.addEventListener('pointerdown', e => {
-        if (e.pointerType === 'mouse' && e.button !== 0) return;
-        id = e.pointerId; x0 = e.clientX; y0 = e.clientY;
-        left0 = box.scrollLeft; dir = '';
-        box.classList.add('dragging');
+      /* 스크롤은 1초에 수십 번 온다 — 그릴 때 한 번만 센다 */
+      let tick = false;
+      box.addEventListener('scroll', () => {
+        if (tick) return;
+        tick = true;
+        requestAnimationFrame(() => {
+          tick = false;
+          const w = box.clientWidth || 1;
+          paintDots(box, Math.round(box.scrollLeft / w));
+        });
       }, { passive: true });
-
-      box.addEventListener('pointermove', e => {
-        if (e.pointerId !== id) return;
-        const dx = e.clientX - x0, dy = e.clientY - y0;
-
-        /* 어느 쪽으로 미는지 아직 못 정했으면 정한다 */
-        if (!dir) {
-          if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-          dir = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-          /* 세로면 페이지에 돌려준다 */
-          if (dir === 'y') { id = null; box.classList.remove('dragging'); return; }
-          try { box.setPointerCapture(e.pointerId); } catch (err) { }
-        }
-        if (dir !== 'x') return;
-        box.scrollLeft = left0 - dx;
-        /* 가로로 미는 중엔 페이지가 같이 움직이지 않게 */
-        if (e.cancelable) e.preventDefault();
-      }, { passive: false });
-
-      const end = e => {
-        if (e.pointerId !== id && id !== null) return;
-        id = null;
-        box.classList.remove('dragging');
-        try { box.releasePointerCapture(e.pointerId); } catch (err) { }
-        if (dir !== 'x') return;
-        /* 가장 가까운 사진에 딱 맞춘다 */
-        const w = box.clientWidth || 1;
-        const to = Math.round(box.scrollLeft / w) * w;
-        box.scrollTo({ left: to, behavior: 'smooth' });
-        paintDots(box, Math.round(to / w));
-      };
-      box.addEventListener('pointerup', end);
-      box.addEventListener('pointercancel', end);
 
       /* 사진을 끌어 옮기려는 몸짓으로 잡히지 않게 */
       box.querySelectorAll('img').forEach(im => {
@@ -2049,7 +2083,12 @@ window.Community = (function () {
             'aria-label="봉사 영상"></video>' +
             '<span class="vsound" aria-hidden="true">🔇</span></div>';
         }
-        return '<img alt="봉사 사진 ' + (i + 1) + '" draggable="false" data-path="' + esc(path) + '" ' +
+        /* ★ alt 글자를 비운다.
+           사진이 오기 전에 「봉사 사진 1」 글자가 보였다 (선고은님 지적).
+           사진은 꾸밈이고 뜻은 본문에 있으니 alt="" 가 맞다.
+           loading/decoding 으로 보이는 것부터 천천히 받는다. */
+        return '<img alt="" draggable="false" data-path="' + esc(path) + '" ' +
+          'loading="lazy" decoding="async" ' +
           'data-big="' + esc(p.id) + '" data-at="' + i + '">';
       }).join('') +
       '</div>' +
@@ -2101,7 +2140,12 @@ window.Community = (function () {
     imgs.forEach(el => {
       const x = el.getAttribute('data-path');
       el.removeAttribute('data-path');
-      if (x && map[x]) el.src = map[x];
+      if (!x || !map[x]) return;
+      /* 자리는 이미 잡혀 있다(aspect-ratio) — 사진만 살짝 떠오르게 */
+      el.classList.add('fading');
+      el.addEventListener('load', () => el.classList.remove('fading'), { once: true });
+      el.addEventListener('error', () => el.classList.remove('fading'), { once: true });
+      el.src = map[x];
     });
     wireSwipe(root);
   }
@@ -2630,7 +2674,10 @@ window.Community = (function () {
   }
 
   function postMenu(id) {
-    const p = findRow(id);
+    /* ★ 고정 공지는 F.rows(피드)가 아니라 F.pins 에 따로 있다.
+       그래서 공지는 「…」 메뉴를 열 방법이 아예 없었다 —
+       고치기·내리기·삭제를 할 데가 없었다. */
+    const p = findRow(id) || (F.pins || []).filter(x => String(x.id) === String(id))[0];
     if (!p) return missWarn('글', id);
     const btns = [];
     if (p.mine) {
@@ -2683,6 +2730,14 @@ window.Community = (function () {
             }
           }
           await DB.community.setPinned(id, !p.pinned);
+          /* ★ 바로 눈에 보이게 — 서버에서 다시 받아오기 전에 줄을 치운다.
+             예전에는 renderHome 만 불러서, 내렸는데도 공지가 그대로 있었다. */
+          if (p.pinned) {
+            F.pins = (F.pins || []).filter(x => String(x.id) !== String(id));
+            const box = $('#pin');
+            if (box) box.innerHTML = (F.pins || []).map(pinnedCard).join('');
+          }
+          dropViewCache();
           toast(p.pinned ? '공지를 내렸어요' : '공지로 올렸어요');
           return renderHome(true);
         }
@@ -3922,6 +3977,12 @@ window.Community = (function () {
      타이머가 죽어 영영 안 지워졌다 (2026-10-20 실서버에서 드러남).
      확인 시트에서 「되돌릴 수 없어요」라고 이미 묻는다. */
   async function softDelete(p) {
+    /* 고정 공지였으면 맨 위 줄도 같이 치운다 */
+    if (p && p.pinned) {
+      F.pins = (F.pins || []).filter(x => String(x.id) !== String(p.id));
+      const box = $('#pin');
+      if (box) box.innerHTML = (F.pins || []).map(pinnedCard).join('');
+    }
     try {
       await DB.community.removePost(p.id, p.photos || []);
       toast('지웠어요', 'ok');
@@ -3970,7 +4031,7 @@ window.Community = (function () {
     ov.querySelector('#wall').innerHTML =
       '<div class="mut sm" style="margin-bottom:9px">사진 ' + shots.length + '장</div>' +
       '<div class="grid-shots">' + shots.map((x, i) =>
-        '<img alt="봉사 사진 ' + (i + 1) + '" data-path="' + esc(x.path) + '" ' +
+        '<img alt="" loading="lazy" decoding="async" data-path="' + esc(x.path) + '" ' +
         'data-big="' + esc(x.id) + '">').join('') + '</div>';
     loadPhotos(ov);
   }
@@ -4429,6 +4490,7 @@ window.Community = (function () {
             : '<span class="rt">후기 ' + e.reviews + '개</span>') + '</button>').join('') +
         '</div>'
       : '';
+    if (window.PastVol) PastVol.mount($('#past'), { mine: false });  /* 지난 봉사 최근 3개 + 전체 보기 (pastvol.js) */
 
     paintShelters();
   }
@@ -4619,6 +4681,7 @@ window.Community = (function () {
       '');
     loadNews();
     await loadActivity();
+    if (window.PastVol) PastVol.mount($('#act'), { mine: true, append: true });  /* 내가 간 봉사 (pastvol.js) */
   }
 
   /* ---------- 새 소식 ----------
@@ -4843,5 +4906,9 @@ window.Community = (function () {
       '</div></div>';
   }
 
-  return { start, __readVideo: readVideo, __live: onLive, __cropPhoto: cropPhoto };
+  return {
+    start, openPast,                 /* openPast — pastvol.js 전체 보기에서 */
+    /* 아래 셋은 시험에서만 부른다 */
+    __readVideo: readVideo, __live: onLive, __cropPhoto: cropPhoto
+  };
 })();
