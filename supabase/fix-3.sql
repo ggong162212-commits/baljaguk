@@ -129,3 +129,38 @@ select case when not is_admin() then null else
      from feedback f where f.done_at is null)
 end;
 $$;
+
+
+-- ── 그 봉사에 다녀온 사람들 — 후기 쓸 때 @ 목록 맨 위에 올리려고
+--    이름과 사진만. 연락처·학번은 주지 않는다.
+create or replace function event_people(p_event uuid)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case when not is_member() then null else coalesce(
+    (select json_agg(json_build_object('id', m.id, 'name', m.name,
+                                       'photo', m.photo_path) order by m.name)
+       from attendance a join members m on m.id = a.member_id
+      where a.event_id = p_event), '[]'::json)
+  end;
+$$;
+revoke all on function event_people(uuid) from public, anon;
+grant execute on function event_people(uuid) to authenticated;
+
+
+-- ── 댓글 좋아요를 누가 눌렀나
+create or replace function comment_like_who(p_comment uuid)
+returns json
+language sql security definer stable
+set search_path = public
+as $$
+  select case when not is_member() then null else coalesce(
+    (select json_agg(json_build_object('name', m.name, 'photo', m.photo_path)
+                     order by m.name)
+       from comment_likes l join members m on m.id = l.member_id
+      where l.comment_id = p_comment), '[]'::json)
+  end;
+$$;
+revoke all on function comment_like_who(uuid) from public, anon;
+grant execute on function comment_like_who(uuid) to authenticated;

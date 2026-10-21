@@ -421,10 +421,11 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
   font-size:13px;color:var(--ink-3);-webkit-tap-highlight-color:transparent
 }
 /* 카드 아래 댓글 입력줄 — 늘 떠 있어서 누르지 않고 바로 쓴다.
+   좌우 끝을 사진·본문과 정확히 맞춘다 (폭이 좁아 보이던 것).
    카드가 무거워 보이지 않게 테두리 없이 연한 바탕으로. */
 .cbar{
   display:flex;align-items:center;gap:8px;min-width:0;
-  margin-top:9px;padding:4px 6px 4px 8px;border-radius:15px;
+  margin:9px 0 0;padding:4px 6px 4px 8px;border-radius:15px;
   background:var(--surface-2)
 }
 .cbar .avatar{width:28px;height:28px;font-size:12px;flex:none;cursor:default}
@@ -477,7 +478,8 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .ment{color:var(--brand-deep);font-weight:700}
 
 /* 댓글 시트 입력줄 — 글자 버튼이 입력칸 안에 */
-.cwrite2{display:flex;gap:8px;align-items:flex-end;min-width:0}
+/* 시트 맨 아래 입력줄 — 시트 본문과 좌우 끝을 맞춘다 */
+.cwrite2{display:flex;gap:8px;align-items:flex-end;min-width:0;margin:0}
 .cwrite2 .avatar{width:30px;height:30px;font-size:13px;flex:none;cursor:default;margin-bottom:3px}
 .cfield{
   flex:1;min-width:0;display:flex;align-items:flex-end;gap:4px;
@@ -629,9 +631,7 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 
 /* ---------- 피드 ---------- */
 .post{padding:16px 16px 12px}
-/* 카드 맨 아래 오른쪽은 + 버튼이 지나가는 자리 — 눌릴 것을 두지 않는다 */
-.post .cbar{margin-right:56px}
-@media (min-width:520px){ .post .cbar{margin-right:0} }
+
 .post .tapzone{cursor:pointer}
 .post .tapzone:active{opacity:.75}
 /* 제목 줄 오른쪽 작은 아이콘 버튼 */

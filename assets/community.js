@@ -18,15 +18,10 @@ window.Community = (function () {
 
   /* 화면 아이콘은 SVG 만 쓴다.
      이모지는 사용자가 직접 다는 반응에만 — 규칙의 유일한 예외다. */
-  /* 반응 다섯 가지. 기본은 하트, 길게 누르면 나머지를 고른다.
-     「최고(👍)」는 하트와 뜻이 겹쳐 뺐다 (2026-10-21) */
-  const EMOJI = {
-    heart: '❤️', paw: '🐾', haha: '😆', moved: '🥹', clap: '👏'
-  };
-  const EMOJI_NAME = {
-    heart: '하트', paw: '발바닥', haha: '웃음', moved: '감동', clap: '박수'
-  };
-  const KINDS = ['heart', 'paw', 'haha', 'moved', 'clap'];
+  /* 반응은 하트 하나뿐이다 (2026-10-21).
+     여러 가지를 고르게 했더니 「뭘 눌러야 하나」 머뭇거리게 돼서
+     인스타처럼 하트 하나로 줄였다. 옛 반응은 지우지 않고 하트로 옮겼다. */
+  const KINDS = ['heart'];
 
   let ME = null;          /* { id, name, role, status } */
   let AM_ADMIN = false;
@@ -103,6 +98,7 @@ window.Community = (function () {
     const sv0 = savedFilter();
     F.kind = sv0.kind; F.place = sv0.place;
     try { localStorage.setItem('baljaguk.side', 'app'); } catch (e) { }
+    watchAvatars();
     go('home');
     paintTabDot();
     /* 알림을 눌러 들어왔으면 그 글·봉사·설문으로 바로 보낸다.
@@ -139,6 +135,20 @@ window.Community = (function () {
 
   /* ---------- 아바타 사진 채우기 ----------
      비공개 보관함이라 볼 때마다 서명된 주소를 받아 와야 한다 */
+  /* 커뮤니티도 같게 — 새로 생긴 자리를 지켜보다 알아서 채운다 */
+  let avWatch = null;
+  function watchAvatars() {
+    if (avWatch || typeof MutationObserver !== 'function') return;
+    let timer = null;
+    avWatch = new MutationObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (document.querySelector('[data-avatar]')) loadAvatars(document);
+      }, 60);
+    });
+    avWatch.observe(document.body, { childList: true, subtree: true });
+  }
+
   async function loadAvatars(root) {
     const els = Array.prototype.slice.call((root || document).querySelectorAll('[data-avatar]'));
     for (let i = 0; i < els.length; i++) {
@@ -195,14 +205,33 @@ window.Community = (function () {
 
     /* 지난 의견과 답장 */
     (async () => {
-      let rows = [];
-      try { rows = await DB.feedback.mine(); }
-      catch (e) { console.warn('[발자국] 내 의견을 못 받아왔어요:', e); return; }
       const box = ov.querySelector('#myIdeas');
-      if (!box || !rows.length) return;
-      box.innerHTML =
-        '<div class="divider" style="margin:18px 0 12px"></div>' +
-        '<div class="sm" style="font-weight:700;margin-bottom:9px">내가 보낸 의견</div>' +
+      if (!box) return;
+      let rows = null;
+      try { rows = await DB.feedback.mine(); }
+      catch (e) { console.warn('[발자국] 내 의견을 못 받아왔어요:', e); }
+      const head = '<div class="divider" style="margin:18px 0 12px"></div>' +
+        '<div class="sm" style="font-weight:700;margin-bottom:9px">내가 보낸 의견</div>';
+      if (rows === null) {
+        /* 못 받아온 것과 「없는 것」은 다르다 */
+        box.innerHTML = head +
+          '<div class="card center" style="padding:18px">' +
+          '<div class="sm">불러오지 못했어요</div>' +
+          '<button class="btn ghost sm" type="button" id="myIdeaRetry" ' +
+          'style="margin-top:9px">다시 시도</button></div>';
+        const rt = box.querySelector('#myIdeaRetry');
+        if (rt) rt.onclick = () => { closeSheet(); setTimeout(ideaSheet, 180); };
+        return;
+      }
+      if (!rows.length) {
+        box.innerHTML = head +
+          '<p class="mut sm" style="line-height:1.6">아직 보낸 의견이 없어요.<br>' +
+          '이름 없이 보낸 의견은 여기 안 보여요.</p>';
+        return;
+      }
+      box.innerHTML = head +
+        '<p class="mut" style="font-size:11.5px;margin:-4px 0 9px">' +
+        '이름 없이 보낸 의견은 여기 안 보여요</p>' +
         rows.map(f =>
           '<div class="card" style="padding:13px 14px;margin-bottom:8px">' +
           '<div class="sm mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) + '</div>' +
@@ -923,7 +952,6 @@ window.Community = (function () {
     const mine = p.my_reactions || [];
     const total = KINDS.reduce((t, k) => t + (counts[k] || 0), 0);
     const iLike = mine.indexOf('heart') >= 0;
-    const others = mine.filter(k => k !== 'heart');
     /* 이모지는 기기마다 모양이 달라진다 — 선 아이콘으로 그린다.
        이모지는 길게 눌러 고르는 반응 다섯 가지에만 쓴다. */
     return '<div class="acts" data-acts="' + esc(p.id) + '">' +
@@ -933,13 +961,6 @@ window.Community = (function () {
       ic('heart') + '</button>' +
       '<button class="act" type="button" data-cmt="' + esc(p.id) + '" aria-label="댓글">' +
       ic('bubble') + '</button>' +
-      /* 길게 누르기는 못 찾는 사람이 많다 — 한 번 눌러도 고를 수 있게 */
-      '<button class="act emo" type="button" data-pick="' + esc(p.id) + '" ' +
-      'aria-label="다른 반응 고르기">' + ic('plus') + '</button>' +
-      /* 하트 말고 다른 반응을 달았으면 그걸 보여 준다 */
-      (others.length
-        ? '<span class="mine-emo">' + others.map(k => EMOJI[k]).join('') + '</span>'
-        : '') +
       '</div>' +
       (total
         ? '<button class="likes" type="button" data-who="' + esc(p.id) + '">' +
@@ -1062,6 +1083,104 @@ window.Community = (function () {
     });
   }
 
+  /* ============================================================
+     @ 로 사람 부르기 — 어느 입력칸에나 붙인다
+     ------------------------------------------------------------
+     댓글칸에도, 글쓰기 본문칸에도 같은 것을 쓴다.
+     고른 사람은 이름 → id 로 챙겨 둔다 (동명이인 때문에).
+     봉사 후기를 쓸 때는 그 봉사에 다녀온 사람을 맨 위에 올린다.
+     ============================================================ */
+  function attachMention(inp, menu, opts) {
+    if (!inp || !menu) return null;
+    const o = opts || {};
+    const picked = new Map();     /* 이름 → id */
+    let timer = null;
+
+    /* 맨 위에 올릴 사람들 (봉사 참석자) */
+    let first = [];
+    if (o.firstIds && o.firstIds.length) {
+      DB.community.mentionPeople('').then(all => {
+        first = (all || []).filter(x => o.firstIds.indexOf(x.id) >= 0);
+      }).catch(() => { });
+    }
+
+    function close() { menu.hidden = true; }
+
+    inp.addEventListener('input', () => {
+      const upto = inp.value.slice(0, inp.selectionStart);
+      const m = /@([^\s@]{0,12})$/.exec(upto);
+      clearTimeout(timer);
+      if (!m) return close();
+      timer = setTimeout(async () => {
+        let people = [];
+        try { people = await DB.community.mentionPeople(m[1]) || []; } catch (e) { }
+        /* 같이 간 사람을 맨 위로 */
+        if (first.length) {
+          const q = m[1];
+          const top = first.filter(x => !q || x.name.indexOf(q) >= 0);
+          const ids = top.map(x => x.id);
+          people = top.concat(people.filter(x => ids.indexOf(x.id) < 0));
+        }
+        if (!people.length) return close();
+        menu.innerHTML = people.slice(0, 6).map((x, i) =>
+          '<button class="mentrow" type="button" data-mid="' + esc(x.id) + '" ' +
+          'data-mname="' + esc(x.name) + '">' +
+          avatar(x) + '<span>' + esc(x.name) + '</span>' +
+          (first.length && i < first.length
+            ? '<span class="mut" style="font-size:11px">같이 간 사람</span>' : '') +
+          '</button>').join('');
+        menu.hidden = false;
+        loadAvatars(menu);
+      }, 160);
+    });
+
+    menu.addEventListener('click', e => {
+      const b = e.target.closest('[data-mid]');
+      if (!b) return;
+      const nm = b.dataset.mname;
+      picked.set(nm, b.dataset.mid);
+      const at = inp.selectionStart;
+      const before = inp.value.slice(0, at).replace(/@([^\s@]{0,12})$/, '@' + nm + ' ');
+      const after = inp.value.slice(at);
+      inp.value = before + after;
+      close();
+      inp.focus();
+      try { inp.setSelectionRange(before.length, before.length); } catch (err) { }
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    return {
+      /* 글에 아직 남아 있는 이름만 돌려준다 — 지웠으면 안 부른다 */
+      ids(text) {
+        const out = [];
+        picked.forEach((id, nm) => { if (String(text || '').indexOf('@' + nm) >= 0) out.push(id); });
+        return out;
+      },
+      add(nm, id) { picked.set(nm, id); },
+      async byName(nm) {
+        try {
+          const people = await DB.community.mentionPeople(nm);
+          const hit = (people || []).find(x => x.name === nm);
+          if (hit) picked.set(nm, hit.id);
+        } catch (e) { }
+      },
+      clear() { picked.clear(); close(); },
+      close
+    };
+  }
+
+  /* 글을 올린 뒤 @ 로 부른 사람에게 알린다 */
+  async function tellMentioned(made, ids, text) {
+    if (!ids || !ids.length) return;
+    const pid = (made && made.id) || null;
+    if (!pid) return;
+    try {
+      await DB.community.mentionAdd(ids, pid, null, String(text || '').slice(0, 120));
+    } catch (e) {
+      console.warn('[발자국] 언급을 못 적었어요:', e);
+    }
+  }
+
   /* 글 안의 @이름 을 초록으로 */
   function hl(text) {
     return esc(String(text || '')).replace(/@([^\s@.,!?]{1,12})/g,
@@ -1087,13 +1206,13 @@ window.Community = (function () {
     });
 
     let replyTo = null;          /* 답글을 달 댓글 */
-    const picked = new Map();    /* 부른 사람들 — 이름 → id */
 
     const box = ov.querySelector('#cbox');
     const inp = ov.querySelector('#cin');
     const send = ov.querySelector('#csend');
     const menu = ov.querySelector('#cmenu');
     loadAvatars(ov);
+    const ment = attachMention(inp, menu);
 
     let kids = {};
 
@@ -1153,11 +1272,29 @@ window.Community = (function () {
         replyTo = r.dataset.reply;
         const nm = r.dataset.rname || '';
         inp.value = '@' + nm + ' ';
-        pickByName(nm);
+        ment.byName(nm);
         inp.focus();
         grow();
         return;
       }
+      /* 댓글 좋아요를 누가 눌렀나 */
+      const lw = e.target.closest('[data-clwho]');
+      if (lw) {
+        let rows = [];
+        try { rows = await DB.community.commentLikeWho(lw.dataset.clwho) || []; }
+        catch (err) { return toast('불러오지 못했어요', 'err'); }
+        const ov2 = sheet({
+          title: '좋아요 누른 사람',
+          body: rows.length
+            ? '<div class="faces2">' + rows.map(x =>
+                '<span class="face">' + avatar(x) +
+                '<span class="sm">' + esc(x.name) + '</span></span>').join('') + '</div>'
+            : '<div class="mut sm">아직 아무도 없어요</div>'
+        });
+        loadAvatars(ov2);
+        return;
+      }
+
       /* 댓글 좋아요 */
       const l = e.target.closest('[data-clike]');
       if (l) {
@@ -1177,14 +1314,6 @@ window.Community = (function () {
       }
     });
 
-    /* 이름을 알면 id 도 챙겨 둔다 */
-    async function pickByName(nm) {
-      try {
-        const people = await DB.community.mentionPeople(nm);
-        const hit = (people || []).find(x => x.name === nm);
-        if (hit) picked.set(nm, hit.id);
-      } catch (e) { }
-    }
 
     /* 입력창 높이를 글에 맞춰 늘린다 */
     function grow() {
@@ -1195,39 +1324,7 @@ window.Community = (function () {
       send.classList.toggle('on', has);
     }
 
-    /* @ 를 치면 이름 고르기 */
-    let menuTimer = null;
-    inp.addEventListener('input', () => {
-      grow();
-      const upto = inp.value.slice(0, inp.selectionStart);
-      const m = /@([^\s@]{0,12})$/.exec(upto);
-      clearTimeout(menuTimer);
-      if (!m) { menu.hidden = true; return; }
-      menuTimer = setTimeout(async () => {
-        let people = [];
-        try { people = await DB.community.mentionPeople(m[1]) || []; } catch (e) { }
-        if (!people.length) { menu.hidden = true; return; }
-        menu.innerHTML = people.slice(0, 6).map(x =>
-          '<button class="mentrow" type="button" data-mid="' + esc(x.id) + '" ' +
-          'data-mname="' + esc(x.name) + '">' +
-          avatar(x) + '<span>' + esc(x.name) + '</span></button>').join('');
-        menu.hidden = false;
-        loadAvatars(menu);
-      }, 160);
-    });
-
-    menu.addEventListener('click', e => {
-      const b = e.target.closest('[data-mid]');
-      if (!b) return;
-      const nm = b.dataset.mname;
-      picked.set(nm, b.dataset.mid);
-      const at = inp.selectionStart;
-      const before = inp.value.slice(0, at).replace(/@([^\s@]{0,12})$/, '@' + nm + ' ');
-      inp.value = before + inp.value.slice(at);
-      menu.hidden = true;
-      inp.focus();
-      grow();
-    });
+    inp.addEventListener('input', grow);
 
     send.onclick = async () => {
       const v = inp.value.trim();
@@ -1236,16 +1333,15 @@ window.Community = (function () {
       try {
         const made = await DB.community.addComment(postId, v, replyTo);
         /* 부른 사람에게 알린다 */
-        const ids = [];
-        picked.forEach((id, nm) => { if (v.indexOf('@' + nm) >= 0) ids.push(id); });
+        const ids = ment.ids(v);
         if (ids.length) {
           try {
             await DB.community.mentionAdd(ids, postId,
               (made && made.id) || null, v.slice(0, 120));
           } catch (e) { console.warn('[발자국] 언급을 못 적었어요:', e); }
         }
-        inp.value = ''; replyTo = null; picked.clear();
-        grow(); menu.hidden = true;
+        inp.value = ''; replyTo = null; ment.clear();
+        grow();
         await draw();
         box.scrollTop = box.scrollHeight;
       } catch (e) {
@@ -1274,7 +1370,7 @@ window.Community = (function () {
       ov.__fit = fit;
     }
 
-    if (focusName) { inp.value = '@' + focusName + ' '; pickByName(focusName); }
+    if (focusName) { inp.value = '@' + focusName + ' '; ment.byName(focusName); }
     setTimeout(() => { inp.focus(); grow(); }, 80);
     return ov;
   }
@@ -1496,25 +1592,6 @@ window.Community = (function () {
 
   /* ---------- 반응 ---------- */
   /* 한 사람이 여러 종류를 달 수 있다. 같은 걸 다시 누르면 취소된다. */
-  function reactRow(p) {
-    const counts = p.reactions || {};
-    const mine = p.my_reactions || [];
-    const shown = KINDS.filter(k => counts[k]);
-    const total = shown.reduce((t, k) => t + counts[k], 0);
-    return '<div class="reacts" data-reacts="' + esc(p.id) + '">' +
-      shown.map(k =>
-        '<button class="react' + (mine.indexOf(k) >= 0 ? ' on' : '') + '" type="button" ' +
-        'data-react="' + esc(p.id) + '" data-k="' + k + '" title="' + EMOJI_NAME[k] + '">' +
-        '<span>' + EMOJI[k] + '</span><span class="n">' + counts[k] + '</span></button>').join('') +
-      '<button class="react add" type="button" data-pick="' + esc(p.id) + '" aria-label="반응 달기">' +
-      ic('plus') + (shown.length ? '' : '<span class="lbl">반응</span>') + '</button>' +
-      '</div>' +
-      (total && !hintSeen()
-        ? '<div class="mut" style="font-size:11.5px;margin-top:6px">' +
-          '반응을 길게 누르면 누가 눌렀는지 볼 수 있어요 ' +
-          '<button class="linkbtn" type="button" data-hint="1">알겠어요</button></div>'
-        : '');
-  }
 
   /* ---------- 댓글 (카드 안에서 바로) ---------- */
   function commentBlock(p) {
@@ -1623,7 +1700,6 @@ window.Community = (function () {
         try { localStorage.setItem(HINT_KEY, '1'); } catch (err) { }
         return renderHome(true);
       }
-      if ((b = hit('data-pick'))) return pickReaction(b.dataset.pick);
       if ((b = hit('data-menu'))) return postMenu(b.dataset.menu);
       if ((b = hit('data-open'))) return openPost(b.dataset.open);
       if ((b = hit('data-cmenu'))) return feedCommentMenu(b.dataset.cmenu);
@@ -1661,8 +1737,7 @@ window.Community = (function () {
       holdX = e.clientX; holdY = e.clientY;
       hold = setTimeout(() => {
         hold = 'done';
-        if (heart) pickReaction(heart.dataset.heart);
-        else whoSheet(re.dataset.react);
+        whoSheet(heart ? heart.dataset.heart : re.dataset.react);
       }, 450);
     }, { passive: true });
     view.addEventListener('pointermove', e => {
@@ -1750,14 +1825,7 @@ window.Community = (function () {
   function redrawReacts(id) {
     const row = findRow(id);
     if (!row) return;
-    /* 옛 반응 줄 */
-    const box = $('#view').querySelector('[data-reacts="' + id + '"]');
-    if (box) {
-      const wrap = document.createElement('div');
-      wrap.innerHTML = reactRow(row);
-      box.replaceWith(wrap.firstChild);
-    }
-    /* 인스타식 하트 줄 — 하트 모양과 「좋아요 n개」를 같이 맞춘다 */
+    /* 하트 줄 — 하트 모양과 「좋아요 n개」를 같이 맞춘다 */
     const acts = $('#view').querySelector('[data-acts="' + id + '"]');
     if (acts) {
       const wrap2 = document.createElement('div');
@@ -1775,67 +1843,27 @@ window.Community = (function () {
     }
   }
 
-  function pickReaction(id) {
-    const ov = sheet({
-      title: '반응 달기',
-      body: '<p class="mut sm" style="margin:0 0 10px">여러 개 골라도 괜찮아요.</p>' +
-        '<div class="row" style="flex-wrap:wrap;gap:9px;justify-content:center;padding:6px 0">' +
-        KINDS.map(k =>
-          '<button class="react" type="button" data-pk="' + k + '" ' +
-          'style="flex-direction:column;gap:3px;padding:12px 14px;font-size:24px">' +
-          '<span>' + EMOJI[k] + '</span>' +
-          '<span class="n">' + EMOJI_NAME[k] + '</span></button>').join('') + '</div>'
-    });
-    const mark = () => {
-      const row = findRow(id) || {};
-      const mine = row.my_reactions || [];
-      ov.querySelectorAll('[data-pk]').forEach(b =>
-        b.classList.toggle('on', mine.indexOf(b.dataset.pk) >= 0));
-    };
-    mark();
-    /* 시트를 열어둔 채로 여러 개 고를 수 있게 둔다 */
-    ov.querySelectorAll('[data-pk]').forEach(b => b.onclick = async () => {
-      await hitReaction(id, b.dataset.pk);
-      mark();
-    });
-  }
 
   /* 카카오톡처럼 — 어떤 반응을 누가 달았는지 한눈에 */
   async function whoSheet(id) {
     const row = findRow(id) || {};
     const counts = row.reactions || {};
     const shown = KINDS.filter(k => counts[k]);
+    /* 반응은 하트 하나뿐이다 — 이모지 줄 없이 사람만 */
     const ov = sheet({
-      title: '반응한 사람',
+      title: '좋아요 누른 사람',
       body: '<div id="whoList" class="mut sm">불러오는 중…</div>'
     });
-    if (!shown.length) {
-      ov.querySelector('#whoList').innerHTML = '<div class="mut sm">아직 없어요</div>';
-      return;
-    }
-    const parts = [];
-    for (let i = 0; i < shown.length; i++) {
-      const k = shown[i];
-      let names = [];
-      try { names = await DB.community.reactionWho(id, k); } catch (e) { }
-      parts.push(
-        '<div style="padding:11px 0;border-bottom:1px dashed var(--line-2)">' +
-        '<div class="row" style="gap:7px;align-items:center">' +
-        '<span style="font-size:19px">' + EMOJI[k] + '</span>' +
-        '<b class="sm">' + EMOJI_NAME[k] + '</b>' +
-        '<span class="mut sm">' + names.length + '</span></div>' +
-        /* 서버가 이제 이름과 사진을 함께 준다 — 얼굴로 보여 준다 */
-        '<div class="faces2" style="margin-top:7px">' +
-        (names.length
-          ? names.map(x => {
-              const who2 = (typeof x === 'string') ? { name: x } : x;
-              return '<span class="face">' + avatar(who2) +
-                '<span class="sm">' + esc(who2.name) + '</span></span>';
-            }).join('')
-          : '<span class="mut sm">—</span>') +
-        '</div></div>');
-    }
-    ov.querySelector('#whoList').innerHTML = parts.join('');
+    let names = [];
+    try { names = await DB.community.reactionWho(id, 'heart') || []; }
+    catch (e) { console.warn('[발자국] 누른 사람을 못 받아왔어요:', e); }
+    ov.querySelector('#whoList').innerHTML = names.length
+      ? '<div class="faces2">' + names.map(x => {
+          const who2 = (typeof x === 'string') ? { name: x } : x;
+          return '<span class="face">' + avatar(who2) +
+            '<span class="sm">' + esc(who2.name) + '</span></span>';
+        }).join('') + '</div>'
+      : '<div class="mut sm">아직 아무도 없어요</div>';
     loadAvatars(ov);
   }
 
@@ -2365,6 +2393,10 @@ window.Community = (function () {
       hint: opt.hint || '짧아도 좋아요. 기억에 남는 순간 하나면 충분해요.',
       body: '<label class="field"><textarea class="input" id="wBody" rows="5" ' +
         'placeholder="' + esc(opt.ph || '오늘 만난 아이들, 기억에 남는 순간…') + '"></textarea></label>' +
+        /* @ 를 치면 사람 이름이 뜬다 — 댓글과 같은 것 */
+        '<div id="wMenu" class="mentbox" hidden></div>' +
+        '<p class="mut" style="font-size:11.5px;margin:-4px 2px 10px">' +
+        '@ 를 치면 같이 간 사람을 부를 수 있어요</p>' +
 
         '<div class="addrow">' +
         (opt.animals
@@ -2415,12 +2447,19 @@ window.Community = (function () {
           b.onclick = () => openEx(b.dataset.ex));
 
         if (vals.body && vals.body.text) r.querySelector('#wBody').value = vals.body.text;
+
+        /* @ 로 사람 부르기 — 봉사 후기면 같이 간 사람을 맨 위에 */
+        r.__ment = attachMention(
+          r.querySelector('#wBody'), r.querySelector('#wMenu'),
+          { firstIds: opt.firstIds || [] });
       },
 
       read: r => ({
         text: r.querySelector('#wBody').value.trim(),
         animals: r.__an ? r.__an.picked : [],
-        poll: r.__poll ? r.__poll.read() : null
+        poll: r.__poll ? r.__poll.read() : null,
+        /* 글에 남아 있는 @이름 만 */
+        mentions: r.__ment ? r.__ment.ids(r.querySelector('#wBody').value) : []
       }),
 
       valid: v => {
@@ -2607,10 +2646,11 @@ window.Community = (function () {
         if (!v.body.text && !v.photos.list.length && !v.body.poll) {
           throw new Error('글이나 사진을 넣어주세요');
         }
-        await DB.community.createPost({
+        const made = await DB.community.createPost({
           type: 'free', body: v.body.text, photos: v.photos.list,
           poll: pollPayload(v.body.poll)
         });
+        await tellMentioned(made, v.body.mentions, v.body.text);
         closeSheet();
         cheer && cheer();
         toast('올렸어요', 'ok');
@@ -2671,6 +2711,14 @@ window.Community = (function () {
 
   /* ---------- 봉사 후기 ---------- */
   async function reviewWizard(preEvent) {
+    /* 그 봉사에 다녀온 사람들 — @ 목록 맨 위에 올리려고 미리 받아 둔다 */
+    const goIds = [];
+    if (preEvent) {
+      try {
+        const who = await DB.community.eventPeople(preEvent);
+        (who || []).forEach(x => { if (x.id !== ME.id) goIds.push(x.id); });
+      } catch (e) { console.warn('[발자국] 같이 간 사람을 못 받아왔어요:', e); }
+    }
     let acts = [];
     try {
       const a = await DB.myActivity();
@@ -2760,19 +2808,22 @@ window.Community = (function () {
         photoStep(true),
         bodyStep({
           animals: true,
-          place: v => (fixed ? fixed.place : (v.when && v.when.place)) || ''
+          place: v => (fixed ? fixed.place : (v.when && v.when.place)) || '',
+          /* @ 목록 맨 위에 같이 간 사람 */
+          firstIds: goIds
         })
       ],
       done: async v => {
         if (!v.body.text && !v.photos.list.length) throw new Error('글이나 사진을 넣어주세요');
         const when = fixed || v.when;
-        await DB.community.createPost({
+        const made = await DB.community.createPost({
           type: 'review', event_id: when.event_id,
           date: when.date, place: when.place,
           body: v.body.text, photos: v.photos.list,
           insta_ok: v.photos.insta, poll: pollPayload(v.body.poll),
           animals: (v.body.animals || []).map(a => a.id)
         });
+        await tellMentioned(made, v.body.mentions, v.body.text);
         closeSheet();
         cheer && cheer();
         toast('후기 고마워요', 'ok');
@@ -3665,7 +3716,7 @@ window.Community = (function () {
       if (n.kind === 'comment')
         return '<b>' + esc(n.who || '?') + '</b>님이 댓글을 남겼어요 — ' + esc(cut(n.detail, 28));
       if (n.kind === 'reaction')
-        return '<b>' + esc(n.who || '?') + '</b>님이 ' + (EMOJI[n.react] || '') + ' 반응을 달았어요';
+        return '<b>' + esc(n.who || '?') + '</b>님이 내 글을 좋아해요';
       if (n.kind === 'promoted')
         return '대기에서 신청으로 올라갔어요 — <b>' + esc(n.detail || '') + '</b>';
       return esc(n.detail || '새 소식이 있어요');

@@ -1484,6 +1484,34 @@
       });
     },
 
+    /* 그 봉사에 다녀온 사람들 — 후기 @ 목록 맨 위로 */
+    async eventPeople(eventId) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.attendance || [])
+          .filter(a => a.event_id === eventId)
+          .map(a => demoMember(a.member_id)).filter(Boolean)
+          .map(m => ({ id: m.id, name: m.name, photo: m.photo_path || null }));
+      }
+      return await rest('rpc/event_people', {
+        method: 'POST', body: { p_event: eventId }
+      }) || [];
+    },
+
+    /* 댓글 좋아요를 누가 눌렀나 */
+    async commentLikeWho(commentId) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        return (d.comment_likes || [])
+          .filter(l => l.comment_id === commentId)
+          .map(l => demoMember(l.member_id)).filter(Boolean)
+          .map(m => ({ name: m.name, photo: m.photo_path || null }));
+      }
+      return await rest('rpc/comment_like_who', {
+        method: 'POST', body: { p_comment: commentId }
+      }) || [];
+    },
+
     /* @ 를 칠 때 보여 줄 이름들 */
     async mentionPeople(q) {
       if (!HAS_SB) {

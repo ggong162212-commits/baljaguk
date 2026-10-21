@@ -259,6 +259,7 @@
   async function enter() {
     $('#login').hidden = true;
     $('#topbar').hidden = false; $('#admin').hidden = false; $('#tabbar').hidden = false;
+    watchAvatars();
     await load();
     go(cur);
     startLive();
@@ -315,6 +316,25 @@
       UI.avatar(MEINFO, 'tiny') + '</button>');
     tb.querySelector('#profBtn').onclick = profileSheet;
     fillAvatars(tb);
+  }
+
+  /* 화면이 바뀔 때마다 자동으로 사진을 채운다.
+     ------------------------------------------------------------
+     그리는 곳마다 손으로 fillAvatars 를 부르면 꼭 빠뜨린다.
+     (구성원 탭·출석 명단·순위·의견·신고에서 실제로 빠져 있었다.
+      목록을 다시 그릴 때마다 사진이 사라지기도 했다.)
+     그래서 새로 생긴 자리를 지켜보다가 알아서 채운다. */
+  let avWatch = null;
+  function watchAvatars() {
+    if (avWatch || typeof MutationObserver !== 'function') return;
+    let timer = null;
+    avWatch = new MutationObserver(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (document.querySelector('[data-avatar]')) fillAvatars(document);
+      }, 60);
+    });
+    avWatch.observe(document.body, { childList: true, subtree: true });
   }
 
   async function fillAvatars(root) {
@@ -425,16 +445,18 @@
     window.scrollTo({ top: 0 });
     render();
   }
-  function render() {
-    ({
+  async function render() {
+    /* 그리는 함수가 async 면 기다려야 한다 —
+       안 기다리면 사진 채우기가 빈 화면을 훑고 끝난다.
+       (구성원 탭 사진이 안 나오던 까닭) */
+    await ({
       form: renderForm, apply: renderApply, members: renderMembers,
       vol: renderVol, fin: renderFin, donate: renderDonate, settings: renderSettings
     }[cur] || (() => { }))();
     UI.initGrow();
     paintTodo();
     /* 운영진 화면 어디든 사람 사진을 채운다 —
-       구성원 목록·상세·출석 명단·순위·가입 승인 모두 같은 자리를 쓴다.
-       (예전에는 상단바와 내 프로필에만 채워서 사진이 안 보였다) */
+       구성원 목록·상세·출석 명단·순위·가입 승인 모두 같은 자리를 쓴다. */
     fillAvatars(document);
   }
 
@@ -1070,6 +1092,7 @@
       '<span class="arrow">' + ic('chevron') + '</span></div>').join('') + '</div>'
       : empty('users', '해당하는 구성원이 없어요'));
 
+    fillAvatars($('#memberList'));
     $$('#memberList [data-m2]').forEach(el => {
       const open = () => memberSheet(byId(S.members, el.dataset.m2));
       el.addEventListener('click', open);

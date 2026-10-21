@@ -74,6 +74,19 @@ else
   exit 1
 fi
 
+# 만들어진 함수 목록을 파일로도 남긴다 — 실서버와 대조할 때 쓴다
+docker exec -i "$NAME" psql -U postgres -At -c   "select string_agg(p.proname, ',' order by p.proname) from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public';"   > "$HERE/.functions.txt" 2>/dev/null || true
+
+echo ""
+echo "── 프런트가 부르는 RPC 가 다 만들어졌나"
+if node "$HERE/check-live.js" "$HERE/.functions.txt"; then
+  :
+else
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
 echo ""
 echo "── 만들어진 함수"
 docker exec -i "$NAME" psql -U postgres -At -c \
