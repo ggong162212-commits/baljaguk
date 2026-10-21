@@ -555,7 +555,7 @@
 
     box.innerHTML = list.map(f =>
       '<div class="card" style="margin-bottom:10px">' +
-      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) + ' · ' +
+      '<div class="mut xs">' + fmtDateTime(f.created_at) + ' · ' +
       (f.anon ? '<span class="badge">익명</span>' : esc(f.who || '(알 수 없음)')) + '</div>' +
       '<div style="margin-top:7px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
       esc(f.body) + '</div>' +
@@ -566,7 +566,7 @@
           '</div>'
         : '') +
       (f.anon
-        ? '<p class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.55">' +
+        ? '<p class="mut xs" style="margin-top:10px;line-height:1.55">' +
           '익명 의견이라 답장할 수 없어요 · 필요하면 공지로 답해 주세요</p>'
         : (f.replied
           ? '<div class="replybox">' +
@@ -649,7 +649,7 @@
       '<div class="row" style="gap:10px;align-items:center">' +
       avatar({ name: f.who || '?', photo: f.who_photo }) +
       '<div class="grow"><div class="nm">' + esc(f.who || '(알 수 없음)') + '</div>' +
-      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(f.created_at) +
+      '<div class="mut xs">' + fmtDateTime(f.created_at) +
       (f.joined_on ? ' · ' + fmtDate(f.joined_on) + ' 가입' : '') + '</div></div></div>' +
       '<div style="margin-top:9px;font-size:13.5px;line-height:1.65;white-space:pre-wrap">' +
       esc(f.body) + '</div>' +
@@ -698,12 +698,12 @@
     }
     box.innerHTML = list.map(r =>
       '<div class="card" style="margin-bottom:10px">' +
-      '<div class="mut" style="font-size:11.5px">' + fmtDateTime(r.created_at) + '</div>' +
+      '<div class="mut xs">' + fmtDateTime(r.created_at) + '</div>' +
       '<div style="margin-top:6px;font-size:13.5px;font-weight:600">' + esc(r.reason) + '</div>' +
       (r.body
         ? '<div class="pill-note" style="margin-top:9px">' + esc(cut(r.body, 90)) + '</div>'
         : '') +
-      '<div class="mut" style="font-size:11.5px;margin-top:7px">신고한 사람: ' +
+      '<div class="mut xs" style="margin-top:7px">신고한 사람: ' +
       esc(r.reporter || '(알 수 없음)') + '</div>' +
       '<div class="row" style="gap:7px;margin-top:11px">' +
       (r.post_id
@@ -778,7 +778,7 @@
         '<div class="row between">' +
         '<div><div class="sm" style="font-weight:700;color:var(--ink-2)">' +
         esc(gen ? gen + ' 모집 마감' : '부원 모집 마감') + '</div>' +
-        '<div class="mut" style="font-size:11.5px;margin-top:2px">' +
+        '<div class="mut xs" style="margin-top:2px">' +
         (why[st.why] || '접수를 받지 않는 중이에요') + ' · 신청 ' + nApps + '명</div></div>' + sw + '</div></div>';
 
     $('#formPanel').innerHTML = card +
@@ -1206,7 +1206,7 @@
       '<span class="cr">' + ic('crown') + '</span>' + avatar(king.m) +
       '<div class="grow"><div class="lb">' + king.label + '</div>' +
       '<div class="nm">' + esc(king.m.name) + '</div>' +
-      '<div class="mut" style="font-size:11.5px">' + esc(king.m.department || '') + '</div></div>' +
+      '<div class="mut xs">' + esc(king.m.department || '') + '</div></div>' +
       '<div class="cnt">' + king.n + '<small>회</small><div class="mut" style="font-size:11px;font-family:var(--font-body)">' +
       king.unit + '</div></div></div>' : '';
 
@@ -1619,7 +1619,7 @@
             (i === 0 ? ' class="check on"' : '') + ' style="width:100%;text-align:left">' +
             '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
             '<span class="grow"><span class="sm" style="font-weight:700">' + esc(n) + '</span>' +
-            '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+            '<span class="mut xs" style="display:block;margin-top:2px">' +
             (places[i].credit
               ? '1인당 ' + UI.credit(places[i].credit, places[i].unit)
               : '적립 없음') + '</span></span></button>').join('') + '</div>',
@@ -1776,7 +1776,7 @@
           '<div class="mut sm">부원에게 알려줄 번호</div>' +
           '<div style="font-size:30px;font-weight:800;letter-spacing:.16em;margin-top:6px">' +
           esc(code) + '</div>' +
-          '<div class="mut" style="font-size:11.5px;margin-top:7px">지금까지 ' + n + '명 찍었어요</div>' +
+          '<div class="mut xs" style="margin-top:7px">지금까지 ' + n + '명 찍었어요</div>' +
           '</div>';
       } catch (e) {
         toast(e.message || '열지 못했어요', 'err');
@@ -1828,7 +1828,7 @@
           ? '<div class="picker" style="margin-bottom:10px">' + res.map(m =>
             '<div class="check" data-add-m="' + m.id + '"><span class="box">' + ic('plus') + '</span>' +
             avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' + staffBadge(m) +
-            '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번 · 누적 ' + volCount(m.id) + '회</div></div></div>'
+            '<div class="mut xs">' + esc(m.student_id || '') + '학번 · 누적 ' + volCount(m.id) + '회</div></div></div>'
           ).join('') + '</div>'
           : '<div class="mut sm center" style="padding:10px">찾는 구성원이 없어요</div>')
         : '';
@@ -1838,7 +1838,7 @@
       ov.querySelector('#picker').innerHTML = chosen.length ? chosen.map(m =>
         '<div class="check on" data-p="' + m.id + '"><span class="box">' + ic('check') + '</span>' +
         avatar(m, 'sm') + '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' + staffBadge(m) +
-        '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div>' +
+        '<div class="mut xs">' + esc(m.student_id || '') + '학번</div></div>' +
         '<button type="button" class="iconbtn" data-rm="' + m.id + '" aria-label="빼기" ' +
         'style="width:32px;height:32px;border-radius:11px">' + ic('x') + '</button></div>'
       ).join('') : '<div class="mut sm center" style="padding:14px">위에서 이름을 검색해 참여한 사람을 추가해주세요</div>';
@@ -2820,7 +2820,7 @@
         '</div></div>' +
 
         '<div class="row between" style="margin-bottom:8px"><b class="sm">적립 내역 ' + g.rows.length + '건</b>' +
-        '<span class="mut" style="font-size:11.5px">인원 × 1인당</span></div>' +
+        '<span class="mut xs">인원 × 1인당</span></div>' +
         (g.rows.length
           ? '<div class="card flat" style="padding:4px 12px">' + g.rows.map(r =>
             '<div class="kv"><span class="k">' + fmtDate(r.ev.date) + '</span>' +
@@ -3228,7 +3228,7 @@
         '<div class="check' + (on ? ' on' : '') + '" data-m="' + m.id + '">' +
         '<span class="box">' + (on ? ic('check') : ic('plus')) + '</span>' + avatar(m, 'sm') +
         '<div class="grow"><b class="sm">' + esc(m.name) + '</b>' +
-        '<div class="mut" style="font-size:11.5px">' + esc(m.student_id || '') + '학번</div></div></div>';
+        '<div class="mut xs">' + esc(m.student_id || '') + '학번</div></div></div>';
       ov.querySelector('#dPick').innerHTML =
         sel.map(m => row(m, true)).join('') +
         res.map(m => row(m, false)).join('') +
@@ -3364,7 +3364,7 @@
             : '')
         : '') +
 
-      '<p class="mut" style="font-size:11.5px;margin-top:12px;line-height:1.65">' +
+      '<p class="mut xs" style="margin-top:12px;line-height:1.65">' +
       '누가 무엇을 봤는지는 세지 않아요. 숫자만 봐요.</p>';
 
     const vb = box.querySelector('#oldVid');
@@ -3393,7 +3393,7 @@
           '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
           '<span class="grow"><span class="sm" style="font-weight:700">' +
           esc(v.body || '(글 없음)') + '</span>' +
-          '<span class="mut" style="display:block;font-size:11.5px;margin-top:2px">' +
+          '<span class="mut xs" style="display:block;margin-top:2px">' +
           fmtDate(v.created_at) + ' · ' + mb2(v.bytes) + '</span></span></label>').join('') +
         '</div>',
       foot: '<button class="btn danger lg block" type="button" id="vGo">고른 영상 지우기</button>'
@@ -3554,7 +3554,7 @@
       $('#placeList').innerHTML = list.map((pl, i) =>
         '<div class="row between" style="padding:9px 12px;background:var(--surface-2);border-radius:13px;margin-bottom:7px">' +
         '<div><span class="sm"><b>' + esc(pl.name) + '</b>' + (i === 0 ? ' <span class="badge">기본</span>' : '') + '</span>' +
-        '<div class="mut" style="font-size:11.5px">' + (pl.area ? esc(pl.area) + ' · ' : '') +
+        '<div class="mut xs">' + (pl.area ? esc(pl.area) + ' · ' : '') +
         (pl.credit ? '1인당 ' + UI.credit(pl.credit, pl.unit) + ' 적립' : '적립 없음') +
         (pl.address ? '<br>' + esc(pl.address) : '') + '</div></div>' +
         '<div class="row" style="gap:6px">' +

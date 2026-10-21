@@ -62,6 +62,33 @@
 
   /* ---------- 바텀시트 / 모달 ---------- */
   let lastFocus = null;
+  /* ── 키보드가 올라오면 아래 버튼줄을 그 위로 올린다.
+     댓글 시트에만 있던 것을 모든 시트가 받게 옮겼다.
+     아이폰 SE 처럼 화면이 짧으면 키보드가 저장 버튼을 통째로 가린다. */
+  function fitKeyboard(ov) {
+    if (!window.visualViewport || !ov) return;
+    const vv = window.visualViewport;
+    const foot = ov.querySelector('.sheet-foot');
+    const body = ov.querySelector('.sheet-body');
+    const fit = () => {
+      const gap = Math.max(0, innerHeight - vv.height - vv.offsetTop);
+      if (foot) foot.style.transform = gap ? 'translateY(-' + gap + 'px)' : '';
+      /* 버튼줄이 올라온 만큼 본문 아래에 자리를 만들어
+         마지막 입력칸이 버튼에 가리지 않게 한다 */
+      if (body) body.style.paddingBottom = gap ? gap + 'px' : '';
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    ov.__fit = fit;
+    /* 시트를 닫을 때 떼어낸다 — 안 떼면 닫힌 시트를 계속 붙잡는다 */
+    ov.__unfit = () => {
+      vv.removeEventListener('resize', fit);
+      vv.removeEventListener('scroll', fit);
+    };
+    fit();
+  }
+  window.fitKeyboard = fitKeyboard;
+
   function sheet(opts) {
     /* 시트를 바꿔 여는 것이라 기록은 건드리지 않는다 */
     closeSheet(true);
@@ -92,6 +119,7 @@
     const f = ov.querySelector('input,textarea,select,button:not([data-close])');
     if (f && !opts.noFocus) setTimeout(() => f.focus(), 60);
     initGrow(ov);
+    fitKeyboard(ov);
     if (opts.onMount) opts.onMount(ov);
     return ov;
   }
@@ -105,7 +133,7 @@
   }
   function closeSheet(fromBack) {
     const ov = $('.overlay');
-    if (ov) ov.remove();
+    if (ov) { if (ov.__unfit) ov.__unfit(); ov.remove(); }
     document.body.style.overflow = '';
     document.removeEventListener('keydown', escClose);
     window.removeEventListener('popstate', onPop);

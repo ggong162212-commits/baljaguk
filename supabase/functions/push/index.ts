@@ -26,6 +26,8 @@ const WANT: Record<string, string> = {
   reaction: 'want_reaction', notice: 'want_notice', vol: 'want_vol',
   promoted: 'want_promoted', poll: 'want_poll', quiz: 'want_quiz',
   before: 'want_before', thanks: 'want_thanks', feedback: 'want_feedback',
+  /* 언급(@) · 운영진 지원 — 빠져 있어서 끈 사람에게도 가던 것 */
+  mention: 'want_mention', apply: 'want_apply',
 };
 
 /* ---------- 작은 도구들 ---------- */

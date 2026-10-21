@@ -1185,7 +1185,7 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .btn.busy, button.busy{opacity:.6;cursor:default}
 
 /* 최근 접속 — 날짜 단위로만 */
-.seen{font-size:11px;color:var(--ink-3);flex:none;white-space:nowrap}
+.seen{font-size:12px;color:var(--ink-3);flex:none;white-space:nowrap}
 
 /* 알림을 켰는지 — 작은 종. 켜면 초록, 안 켜면 흐리게 */
 .belldot{display:inline-flex;align-items:center;color:var(--line);flex:none}
@@ -1415,6 +1415,10 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .cal .wk span{font-size:12px}
 .amark{font-size:12px}
 .badge-nm{font-size:12px}
-/* JS 가 글자 크기를 직접 박아 둔 흐린 글(11~11.5px) — 여기서는 덮기만 한다.
-   깔끔하게는 community.js·admin.js 의 style="font-size:11.5px" 를 빼면 된다 */
+/* 작은 보조 글 — 설명·단서·날짜처럼 본문 아래 붙는 한 줄.
+   예전에는 JS 가 style="font-size:11.5px" 로 박아 두고 여기서 !important 로
+   덮었다. 이제 JS 가 이 클래스를 붙이므로 덮을 것이 없다.
+   12px 아래로는 내리지 않는다 — 폰에서 읽기 힘들다. */
+.xs{font-size:12px}
+/* 혹시 남아 있을지 모르는 옛 인라인 — 그래도 12 아래로는 안 간다 */
 [style*="font-size:11px"],[style*="font-size:11.5px"]{font-size:12px !important}
