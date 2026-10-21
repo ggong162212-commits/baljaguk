@@ -31,23 +31,27 @@
     else if (mq.addListener) mq.addListener(follow);
   }
 
-  /* 상단바 — 프로필 동그라미가 생기면 테마 버튼을 바로 왼쪽으로 */
+  /* 상단바 — 프로필 동그라미가 생기면 테마 버튼을 바로 왼쪽으로.
+     ★ 바뀐 게 있을 때만 손댄다. paintThemeButtons 는 버튼 안을 다시 그려서
+       그것도 변화로 잡히므로, 매번 부르면 끝없이 돈다 */
   function place() {
     const tb = document.querySelector('.topbar .in');
     if (!tb) return;
-    const prof = tb.querySelector('#profBtn');
-    const btn = tb.querySelector('[data-theme-btn]');
+    const prof = tb.querySelector(':scope > #profBtn');
+    const btn = tb.querySelector(':scope > [data-theme-btn]');
     if (!prof || !btn) return;
-    if (btn.nextElementSibling !== prof) tb.insertBefore(btn, prof);
-    if (btn.hidden) btn.hidden = false;
-    btn.classList.add('themebtn');
+    let changed = false;
+    if (btn.nextElementSibling !== prof) { tb.insertBefore(btn, prof); changed = true; }
+    if (btn.hidden) { btn.hidden = false; changed = true; }
+    if (!btn.classList.contains('themebtn')) { btn.classList.add('themebtn'); changed = true; }
     if (!btn.dataset.wired) {
       btn.dataset.wired = '1';
       /* me.js·admin.js 가 이미 UI.toggleTheme 를 붙여 두었다 — 옮겨도 그대로 산다.
          여기서는 주소창 색만 맞춘다 */
       btn.addEventListener('click', () => setTimeout(() => apply(current()), 0));
+      changed = true;
     }
-    if (window.UI && UI.paintThemeButtons) UI.paintThemeButtons();
+    if (changed && window.UI && UI.paintThemeButtons) UI.paintThemeButtons();
   }
 
   const CSS =
@@ -64,9 +68,13 @@
     }
     apply(current());
     place();
-    const tb = document.querySelector('.topbar');
+    /* 상단바 바로 아래 줄만 본다 — 버튼 안(아이콘)이 바뀌는 건 보지 않는다 */
+    const tb = document.querySelector('.topbar .in');
     if (tb && window.MutationObserver) {
-      new MutationObserver(place).observe(tb, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+      const mo = new MutationObserver(place);
+      mo.observe(tb, { childList: true });
+      const btn = tb.querySelector('[data-theme-btn]');
+      if (btn) mo.observe(btn, { attributes: true, attributeFilter: ['hidden'] });
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

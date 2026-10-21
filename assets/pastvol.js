@@ -76,7 +76,7 @@
     '.pv-month{border-bottom:1px dashed var(--line-2)}' +
     '.pv-month:last-child{border-bottom:none}' +
     '.pv-month>summary{min-height:48px;display:flex;align-items:center;gap:8px;cursor:pointer;' +
-    'list-style:none;font-weight:800;font-size:15px}' +
+    'list-style:none;font-weight:800;font-size:15px;color:var(--ink)}' +
     '.pv-month>summary::-webkit-details-marker{display:none}' +
     '.pv-month>summary .n{color:var(--ink-3);font-weight:600;font-size:13px}' +
     '.pv-month>summary .chev{margin-left:auto;transition:transform .15s}' +
