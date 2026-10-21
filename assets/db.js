@@ -15,6 +15,45 @@
   const signCache = new Map();
   const signFlight = new Map();
 
+  /* ── 받아 둔 사진 주소를 **폰에도** 적어 둔다
+     선고은님: 「앱을 껐다 켜면 사진들이 너무 늦게 보여」
+     주소를 머리(메모리)에만 들고 있어서, 앱을 껐다 켜면 전부 다시
+     서명을 받아야 했다. 서명 주소는 한 시간짜리라 그동안은 그대로 쓴다. */
+  const SIGN_KEY = 'baljaguk.signs';
+  function loadSigns() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(SIGN_KEY) || '{}');
+      const now = Date.now();
+      Object.keys(raw).forEach(k => {
+        if (raw[k] && raw[k].until > now + 60000) signCache.set(k, raw[k]);
+      });
+    } catch (e) { }
+  }
+  let signSaveTimer = null;
+  function saveSigns() {
+    clearTimeout(signSaveTimer);
+    signSaveTimer = setTimeout(() => {
+      try {
+        const now = Date.now();
+        const out = {};
+        let n = 0;
+        /* 최근 것부터 300장까지만 — localStorage 를 꽉 채우지 않게 */
+        Array.from(signCache.entries())
+          .filter(([, v]) => v && v.until > now)
+          .sort((a, b) => b[1].until - a[1].until)
+          .forEach(([k, v]) => { if (n++ < 300) out[k] = v; });
+        localStorage.setItem(SIGN_KEY, JSON.stringify(out));
+      } catch (e) { /* 자리가 없으면 그냥 넘어간다 */ }
+    }, 1200);
+  }
+  loadSigns();
+
+  /* 로그아웃하면 지운다 — 다음 사람에게 남지 않게 */
+  window.addEventListener('baljaguk:logout', () => {
+    signCache.clear();
+    try { localStorage.removeItem(SIGN_KEY); } catch (e) { }
+  });
+
   /* dataURL 을 더 작게 — 피드에 쓸 640px 짜리를 만든다 */
   function shrinkDataUrl(dataUrl, maxSide, quality) {
     return new Promise(res => {
@@ -507,6 +546,8 @@
     },
 
     memberLogout() {
+      /* 받아 둔 사진 주소도 치운다 — 다음 사람에게 남지 않게 */
+      try { window.dispatchEvent(new Event('baljaguk:logout')); } catch (e) { }
       if (!HAS_SB) {
         localStorage.removeItem('baljaguk.demoLogin');
         localStorage.removeItem('baljaguk.demoMe');
@@ -1432,6 +1473,14 @@
     if (!HAS_SB) return { ok: true, name: '체험' };
     return await rest('rpc/link_login', {
       method: 'POST', body: { p_member: memberId, p_nick: nick || '', p_at: at }
+    });
+  };
+
+  /* 안 이어진 로그인을 지운다 (운영진) */
+  DB.dropLogin = async function (nick, at) {
+    if (!HAS_SB) return { ok: true };
+    return await rest('rpc/drop_login', {
+      method: 'POST', body: { p_nick: nick || '', p_at: at }
     });
   };
 
@@ -2666,7 +2715,7 @@
             });
           const j = await r.json().catch(() => ({}));
           const url = j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
-          if (url) signCache.set(path, { url, until: Date.now() + 50 * 60 * 1000 });
+          if (url) { signCache.set(path, { url, until: Date.now() + 50 * 60 * 1000 }); saveSigns(); }
           return url;
         } catch (e) { return ''; }
         finally { signFlight.delete(path); }
@@ -2706,6 +2755,7 @@
           out[key] = url;
           signCache.set(key, { url, until: Date.now() + 50 * 60 * 1000 });
         });
+        saveSigns();
       } catch (e) {
         /* 묶어 받기가 안 되면 한 장씩 — 옛 서버에서도 돌게 */
         await Promise.all(need.map(async x => { out[x] = await DB.community.photoUrl(x); }));

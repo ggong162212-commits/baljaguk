@@ -1188,7 +1188,9 @@
           unl.slice(0, 8).map((u, i) =>
             '<div class="kv"><span class="k">' + esc(u.nick || '(닉네임 없음)') + '</span>' +
             '<span class="v">' + fmtDate(u.at) +
-            ' <button class="linkbtn" type="button" data-linkone="' + i + '">이 사람과 잇기</button>' +
+            ' <button class="linkbtn" type="button" data-linkone="' + i + '">잇기</button>' +
+            ' <button class="linkbtn" type="button" data-droplogin="' + i + '" ' +
+            'style="color:var(--danger)">지우기</button>' +
             '</span></div>').join('') +
           (unl.length > 8 ? '<div class="mut xs">외 ' + (unl.length - 8) + '개</div>' : '') +
           '</div>' +
@@ -1199,6 +1201,34 @@
       unlBox.querySelectorAll('[data-linkone]').forEach(b => b.onclick = () => {
         const u = unl[Number(b.dataset.linkone)];
         if (u) linkLoginSheet(u);
+      });
+
+      /* 「지우기」 — 명부와 안 이어졌으니 그냥 없앤다 */
+      unlBox.querySelectorAll('[data-droplogin]').forEach(b => b.onclick = async () => {
+        const u = unl[Number(b.dataset.droplogin)];
+        if (!u) return;
+        if (!await confirmSheet(
+          '이 로그인을 목록에서 지울까요?',
+          '「' + (u.nick || '닉네임 없음') + '」 (' + fmtDate(u.at) + ') · ' +
+          '이 카카오 계정으로 다시 들어오면 본인 확인부터 다시 해요.',
+          '지우기', true)) return;
+        b.disabled = true; b.textContent = '지우는 중…';
+        try {
+          const r = await DB.dropLogin(u.nick, u.at);
+          if (!r || !r.ok) {
+            throw new Error(({
+              linked: '명부와 이어진 계정이라 지울 수 없어요',
+              haswork: '이 계정이 쓴 글이 있어 지우지 않았어요',
+              notone: '그 로그인을 찾지 못했어요. 목록을 새로 받아 주세요'
+            })[(r && r.why) || ''] || '지우지 못했어요');
+          }
+          toast('지웠어요', 'ok');
+          S.unlinked = null;
+          await load();
+        } catch (e) {
+          toast(e.message || '지우지 못했어요', 'err');
+          b.disabled = false; b.textContent = '지우기';
+        }
       });
 
       const cu = $('#copyUnlink');
@@ -1822,15 +1852,8 @@
       '<input id="pickSearch" placeholder="이름으로 찾아서 추가"></div>' +
       '<div id="pickResults"></div>' +
       '<div class="picker" id="picker"></div>' +
-      /* 오늘 가는 봉사면 현장 출석 번호를 열 수 있다 */
-      (!isNew && ev.date === DB.today()
-        ? '<div class="divider"></div>' +
-          '<div class="lb" style="margin-bottom:7px">현장 출석</div>' +
-          '<div id="ciBox"><button class="btn soft block" type="button" data-ciopen>' +
-          ic('unlock') + '<span>출석 번호 열기</span></button></div>' +
-          '<span class="hint">부원이 번호를 넣으면 「현장 참석」이 남아요. ' +
-          '실적은 아래 확정하기로 쌓여요.</span>'
-        : '') +
+      /* 현장 출석은 뺐다 — 2026-10-21 선고은님 「현장 출석은 없어도 돼」.
+         실적은 아래 「봉사 확정하기」로만 쌓인다. */
       '<div class="divider"></div>' +
       (isNew ? '<button class="btn primary block" data-save>봉사모임 만들기</button>'
         : (confirmed
@@ -1849,26 +1872,6 @@
 
     const ov = sheet({ title: isNew ? fmtDate(F.day) + ' 봉사모임' : '봉사모임 수정', body, noFocus: true });
 
-    /* 출석 번호 — 한 번 열면 그날 내내 같은 번호를 쓴다 */
-    const ci = ov.querySelector('[data-ciopen]');
-    if (ci) ci.onclick = async () => {
-      ci.disabled = true;
-      try {
-        const code = await DB.community.checkinOpen(ev.id);
-        const box = ov.querySelector('#ciBox');
-        const n = (S.checkins || []).filter(c => c.event_id === ev.id).length;
-        box.innerHTML =
-          '<div class="card flat" style="text-align:center;padding:16px">' +
-          '<div class="mut sm">부원에게 알려줄 번호</div>' +
-          '<div style="font-size:30px;font-weight:800;letter-spacing:.16em;margin-top:6px">' +
-          esc(code) + '</div>' +
-          '<div class="mut xs" style="margin-top:7px">지금까지 ' + n + '명 찍었어요</div>' +
-          '</div>';
-      } catch (e) {
-        toast(e.message || '열지 못했어요', 'err');
-        ci.disabled = false;
-      }
-    };
 
     const cp = ov.querySelector('[data-copysignup]');
     if (cp) cp.onclick = () => copy(signupURL(ev.id), '신청 폼 주소를 복사했어요');

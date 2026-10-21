@@ -51,7 +51,11 @@ window.Push = (function () {
   let regP = null;
   function ready() {
     if (!canPush) return Promise.reject(new Error('이 브라우저는 알림을 못 받아요'));
-    if (!regP) regP = navigator.serviceWorker.register('sw.js', { scope: './' });
+    /* ★ updateViaCache:'none' — 서비스워커 파일만은 브라우저 캐시를 쓰지 않는다.
+       안 그러면 새로 배포해도 폰이 옛 sw.js 를 캐시에서 꺼내 써서,
+       알림 누르는 처리가 옛 것으로 남는다. */
+    if (!regP) regP = navigator.serviceWorker.register('sw.js',
+      { scope: './', updateViaCache: 'none' });
     return regP;
   }
 

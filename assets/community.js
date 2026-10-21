@@ -120,16 +120,27 @@ window.Community = (function () {
     watchFab();
     /* 아바타는 어디서든 눌러서 그 사람 프로필을 연다 */
     watchAvatarTaps();
+    /* 알림 처리가 옛것으로 남지 않게 */
+    keepSwFresh();
     /* 알림을 눌렀을 때 서비스워커가 알려 준다 — 주소만 바뀌면 화면이 안 바뀌어서 */
     try {
       navigator.serviceWorker.addEventListener('message', e => {
         const u = e.data && e.data.type === 'goto' && e.data.url;
         if (!u) return;
-        const i = String(u).indexOf('#');
-        if (i < 0) return;
+        /* 「#post=…」 가 보통이지만 「?post=…」 로 와도 알아듣는다 —
+           한 글자 때문에 조용히 아무 일도 안 일어나면 안 된다 */
+        const str = String(u);
+        let to = '';
+        const i = str.indexOf('#');
+        if (i >= 0) to = str.slice(i + 1);
+        else {
+          const q = /[?&](post|vol|poll|news)=([^&]+)/.exec(str);
+          if (q) to = q[1] + '=' + q[2];
+        }
+        if (!to) return;
         /* ★ location.hash 를 건드리지 않는다 — 그러면 hashchange 까지
            한 번 더 돌아 서로 주소를 지웠다. 목적지만 바로 넘긴다. */
-        deepTo = String(u).slice(i + 1);
+        deepTo = to;
         runDeepLink();
       });
     } catch (e) { }
@@ -200,6 +211,12 @@ window.Community = (function () {
         ok = await openPost(id, true);
       }
       clearTimeout(slow);
+      /* 마지막 한 번을 적어 둔다 — 안 될 때 무엇이 문제였는지 보려고 */
+      try {
+        localStorage.setItem('baljaguk.lastDeep', JSON.stringify({
+          to: deepTo, ok: !!ok, at: new Date().toISOString(), sw: swVersion
+        }));
+      } catch (e) { }
       /* 되든 안 되든 목적지는 비운다 — 안 그러면 없는 글을 계속 다시 연다 */
       if (ok) deepDone = { to: deepTo, at: Date.now() };
       deepTo = null;
@@ -588,6 +605,7 @@ window.Community = (function () {
         (ME.photo ? '<button class="btn ghost sm" type="button" id="pfClear">사진 지우기</button>' : '') +
         '</div>' +
         '<input type="file" id="pfFile" accept="image/*" hidden>' +
+        '<p class="mut" id="pfVer" style="font-size:11px;text-align:center;margin-top:14px"></p>' +
         '<p class="mut xs" style="margin-top:10px;line-height:1.6">' +
         '다른 사람 사진이나 부적절한 사진은 운영진이 지울 수 있어요.</p>' +
         '</div>' +
@@ -662,6 +680,21 @@ window.Community = (function () {
     ov.querySelector('#pfOut').onclick = () => { DB.memberLogout(); location.reload(); };
 
     const file = ov.querySelector('#pfFile');
+    /* 앱 버전 · 알림 처리 버전 — 폰이 새것으로 바뀌었는지 바로 보이게 */
+    const ver = ov.querySelector('#pfVer');
+    if (ver) {
+      const app = (document.querySelector('script[src*="community.js"]') || {}).src || '';
+      const m = /v=(\d{12})/.exec(app);
+      ver.textContent = '앱 ' + (m ? m[1] : '?') + ' · 알림 처리 ' + (swVersion || '확인 중…');
+      if (!swVersion && navigator.serviceWorker && navigator.serviceWorker.controller) {
+        try { navigator.serviceWorker.controller.postMessage({ type: 'version' }); } catch (e) { }
+        setTimeout(() => {
+          if (swVersion) ver.textContent =
+            '앱 ' + (m ? m[1] : '?') + ' · 알림 처리 ' + swVersion;
+        }, 800);
+      }
+    }
+
     /* ★ 내 프로필 사진을 한 번 더 누르면 카톡처럼 크게 (avatarview.js).
        남의 프로필(peek)에만 이어져 있고 **내 것에는 없었다** —
        선고은님이 말한 자리가 바로 여기다. */
@@ -2278,7 +2311,6 @@ window.Community = (function () {
       /* 사진은 글 상세를 여는 자리 안에 있다 — data-open 보다 먼저 본다 */
       if ((b = hit('data-big'))) return openShots(b.dataset.big, b.dataset.at);
       if ((b = hit('data-animal'))) return animalSheet(b.dataset.animal, b.dataset.aname);
-      if ((b = hit('data-checkin'))) return checkinSheet(b.dataset.checkin);
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
       if ((b = hit('data-best'))) return markBest(b.dataset.best, b.dataset.bc);
       if (hit('data-myans')) return myAnswersSheet();
@@ -2419,6 +2451,43 @@ window.Community = (function () {
      겹치는 순간에만 + 를 왼쪽으로 살짝 비켜 준다 —
      그 자리는 글자뿐이라 아무것도 안 가린다.
      ============================================================ */
+  /* ============================================================
+     서비스워커를 새것으로 — 알림이 옛 처리로 돌지 않게
+     ------------------------------------------------------------
+     선고은님: 「앱이 켜져 있는 상태에서 알림 울리면 여전히 안 가」
+     sw.js 를 고쳐 배포해도, 앱을 켜 둔 폰은 **새 sw.js 를 확인조차
+     하지 않는다** (브라우저는 화면을 옮길 때나 하루에 한 번만 본다).
+     그래서 옛 처리(같은 목적지를 두 번 보내기)가 그대로 돌았다.
+     앱을 열 때와 다시 볼 때마다 확인한다.
+     ============================================================ */
+  let swVersion = '';
+  function keepSwFresh() {
+    if (!('serviceWorker' in navigator)) return;
+    const look = () => {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (!reg) return;
+        try { reg.update(); } catch (e) { }
+        /* 지금 돌고 있는 것이 몇 번인지 물어본다 */
+        const sw = navigator.serviceWorker.controller;
+        if (sw) { try { sw.postMessage({ type: 'version' }); } catch (e) { } }
+      }).catch(() => { });
+    };
+    look();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) look(); });
+    window.addEventListener('focus', look);
+
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data && e.data.type === 'version') swVersion = e.data.version || '';
+    });
+    /* 새것으로 바뀌면 — 기다리던 알림이 있으면 그때 연다 */
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      swVersion = '';
+      const sw = navigator.serviceWorker.controller;
+      if (sw) { try { sw.postMessage({ type: 'version' }); } catch (e) { } }
+      if (deepTo) runDeepLink();
+    });
+  }
+
   /* ============================================================
      다음에 볼 사진을 미리 받아 둔다
      ------------------------------------------------------------
@@ -2698,57 +2767,10 @@ window.Community = (function () {
   }
 
   /* ---------- 글 메뉴 (수정·삭제·숨기기·고정) ---------- */
-  /* ---------- 현장 출석 체크 ----------
-     운영진이 그날 연 여섯 자리 번호를 넣는다.
-     찍어도 실적·적립은 안 쌓인다 — 그건 운영진이 확정해야 쌓인다. */
-  function checkinSheet(eventId) {
-    const ov = sheet({
-      title: '현장 출석 체크',
-      body:
-        '<p class="mut sm" style="margin-bottom:14px;line-height:1.6">' +
-        '운영진이 알려주는 여섯 자리 번호를 넣어주세요.<br>' +
-        '찍어도 봉사 실적은 운영진이 확정해야 쌓여요.</p>' +
-        '<label class="field"><input class="input lgin" id="ciCode" inputmode="numeric" ' +
-        'maxlength="6" placeholder="000000" style="text-align:center;letter-spacing:.28em"></label>',
-      foot:
-        '<button class="btn primary lg block" type="button" id="ciGo">출석 찍기</button>'
-    });
+  /* 현장 출석 체크는 뺐다 — 2026-10-21 선고은님
+     「현장 출석은 없어도 돼」. 실적은 운영진 확정으로만 잡는다.
+     서버 함수·칸(checkins)은 지우지 않았다 — 쌓인 기록은 그대로 둔다. */
 
-    const input = ov.querySelector('#ciCode');
-    setTimeout(() => input && input.focus(), 80);
-    input.addEventListener('input', () => {
-      input.value = input.value.replace(/[^0-9]/g, '').slice(0, 6);
-    });
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.isComposing) ov.querySelector('#ciGo').click();
-    });
-
-    ov.querySelector('#ciGo').onclick = async () => {
-      const btn = ov.querySelector('#ciGo');
-      const code = input.value.trim();
-      if (code.length !== 6) return toast('여섯 자리를 넣어주세요', 'err');
-      btn.disabled = true; btn.textContent = '확인 중…';
-      try {
-        const r = await DB.community.checkinDo(eventId, code);
-        if (r && r.ok) {
-          closeSheet();
-          cheer && cheer();
-          toast('출석했어요. 오늘도 고마워요!', 'ok');
-          return;
-        }
-        toast(({
-          notToday: '오늘 가는 봉사가 아니에요',
-          wrong: '번호가 맞지 않아요',
-          noevent: '봉사를 찾지 못했어요',
-          nologin: '로그인이 풀렸어요'
-        }[(r && r.why) || ''] || '찍지 못했어요'), 'err');
-      } catch (e) {
-        toast(e.message || '찍지 못했어요', 'err');
-      } finally {
-        btn.disabled = false; btn.textContent = '출석 찍기';
-      }
-    };
-  }
 
   /* ---------- 신고 ----------
      운영진에게만 간다. 누가 신고했는지는 글쓴이에게 보이지 않는다. */
@@ -4698,11 +4720,6 @@ window.Community = (function () {
       '<div class="mut" style="font-size:12px;margin-top:8px">' +
       (cap ? '선착순 ' + num(taken) + ' / ' + num(cap) + '명' : num(taken) + '명 신청') + '</div>' +
 
-      /* 오늘 가는 봉사면 현장에서 출석을 찍을 수 있다 */
-      (mine && String(e.date) === DB.today()
-        ? '<button class="btn soft block" type="button" style="margin-top:11px" ' +
-          'data-checkin="' + esc(e.id) + '">' + ic('check') + '<span>현장 출석 체크</span></button>'
-        : '') +
 
       '<div style="margin-top:11px">' +
       (mine
