@@ -1356,3 +1356,55 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .ans .at2{margin-left:6px;font-size:12px;font-weight:400;color:var(--ink-3)}
 .ans .ab{margin-top:4px;font-size:15px;line-height:1.5;color:var(--ink);white-space:pre-wrap}
 .ans .linkbtn{margin-top:6px;font-size:12.5px}
+
+/* ============================================================
+   모바일 크기 맞춤 (w2-mobile, 2026-10-21)
+   모바일 4기기(375·390·360·430) 점검표 기준. 앞쪽 규칙을 여기서 덮는다.
+   · 누르는 자리 44×44 — 보이는 크기는 그대로 두고 ::after 로 자리만 넓힌다
+   · 글자 — 글 본문 15 · 댓글·한 줄 요약 14 · 보조 12 이상
+   · 좌우 여백 — 화면과 시트 모두 --gutter 하나로
+   ============================================================ */
+:root{--gutter:16px}
+.app{padding-left:var(--gutter);padding-right:var(--gutter)}
+.sheet{padding-left:var(--gutter);padding-right:var(--gutter)}
+
+/* --- 누르는 자리 --- */
+/* 시트 ✕ · 운영진 톱니 · 달력 화살표 · 글 「…」 (38·36px) */
+.iconbtn{position:relative}
+.iconbtn::after{content:"";position:absolute;inset:-4px;border-radius:inherit}
+/* 글 상세 「게시」 (40px) */
+.csend{min-width:44px;min-height:44px}
+/* 댓글 하트 (30px) */
+.cline .clike{position:relative}
+.cline .clike::after{content:"";position:absolute;inset:-7px}
+/* 「답글 달기」 「좋아요 n개」 */
+.cline .clink{position:relative;font-size:12px}
+.cline .clink::after{content:"";position:absolute;inset:-12px -4px}
+/* 운영진 폼 탭 안 「가입」 글자 링크 */
+#goApplyTab{position:relative}
+#goApplyTab::after{content:"";position:absolute;inset:-12px -11px}
+/* 「만난 친구」 등 더하기 칩 (35px) · 친구 이름표 (29px) */
+.addchip,.apaw{position:relative}
+.addchip::after{content:"";position:absolute;inset:-5px 0}
+.apaw::after{content:"";position:absolute;inset:-8px 0}
+/* 달력 날짜 (작은 폰 41px) */
+.day::after{content:"";position:absolute;inset:-2px}
+/* 로고(홈으로) — 높이 30px */
+.brandmark{position:relative}
+.brandmark::after{content:"";position:absolute;inset:-7px 0}
+
+/* --- 글자 --- */
+.post .bd, .sheet-body .bd{font-size:15px}
+.cline .tx{font-size:14px}
+.newsrow .tx{font-size:14px}
+.pinrow .tx,.askcard .tx,.todoit .tx{font-size:14px}
+.tabbar button{font-size:12px}
+.badge{font-size:12px}
+.post .who .at, .sheet-body > .who .at{font-size:12px}
+.cline .cfoot .at{font-size:12px}
+.newsrow .at{font-size:12px}
+.stat .lb,.statcard:has(.stat:nth-child(3)) .stat .lb{font-size:12px}
+.stat3 .k{font-size:12px}
+.chip .n{font-size:12px}
+.cal .wk span{font-size:12px}
+.amark{font-size:12px}
