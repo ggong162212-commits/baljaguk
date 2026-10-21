@@ -28,6 +28,8 @@ const WANT: Record<string, string> = {
   before: 'want_before', thanks: 'want_thanks', feedback: 'want_feedback',
   /* 언급(@) · 운영진 지원 — 빠져 있어서 끈 사람에게도 가던 것 */
   mention: 'want_mention', apply: 'want_apply',
+  /* 칭찬해요 · 명예의 전당 — 「칭찬·축하」 하나로 끈다 (fix-praise.sql) */
+  praise: 'want_praise',
 };
 
 /* ---------- 작은 도구들 ---------- */

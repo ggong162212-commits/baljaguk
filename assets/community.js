@@ -417,11 +417,13 @@ window.Community = (function () {
     ['want_poll',     '설문 마감',  '아직 참여 안 한 설문이 마감되기 전날'],
     ['want_quiz',     '퀴즈 결과',  '퀴즈 정답이 발표되면'],
     ['want_before',   '봉사 전날',  '전날 저녁 8시'],
-    ['want_thanks',   '봉사 감사',  '다녀온 날']
+    ['want_thanks',   '봉사 감사',  '다녀온 날'],
+    ['want_praise',   '칭찬·축하',  '누가 칭찬받거나 명예의 전당에 오르면']
   ];
 
   /* 미리보기 — 실제로 보내 보는 문구 */
   const NSAMPLE = {
+    want_praise:   ['이보호님이 김발자님을 칭찬했어요', '어제 산책 줄 잡아 줘서 고마웠어요'],
     want_post:     ['이보호님이 새 글을 올렸어요', '오늘 처음 간 보금자리! 아이들이 생각보다 훨씬…'],
     want_comment:  ['이보호님이 댓글을 남겼어요', '다음엔 같이 가요'],
     want_reply:    ['이보호님이 내 댓글에 답글을 남겼어요', '저도요! 그날 봬요'],
@@ -1124,7 +1126,7 @@ window.Community = (function () {
 
   /* ---------- 글 한 장 ---------- */
   function postCard(p) {
-    const who = p.author || { name: '?' };
+    const who = (window.Fame && Fame.who(p)) || p.author || { name: '?' };  /* 명예의 전당 글은 「발자국」 (fame.js) */
     /* 질문은 모양이 다르다 — 사진·반응·설문 줄 없이 한눈에 */
     if (p.question) return questionCard(p);
 
@@ -1134,7 +1136,7 @@ window.Community = (function () {
        그릴 때 실제로 안 넘치면 「더 보기」를 치운다 (clipCheck) */
     const long = !!body;
 
-    return '<article class="card post" data-post="' + esc(p.id) + '">' +
+    return '<article class="card post' + (p.type === 'praise' || p.type === 'fame' ? ' ' + p.type : '') + '" data-post="' + esc(p.id) + '">' +
       '<div class="who">' +
       '<button class="facebtn" type="button" data-peek="' + esc(who.id || '') + '" ' +
       'data-pname="' + esc(who.name) + '" data-pphoto="' + esc(who.photo || who.photo_path || '') + '" ' +
@@ -1154,6 +1156,9 @@ window.Community = (function () {
           (p.date ? fmtDate(p.date) : '') +
           (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '')) +
+
+      (p.type === 'praise' && window.Praise ? Praise.head(p) : '') +  /* 칭찬해요 줄 (praise.js) */
+      (p.type === 'fame' && window.Fame ? Fame.head(p) : '') +  /* 명예의 전당 (fame.js) */
 
       /* 사진이 먼저 — 두 번 톡 누르면 하트 */
       photoStrip(p) +
@@ -2833,7 +2838,7 @@ window.Community = (function () {
     const p = findRow(id) || (F.pins || []).filter(x => String(x.id) === String(id))[0];
     if (!p) return missWarn('글', id);
     const btns = [];
-    if (p.mine) {
+    if (p.mine && p.type !== 'fame') {   /* 명예의 전당 글은 주인공도 못 고치고 못 지운다 */
       btns.push('<button class="btn ghost block" type="button" data-act="edit">글 고치기</button>');
       btns.push('<button class="btn ghost block" type="button" data-act="del">글 지우기</button>');
     }
@@ -2843,7 +2848,7 @@ window.Community = (function () {
         btns.push('<button class="btn ghost block" type="button" data-act="edit">공지 고치기</button>');
       }
       /* 남의 글도 지울 수 있다. 숨기기는 쓰지 않는다 — 지우거나 두거나 둘 중 하나다 */
-      if (!p.mine) {
+      if (!p.mine || p.type === 'fame') {
         btns.push('<button class="btn ghost block" type="button" data-act="del">글 삭제</button>');
       }
       if (p.type === 'notice')
@@ -3211,6 +3216,7 @@ window.Community = (function () {
       body: row('review', 'calendar', '봉사 후기', '다녀온 날의 기록이에요') +
         row('free', 'edit', '자유글', '일상 이야기를 나눠요') +
         row('question', 'info', '질문', '궁금한 걸 물어봐요') +
+        (window.Praise ? row('praise', 'paw', '칭찬해요', '고마운 구성원을 모두 앞에서 칭찬해요') : '') +  /* praise.js */
         (admin ? row('notice', 'alert', '공지', '모두에게 알리는 글이에요') : '')
     });
 
@@ -3221,6 +3227,7 @@ window.Community = (function () {
         if (k === 'review') reviewWizard(null);
         else if (k === 'free') freeWizard();
         else if (k === 'question') questionSheet();
+        else if (k === 'praise') Praise.write({ photoStep, done: () => { closeSheet(); cheer && cheer(); dropViewCache(); toast('칭찬을 올렸어요', 'ok'); F.kind = 'all'; F.place = ''; saveFilter({ kind: 'all', place: '' }); renderHome(true); } });
         else noticeWizard();
       }, 180);
     });
@@ -3953,12 +3960,12 @@ window.Community = (function () {
       }
       return false;
     }
-    const who = p.author || { name: '?' };
+    const who = (window.Fame && Fame.who(p)) || p.author || { name: '?' };  /* 명예의 전당 글은 「발자국」 (fame.js) */
 
     const ov = sheet({
       title: '',
       body:
-        '<div class="who" style="margin-bottom:10px">' + avatar(who) +
+        '<div class="who" style="margin-bottom:10px">' + avatar(who, p.type === 'fame' ? 'fame-logo' : '') +
         '<div class="grow"><div class="nm">' + esc(who.name) +
         (who.role === 'admin' ? ' <span class="badge admin">운영진</span>' : '') + '</div>' +
         '<div class="at">' + relTime(p.created_at) +
@@ -3969,6 +3976,7 @@ window.Community = (function () {
           (p.date ? fmtDate(p.date) : '') +
           (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '') +
+        (p.type === 'praise' && window.Praise ? Praise.head(p) : '') + (p.type === 'fame' && window.Fame ? Fame.head(p) : '') +  /* praise.js · fame.js */
 
         (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
         photoStrip(p) +
@@ -4831,6 +4839,8 @@ window.Community = (function () {
     loadNews();
     await loadActivity();
     if (window.PastVol) PastVol.mount($('#act'), { mine: true, append: true });  /* 내가 간 봉사 (pastvol.js) */
+    if (window.Praise) Praise.mountMe($('#act'));  /* 받은 칭찬 n (praise.js) */
+    if (window.Fame) Fame.mountMe($('#act'));  /* 명예의 전당 ○번째 (fame.js) */
   }
 
   /* ---------- 새 소식 ----------
