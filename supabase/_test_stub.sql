@@ -28,7 +28,20 @@ create schema if not exists auth;
 
 create table if not exists auth.users (
   id    uuid primary key default gen_random_uuid(),
-  email text
+  email text,
+  /* 실서버에 있는 칸들 — 카카오 닉네임·들어온 때 */
+  raw_user_meta_data jsonb,
+  created_at         timestamptz default now(),
+  last_sign_in_at    timestamptz
+);
+
+/* 카카오 같은 바깥 로그인이 이어진 기록 — 실서버에 있는 표 */
+create table if not exists auth.identities (
+  id          text,
+  user_id     uuid references auth.users(id),
+  provider    text,
+  provider_id text,
+  created_at  timestamptz default now()
 );
 
 create or replace function auth.uid()

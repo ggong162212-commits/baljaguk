@@ -390,6 +390,14 @@
         '</div>'
     });
     fillAvatars(ov);
+    /* 사진을 한 번 더 누르면 카톡처럼 크게 (avatarview.js) */
+    const big = ov.querySelector('.prof-big');
+    if (big && m.photo && window.AvatarView) {
+      big.style.cursor = 'zoom-in';
+      big.setAttribute('role', 'button');
+      big.setAttribute('aria-label', '사진 크게 보기');
+      big.onclick = () => AvatarView.open(m.photo, m.name);
+    }
     ov.querySelector('#apSet').onclick = () => { closeSheet(); go('settings'); };
     ov.querySelector('#apOut').onclick = () => { DB.memberLogout(); DB.logout(); location.reload(); };
   }
@@ -1097,22 +1105,27 @@
     const linked = m => !!m.auth_user_id;
     const nLinked = all.filter(linked).length;
 
-    /* 누가 알림을 켰는지 — 기기 수만 받아 온다. 주소·키는 안 받는다 */
-    if (!S.pushWho) {
-      try { S.pushWho = await DB.pushWho(); }
-      catch (e) {
-        console.warn('[발자국] 알림 켠 사람을 못 받아왔어요:', e);
-        /* 로그인이 풀렸으면 빈 목록을 보여 주지 않는다 —
-           데이터가 사라진 것처럼 보인다 */
-        if (e && e.code === 'noauth') return lostSession();
-        S.pushWho = [];
-      }
+    /* 누가 알림을 켰는지 — 기기 수만 받아 온다. 주소·키는 안 받는다.
+       ★ 탭을 열 때마다 **다시 받는다.** 예전에는 한 번 받으면
+         그 세션 내내 그대로여서, 구성원이 방금 알림을 켰는데도
+         운영진 화면에는 안 켠 것으로 보였다. */
+    try { S.pushWho = await DB.pushWho(); }
+    catch (e) {
+      console.warn('[발자국] 알림 켠 사람을 못 받아왔어요:', e);
+      /* 로그인이 풀렸으면 빈 목록을 보여 주지 않는다 —
+         데이터가 사라진 것처럼 보인다 */
+      if (e && e.code === 'noauth') return lostSession();
+      S.pushWho = S.pushWho || [];
     }
     /* 누가 언제 마지막으로 들어왔나 — 날짜만 */
-    if (!S.seenWho) {
-      try { S.seenWho = await DB.seenWho(); }
-      catch (e) { console.warn('[발자국] 접속 기록을 못 받아왔어요:', e); S.seenWho = []; }
+    try { S.seenWho = await DB.seenWho(); }
+    catch (e) {
+      console.warn('[발자국] 접속 기록을 못 받아왔어요:', e);
+      S.seenWho = S.seenWho || [];
     }
+    /* 명부와 안 이어진 카카오 로그인 — 안내할 사람이 있는지 */
+    try { S.unlinked = await DB.unlinkedLogins(); }
+    catch (e) { S.unlinked = S.unlinked || []; }
     const seenOf = id => (S.seenWho || []).filter(x => x.id === id)[0] || null;
     /* 「오늘 · 어제 · 3일 전 · 2주 전 · 접속 안 함」 */
     const seenWord = id => {
@@ -1155,6 +1168,40 @@
     $('#memberChips').innerHTML = chips.map(([k, l]) =>
       '<button class="chip' + (F.member === k ? ' on' : '') + '" data-m="' + k + '">' + l + '<span class="n">' + counts[k] + '</span></button>').join('');
     $$('#memberChips [data-m]').forEach(b => b.addEventListener('click', () => { F.member = b.dataset.m; renderMembers(); }));
+
+    /* ── 명부와 안 이어진 카카오 로그인
+       카카오로는 들어왔는데 본인 확인을 안 해 명부와 안 이어진 계정.
+       이 사람들은 알림을 켜도 서버에 저장되지 않고 커뮤니티도 못 본다.
+       ★ 이름·연락처는 없다 — 애초에 우리가 아는 이름이 없다.
+         카카오 닉네임과 들어온 날만 보여 준다. */
+    const unl = S.unlinked || [];
+    const unlBox = $('#memberUnlinked');
+    if (unlBox) {
+      unlBox.innerHTML = unl.length
+        ? '<div class="card flat" style="padding:12px 14px;margin-bottom:10px">' +
+          '<div class="row between" style="align-items:flex-start;gap:10px">' +
+          '<div><b class="sm">명부와 안 이어진 로그인 ' + unl.length + '개</b>' +
+          '<div class="mut xs" style="margin-top:3px;line-height:1.6">' +
+          '카카오로는 들어왔는데 이름·뒤 4자리 확인을 안 했어요.<br>' +
+          '이대로면 알림도 안 가고 커뮤니티도 못 봐요.</div></div></div>' +
+          '<div class="kvlist" style="margin-top:9px">' +
+          unl.slice(0, 8).map(u =>
+            '<div class="kv"><span class="k">' + esc(u.nick || '(닉네임 없음)') + '</span>' +
+            '<span class="v">' + fmtDate(u.at) + '</span></div>').join('') +
+          (unl.length > 8 ? '<div class="mut xs">외 ' + (unl.length - 8) + '개</div>' : '') +
+          '</div>' +
+          '<button class="btn ghost sm block" type="button" id="copyUnlink" style="margin-top:10px">' +
+          ic('clipboard') + '<span>본인 확인 안내 문구 복사</span></button></div>'
+        : '';
+      const cu = $('#copyUnlink');
+      if (cu) cu.onclick = () => copy(
+        [new URL('me.html', location.href).href,
+         '카카오로 들어온 뒤 이름과 휴대폰 뒤 4자리를 넣어 주세요.',
+         '「이미 다른 카카오 계정과 이어져 있어요」가 뜨면 그 화면의',
+         '「카카오 계정 다시 고르기」를 눌러 카카오톡에서 쓰는 계정으로 들어와 주세요.'
+        ].join(String.fromCharCode(10)),
+        '안내 문구를 복사했어요');
+    }
 
     /* 아직 안 들어온 사람에게 보낼 안내 — 이름 목록은 넣지 않는다 */
     const inviteBox = $('#memberInvite');

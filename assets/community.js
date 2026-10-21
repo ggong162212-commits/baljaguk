@@ -657,6 +657,19 @@ window.Community = (function () {
     ov.querySelector('#pfOut').onclick = () => { DB.memberLogout(); location.reload(); };
 
     const file = ov.querySelector('#pfFile');
+    /* ★ 내 프로필 사진을 한 번 더 누르면 카톡처럼 크게 (avatarview.js).
+       남의 프로필(peek)에만 이어져 있고 **내 것에는 없었다** —
+       선고은님이 말한 자리가 바로 여기다. */
+    const myBig = ov.querySelector('#profBig');
+    if (myBig && ME.photo) {
+      myBig.style.cursor = 'zoom-in';
+      myBig.setAttribute('role', 'button');
+      myBig.setAttribute('aria-label', '사진 크게 보기');
+      myBig.onclick = async () => {
+        if (window.AvatarView) await AvatarView.open(ME.photo, ME.name);
+      };
+    }
+
     ov.querySelector('#pfPick').onclick = () => file.click();
     file.addEventListener('change', async e => {
       const f = (e.target.files || [])[0];
@@ -665,7 +678,7 @@ window.Community = (function () {
       file.value = '';     /* 같은 사진을 다시 골라도 열리게 */
       try {
         /* 직접 맞춰서 자른다 — 취소하면 아무 일도 안 일어난다 */
-        const src = await cropPhoto(f, 400, .86);
+        const src = await cropPhoto(f, 800, .86);
         if (!src) return;
         big.style.backgroundImage = 'url("' + src + '")';
         big.classList.add('has-photo');
@@ -1453,6 +1466,7 @@ window.Community = (function () {
     if (face && o.photo) {
       face.style.cursor = 'zoom-in';
       face.onclick = async () => {
+        if (window.AvatarView && await AvatarView.open(o.photo, name)) return;  /* 카톡처럼 크게 (avatarview.js) */
         let url = '';
         try { url = await DB.community.avatarUrl(o.photo); } catch (e) { }
         if (!url) return;
@@ -4490,6 +4504,7 @@ window.Community = (function () {
             : '<span class="rt">후기 ' + e.reviews + '개</span>') + '</button>').join('') +
         '</div>'
       : '';
+    if (window.VolWho) VolWho.mount($('#soon'));  /* 신청자 얼굴 · 신청자 시트 (volwho.js) */
     if (window.PastVol) PastVol.mount($('#past'), { mine: false });  /* 지난 봉사 최근 3개 + 전체 보기 (pastvol.js) */
 
     paintShelters();

@@ -130,6 +130,7 @@
   let popGuard = 0;
   function onPop() {
     if (popGuard > 0) { popGuard--; return; }
+    if (document.querySelector('.avv')) return;  /* 사진 크게 보기(avatarview.js)가 먼저 닫힌다 — 시트는 그대로 */
     closeSheet(true);
   }
   function closeSheet(fromBack) {

@@ -1388,6 +1388,14 @@
 
   /* ---------- 사용 현황 (운영진만) ---------- */
   /* 오래된 영상 목록 (운영진) */
+  /* 명부와 안 이어진 카카오 로그인 (운영진) — 닉네임·날짜만 */
+  DB.unlinkedLogins = async function () {
+    if (!HAS_SB) {
+      return [{ nick: '체험', at: new Date().toISOString(), last_at: null }];
+    }
+    return await rest('rpc/unlinked_logins', { method: 'POST', body: {} }) || [];
+  };
+
   DB.oldVideos = async function (n) {
     if (!HAS_SB) {
       const d = cdemo();
