@@ -643,7 +643,7 @@ window.Community = (function () {
       file.value = '';     /* 같은 사진을 다시 골라도 열리게 */
       try {
         /* 직접 맞춰서 자른다 — 취소하면 아무 일도 안 일어난다 */
-        const src = await cropPhoto(f, 400, .86);
+        const src = await cropPhoto(f, 800, .86);
         if (!src) return;
         big.style.backgroundImage = 'url("' + src + '")';
         big.classList.add('has-photo');
@@ -1391,6 +1391,7 @@ window.Community = (function () {
     if (face && o.photo) {
       face.style.cursor = 'zoom-in';
       face.onclick = async () => {
+        if (window.AvatarView && await AvatarView.open(o.photo, name)) return;  /* 카톡처럼 크게 (avatarview.js) */
         let url = '';
         try { url = await DB.community.avatarUrl(o.photo); } catch (e) { }
         if (!url) return;
@@ -4261,6 +4262,7 @@ window.Community = (function () {
             : '<span class="rt">후기 ' + e.reviews + '개</span>') + '</button>').join('') +
         '</div>'
       : '';
+    if (window.VolWho) VolWho.mount($('#soon'));  /* 신청자 얼굴 · 신청자 시트 (volwho.js) */
     if (window.PastVol) PastVol.mount($('#past'), { mine: false });  /* 지난 봉사 최근 3개 + 전체 보기 (pastvol.js) */
 
     paintShelters();
