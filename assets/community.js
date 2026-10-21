@@ -3932,8 +3932,14 @@ window.Community = (function () {
 
   /* 대기 신청·취소 */
   async function doWait(id, leave) {
-    const btn = $('#view').querySelector('[data-' + (leave ? 'wleave' : 'wjoin') + '="' + id + '"]');
-    if (btn) { btn.disabled = true; btn.textContent = leave ? '취소 중…' : '신청 중…'; }
+    /* 누르는 순간 바로 바뀌게 — 기다리는 느낌이 없게 */
+    const btn = document.querySelector('[data-' + (leave ? 'wleave' : 'wjoin') + '="' + id + '"]');
+    if (btn) {
+      if (btn.disabled) return;          /* 두 번 눌리지 않게 */
+      btn.disabled = true;
+      btn.classList.add('busy');
+      btn.textContent = leave ? '취소 중…' : '신청 중…';
+    }
     try {
       const r = leave ? await DB.community.waitLeave(id) : await DB.community.waitJoin(id);
       if (r !== 'ok') throw new Error(SIGNUP_MSG[r] || '처리하지 못했어요');
@@ -3946,8 +3952,13 @@ window.Community = (function () {
   }
 
   async function doSignup(id, cancel) {
-    const btn = $('#view').querySelector('[data-' + (cancel ? 'cancel' : 'signup') + '="' + id + '"]');
-    if (btn) { btn.disabled = true; btn.textContent = cancel ? '취소 중…' : '신청 중…'; }
+    const btn = document.querySelector('[data-' + (cancel ? 'cancel' : 'signup') + '="' + id + '"]');
+    if (btn) {
+      if (btn.disabled) return;          /* 두 번 눌리지 않게 */
+      btn.disabled = true;
+      btn.classList.add('busy');
+      btn.textContent = cancel ? '취소 중…' : '신청 중…';
+    }
     try {
       const r = cancel
         ? await DB.community.cancelSignup(id)

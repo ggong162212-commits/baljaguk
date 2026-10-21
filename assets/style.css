@@ -1164,6 +1164,9 @@ html[data-theme="dark"] .statusbar.count{color:#E7C983}
 .shots img:active{opacity:.92}
 
 /* 구성원 줄 — 카카오 연결 여부 */
+/* 누르는 중 — 두 번 눌리지 않고, 눌린 게 바로 보이게 */
+.btn.busy, button.busy{opacity:.6;cursor:default}
+
 /* 최근 접속 — 날짜 단위로만 */
 .seen{font-size:11px;color:var(--ink-3);flex:none;white-space:nowrap}
 

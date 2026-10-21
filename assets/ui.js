@@ -26,7 +26,30 @@
   }
 
   /* ---------- 토스트 ---------- */
+  /* 화면에 영어가 그대로 뜨지 않게 — 마지막 그물.
+     ------------------------------------------------------------
+     쓰는 곳마다 챙기면 꼭 빠뜨린다(비상 로그인·사진 올리기·단계형 입력에서
+     「Failed to fetch」가 그대로 떴다). 토스트 한 곳에서 거른다.
+     한글이 섞여 있으면 그대로 둔다 — 우리가 쓴 말이다. */
+  function human(msg) {
+    const m = String(msg == null ? '' : msg).trim();
+    if (!m) return '잠시 뒤 다시 해 주세요';
+    if (/[가-힣]/.test(m)) return m;
+    if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return '인터넷 연결을 확인해 주세요';
+    if (/row-level security|permission denied|not allowed/i.test(m)) return '권한이 없어요';
+    if (/duplicate key|already exists|conflict/i.test(m)) return '이미 처리됐어요';
+    if (/JWT|token|unauthorized|not authenticated/i.test(m)) return '다시 로그인해 주세요';
+    if (/invalid login|invalid credentials|bad credential/i.test(m)) return '계정이나 비밀번호가 맞지 않아요';
+    if (/rate limit|too many/i.test(m)) return '잠시 뒤에 다시 해 주세요';
+    if (/foreign key/i.test(m)) return '없어진 것 같아요. 새로고침 해주세요';
+    if (/timeout|aborted/i.test(m)) return '응답이 늦어요. 다시 해 주세요';
+    /* 영어만 있는 것은 사람에게 보이지 않는다 — 콘솔에만 */
+    console.warn('[발자국] 원래 오류:', m);
+    return '잠시 뒤 다시 해 주세요';
+  }
+
   function toast(msg, type) {
+    if (type === 'err') msg = human(msg);
     let box = $('.toasts');
     if (!box) { box = document.createElement('div'); box.className = 'toasts'; document.body.appendChild(box); }
     const t = document.createElement('div');
@@ -455,6 +478,6 @@
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
     copy, wizard, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
-    resizeImage, cropSquare, downloadCSV, cheer, debounce, onEnter, toLocalInput, fromLocalInput
+    resizeImage, cropSquare, downloadCSV, cheer, debounce, onEnter, human, toLocalInput, fromLocalInput
   };
 })();

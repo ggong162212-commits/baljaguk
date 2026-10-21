@@ -202,12 +202,56 @@
     if (!r.ok) throw new Error(j.error_description || j.msg || j.error || '로그인에 실패했어요');
     return j;
   }
+  /* 토큰 다시 받기 — 여러 곳에서 한꺼번에 불러도 한 번만 한다.
+     (피드·새 소식·후기 권유가 나란히 돌 때 세 번 불렸다) */
+  let refreshing = null;
   async function refresh() {
     if (!session || !session.refresh_token) return false;
+    if (refreshing) return await refreshing;
+    refreshing = (async () => {
+      try {
+        const j = await auth('token?grant_type=refresh_token', { refresh_token: session.refresh_token });
+        session = j; localStorage.setItem(SKEY, JSON.stringify(j)); return true;
+      } catch (e) { session = null; localStorage.removeItem(SKEY); return false; }
+      finally { setTimeout(() => { refreshing = null; }, 0); }
+    })();
+    return await refreshing;
+  }
+
+  /* 사진 보관함 요청 — rest() 를 안 거치던 곳들을 한곳으로 모은다.
+     ------------------------------------------------------------
+     · 401 이면 토큰을 다시 받아 한 번 더 (한 시간 넘게 켜 두면 났다)
+     · 인터넷이 끊기면 「Failed to fetch」 대신 쉬운 말
+     · 서버가 주는 영어도 사람 말로 */
+  async function storageFetch(url, opts, retry) {
+    const o = opts || {};
+    const h = Object.assign({
+      apikey: C.SUPABASE_ANON_KEY,
+      Authorization: 'Bearer ' + ((session && session.access_token) || C.SUPABASE_ANON_KEY)
+    }, o.headers || {});
+    let r;
     try {
-      const j = await auth('token?grant_type=refresh_token', { refresh_token: session.refresh_token });
-      session = j; localStorage.setItem(SKEY, JSON.stringify(j)); return true;
-    } catch (e) { session = null; localStorage.removeItem(SKEY); return false; }
+      r = await fetch(url, { method: o.method || 'GET', headers: h, body: o.body });
+    } catch (netErr) {
+      console.warn('[발자국] 사진 서버에 닿지 못했어요:', netErr);
+      const e = new Error('인터넷 연결을 확인해 주세요');
+      e.code = 'offline';
+      throw e;
+    }
+    if (r.status === 401 && !retry && session) {
+      if (await refresh()) return storageFetch(url, opts, true);
+    }
+    if (!r.ok) {
+      let msg = '';
+      try { msg = await r.text(); } catch (e) { }
+      try { const j = JSON.parse(msg); msg = j.message || j.error || msg; } catch (e) { }
+      const err = new Error(sayWhy(r.status, msg));
+      err.status = r.status; err.raw = msg;
+      if (r.status === 401 || r.status === 403) err.code = 'noauth';
+      if (msg && msg !== err.message) console.warn('[발자국] 사진 서버가 보낸 말:', msg);
+      throw err;
+    }
+    return r;
   }
   /* 서버가 주는 말을 사람 말로.
      트리거가 던지는 한글은 그대로 둔다 — 그게 더 정확하다. */
@@ -1537,13 +1581,9 @@
       const files = (paths || []).filter(Boolean);
       if (files.length) {
         try {
-          await fetch(C.SUPABASE_URL + '/storage/v1/object/community', {
+          await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community', {
             method: 'DELETE',
-            headers: {
-              apikey: C.SUPABASE_ANON_KEY,
-              Authorization: 'Bearer ' + session.access_token,
-              'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prefixes: files })
           });
         } catch (e) { /* 파일이 남아도 글은 지운다 */ }
@@ -2123,16 +2163,11 @@
       const meId = await DB.community.myId();
       const blob = await (await fetch(dataUrl)).blob();
       const path = meId + '/' + Date.now() + '.jpg';
-      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/avatars/' + path, {
+      await storageFetch(C.SUPABASE_URL + '/storage/v1/object/avatars/' + path, {
         method: 'POST',
-        headers: {
-          apikey: C.SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + session.access_token,
-          'Content-Type': blob.type || 'image/jpeg'
-        },
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
         body: blob
       });
-      if (!r.ok) throw new Error('사진을 올리지 못했어요');
       await rest('rpc/set_my_photo', { method: 'POST', body: { p_path: path } });
       return path;
     },
@@ -2147,16 +2182,14 @@
       if (hit && hit.until > Date.now()) return hit.url;
       if (hit && hit.pending) return await hit.pending;
       const job = (async () => {
-        const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/avatars/' + path, {
-          method: 'POST',
-          headers: {
-            apikey: C.SUPABASE_ANON_KEY,
-            Authorization: 'Bearer ' + session.access_token,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ expiresIn: 3600 })
-        });
-        if (!r.ok) { AVATAR_CACHE.delete(path); return ''; }
+        let r;
+        try {
+          r = await storageFetch(C.SUPABASE_URL + '/storage/v1/object/sign/avatars/' + path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ expiresIn: 3600 })
+          });
+        } catch (e) { AVATAR_CACHE.delete(path); return ''; }
         const j = await r.json().catch(() => ({}));
         const url = j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
         AVATAR_CACHE.set(path, { url, until: Date.now() + 55 * 60 * 1000 });
@@ -2238,16 +2271,11 @@
     async uploadPhoto(postId, dataUrl, i) {
       const blob = await (await fetch(dataUrl)).blob();
       const path = postId + '/' + Date.now() + '-' + i + '.jpg';
-      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path, {
+      await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community/' + path, {
         method: 'POST',
-        headers: {
-          apikey: C.SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + session.access_token,
-          'Content-Type': blob.type || 'image/jpeg'
-        },
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
         body: blob
       });
-      if (!r.ok) throw new Error('사진을 올리지 못했어요');
       return path;
     },
 
@@ -2255,16 +2283,14 @@
       if (!HAS_SB) return path;               /* 체험 모드는 dataURL 그대로 */
       if (!path) return '';
       if (/^data:/.test(path)) return path;
-      const r = await fetch(C.SUPABASE_URL + '/storage/v1/object/sign/community/' + path, {
-        method: 'POST',
-        headers: {
-          apikey: C.SUPABASE_ANON_KEY,
-          Authorization: 'Bearer ' + session.access_token,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ expiresIn: 3600 })
-      });
-      if (!r.ok) return '';
+      let r;
+      try {
+        r = await storageFetch(C.SUPABASE_URL + '/storage/v1/object/sign/community/' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn: 3600 })
+        });
+      } catch (e) { return ''; }
       const j = await r.json().catch(() => ({}));
       return j.signedURL ? C.SUPABASE_URL + '/storage/v1' + j.signedURL : '';
     },
