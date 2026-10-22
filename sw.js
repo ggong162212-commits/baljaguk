@@ -225,6 +225,12 @@ self.addEventListener('fetch', event => {
           if (fresh && fresh.ok) {
             const n = Number(fresh.headers.get('content-length') || 0);
             if (n <= MAX_ONE) { await cache.put(key, fresh.clone()); await trim(cache); }
+          } else if (fresh && (fresh.status === 404 || fresh.status === 400)) {
+            /* ★ 서버에 없는 사진은 담아 둔 것도 버린다.
+               안 그러면 글이 지워져도 그 사진이 폰에 계속 남아
+               「지운 글 사진이 아직 보여요」가 된다. (지금 한 번은 보이고
+               다음 번부터 안 보인다 — 이미 돌려준 뒤라서) */
+            await cache.delete(key);
           }
         } catch (e) { /* 인터넷이 없으면 담긴 것으로 버틴다 */ }
       })());

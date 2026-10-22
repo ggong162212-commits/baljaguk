@@ -4380,10 +4380,21 @@ window.Community = (function () {
       return;
     }
     ov.querySelector('#wall').innerHTML =
-      '<div class="mut sm" style="margin-bottom:9px">사진 ' + shots.length + '장</div>' +
-      '<div class="grid-shots">' + shots.map((x, i) =>
+      '<div class="mut sm" style="margin-bottom:9px">사진 ' + shots.length + '장 · 누르면 그 글로 가요</div>' +
+      '<div class="grid-shots">' + shots.map(x =>
         '<img alt="" loading="lazy" decoding="async" data-path="' + esc(x.path) + '" ' +
-        'data-big="' + esc(x.id) + '">').join('') + '</div>';
+        'data-wall="' + esc(x.id) + '">').join('') + '</div>';
+    /* ★ 누르면 **그 글로 간다** (예전에는 크게 보기만 열렸다).
+       글을 열면 사진은 거기서 밀어 넘길 수 있으니 한 걸음이 줄어든다.
+       시트 안이라 화면 전체에 걸어 둔 손짓 처리가 닿지 않는다 — 여기서 직접 */
+    ov.querySelector('#wall').addEventListener('click', e => {
+      const img = e.target.closest('img[data-wall]');
+      if (!img) return;
+      const id = img.dataset.wall;
+      closeSheet();
+      /* 시트가 사라진 뒤에 연다 — 겹쳐 열면 둘 다 꼬인다 */
+      setTimeout(() => openPost(id), 180);
+    });
     loadPhotos(ov);
   }
 
