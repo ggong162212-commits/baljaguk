@@ -20,6 +20,7 @@
      주소를 머리(메모리)에만 들고 있어서, 앱을 껐다 켜면 전부 다시
      서명을 받아야 했다. 서명 주소는 한 시간짜리라 그동안은 그대로 쓴다. */
   const SIGN_KEY = 'baljaguk.signs';
+  const SIGN_MAX = 256 * 1024;        /* 다 합쳐 이만큼까지만 적는다 */
   function loadSigns() {
     try {
       const raw = JSON.parse(localStorage.getItem(SIGN_KEY) || '{}');
@@ -36,12 +37,22 @@
       try {
         const now = Date.now();
         const out = {};
-        let n = 0;
-        /* 최근 것부터 300장까지만 — localStorage 를 꽉 채우지 않게 */
+        let n = 0, len = 2;
+        /* 최근 것부터 300장까지, 다 합쳐 256KB 까지만.
+           ★ data: 로 시작하는 것은 **적지 않는다** — 그건 주소가 아니라
+             사진 그 자체다. 한 장이 몇백 KB 라 저장이 금세 몇 MB 가 되고,
+             앱을 켤 때마다 그걸 통째로 읽느라 홈 탭이 느려졌다.
+             (체험 모드와 갓 올린 사진이 그렇다) */
         Array.from(signCache.entries())
-          .filter(([, v]) => v && v.until > now)
+          .filter(([, v]) => v && v.until > now &&
+            typeof v.url === 'string' && v.url.slice(0, 5) !== 'data:')
           .sort((a, b) => b[1].until - a[1].until)
-          .forEach(([k, v]) => { if (n++ < 300) out[k] = v; });
+          .forEach(([k, v]) => {
+            if (n >= 300 || len > SIGN_MAX) return;
+            const add = k.length + v.url.length + 40;
+            if (len + add > SIGN_MAX) return;
+            out[k] = v; n++; len += add;
+          });
         localStorage.setItem(SIGN_KEY, JSON.stringify(out));
       } catch (e) { /* 자리가 없으면 그냥 넘어간다 */ }
     }, 1200);

@@ -840,15 +840,37 @@ window.Community = (function () {
   const FEED_KEY = 'baljaguk.lastFeed';
   const FEED_OLD = 20 * 60 * 1000;
 
+  const FEED_MAX = 256 * 1024;   /* 적어 두는 첫 화면은 이만큼까지만 */
+
+  /* ★ data: 로 시작하는 값은 **적지 않는다**.
+     그건 주소가 아니라 **사진 그 자체**다 — 한 장이 몇백 KB 라
+     첫 화면 저장이 금세 몇 MB 가 되고, 앱을 켤 때마다 그걸 통째로
+     읽느라 홈 탭이 느려졌다. (체험 모드와 갓 올린 사진이 그렇다) */
+  function noData(v) {
+    if (typeof v === 'string') return v.slice(0, 5) === 'data:' ? '' : v;
+    if (Array.isArray(v)) return v.map(noData);
+    if (v && typeof v === 'object') {
+      const o = {};
+      Object.keys(v).forEach(k => { o[k] = noData(v[k]); });
+      return o;
+    }
+    return v;
+  }
+
   function saveFeed(res) {
     try {
       /* 첫 장만, 글 열 개까지 — 너무 크면 적는 데 더 걸린다 */
-      localStorage.setItem(FEED_KEY, JSON.stringify({
-        at: Date.now(),
-        kind: F.kind, place: F.place,
-        pinned: res.pinned || [],
-        rows: (res.rows || []).slice(0, 10)
-      }));
+      const pinned = noData(res.pinned || []);
+      let rows = noData((res.rows || []).slice(0, 10));
+      let str = '';
+      /* 그래도 크면 뒤 글부터 덜어 낸다 */
+      for (;;) {
+        str = JSON.stringify({ at: Date.now(), kind: F.kind, place: F.place, pinned: pinned, rows: rows });
+        if (str.length <= FEED_MAX || !rows.length) break;
+        rows = rows.slice(0, rows.length - 1);
+      }
+      if (rows.length) localStorage.setItem(FEED_KEY, str);
+      else localStorage.removeItem(FEED_KEY);
     } catch (e) { /* 자리가 없으면 그냥 넘어간다 */ }
   }
 
