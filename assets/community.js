@@ -2561,8 +2561,11 @@ window.Community = (function () {
      앱을 열 때와 다시 볼 때마다 확인한다.
      ============================================================ */
   let swVersion = '';
+  let swWatched = false;
   function keepSwFresh() {
     if (!('serviceWorker' in navigator)) return;
+    if (swWatched) return;          /* 두 번 불러도 귀 기울이는 것이 겹치지 않게 */
+    swWatched = true;
     /* ★ 알림을 안 켠 사람도 서비스워커를 둔다.
        예전에는 **알림을 켤 때만** 등록해서, 담아 두기(앱 껍데기·사진)가
        알림 켠 몇 사람에게만 돌았다. 등록만으로는 아무것도 묻지 않는다 —
@@ -5181,6 +5184,14 @@ window.Community = (function () {
         '<div class="badge-nm' + (b.on ? ' on' : '') + '">' + b.label + '</div></div>').join('') +
       '</div></div>';
   }
+
+  /* ★ 로그인 **전에도** 서비스워커를 둔다.
+     예전에는 start() 안에서만 불러서, 로그인 화면에서는 아예 안 돌았다 —
+     그런데 로그인 화면도 똑같은 파일 15개를 쓴다.
+     여기서 등록해 두면 로그인하기 전에 이미 담아 둔다. */
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', keepSwFresh, { once: true });
+  else keepSwFresh();
 
   return {
     start, openPast,                 /* openPast — pastvol.js 전체 보기에서 */
