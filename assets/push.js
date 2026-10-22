@@ -194,27 +194,38 @@ window.Push = (function () {
         /* ★ 「카톡이 못 알아들었으면 크롬으로」 를 1.4초 뒤에 해 보는데,
            **카톡이 화면을 멈춰 두면 그 타이머가 돌아올 때 터진다** —
            이미 다른 브라우저가 열렸는데 크롬이 한 번 더 열린다.
-           그래서 ① 화면을 한 번이라도 떠났으면 그만두고
-               ② 타이머가 예정보다 2.5초 넘게 늦게 터졌으면(멈췄다 온 것)
-                  역시 그만둔다. */
-        let 떠났다 = false;
+           ① 화면을 한 번이라도 떠나면(visibilitychange·pagehide·blur) 그만둔다
+           ② 화면이 **멈췄다 왔는지**는 100ms 짜리 똑딱이의 **틈**으로 본다.
+              「타이머가 얼마나 늦었나」로는 못 가린다 — 재 보니
+              느린 폰에서는 그냥도 1.4~6.6초씩 늦는다(CPU 4~6배).
+              반면 똑딱이의 틈은 느려도 0.6초를 안 넘는데(1배 0.11 ·
+              4배 0.42 · 6배 0.60), 화면이 멈추면 멈춘 만큼 그대로 벌어진다.
+              그래서 **1초 넘는 틈**이 한 번이라도 있으면 멈췄다 온 것이다. */
+        let 떠났다 = false, 멈췄다 = false;
         const 표시 = () => { 떠났다 = true; };
+        const 눈 = () => { if (document.hidden) 떠났다 = true; };
+        let 마지막틱 = Date.now();
+        const 똑딱 = setInterval(() => {
+          const 이제 = Date.now();
+          if (이제 - 마지막틱 > 1000) 멈췄다 = true;
+          마지막틱 = 이제;
+        }, 100);
         const 그만 = () => {
+          clearInterval(똑딱);
           document.removeEventListener('visibilitychange', 눈);
           window.removeEventListener('pagehide', 표시);
           window.removeEventListener('blur', 표시);
         };
-        const 눈 = () => { if (document.hidden) 떠났다 = true; };
         document.addEventListener('visibilitychange', 눈);
         window.addEventListener('pagehide', 표시);
         window.addEventListener('blur', 표시);
-        const 잰때 = Date.now();
         setTimeout(() => {
           그만();
-          if (떠났다 || document.hidden) return;
-          if (Date.now() - 잰때 > 1400 + 2500) return;   /* 멈췄다 돌아온 것 */
+          if (떠났다 || 멈췄다 || document.hidden) return;
           크롬으로();
         }, 1400);
+        /* 혹시 타이머가 아주 늦게 터지면 귀 기울이는 것만이라도 치운다 */
+        setTimeout(그만, 15000);
       }
       return true;
     }
