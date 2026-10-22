@@ -249,8 +249,11 @@
             '<span style="min-width:0;flex:1"><span class="nm">' + esc((x.author || {}).name || '') + '</span>' +
             '<span class="at">' + esc(UI.relTime ? UI.relTime(x.created_at) : '') + '</span>' +
             '<span class="bd" style="display:-webkit-box">' + esc(x.body || '') + '</span></span></button>').join('')
-        : '<div class="mut sm" style="padding:8px 2px;line-height:1.6">아직 받은 칭찬이 없어요.<br>' +
-          '고마운 사람이 있으면 먼저 칭찬해 보세요 — 글쓰기 + → 칭찬해요</div>'
+        /* ★ word-break:keep-all — 낱말 **가운데**를 끊지 않는다.
+             Galaxy 360 에서 「칭찬해요」의 「요」 한 글자만 다음 줄로 넘어갔다 */
+        : '<div class="mut sm" style="padding:8px 2px;line-height:1.6;word-break:keep-all">' +
+          '아직 받은 칭찬이 없어요.<br>' +
+          '고마운 사람이 있으면 먼저 칭찬해 보세요.<br>글쓰기 + → 칭찬해요</div>'
     });
     ov.querySelectorAll('[data-prgo]').forEach(b => b.onclick = () => {
       const id = b.dataset.prgo;

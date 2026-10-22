@@ -338,12 +338,18 @@
   }
 
   /* ---------- 포맷 ---------- */
-  const won = n => (Number(n) || 0).toLocaleString('ko-KR') + '원';
-  const num = n => (Number(n) || 0).toLocaleString('ko-KR');
+  /* ★ toLocaleString 은 **부를 때마다** 자리수 규칙을 새로 만든다.
+     피드 한 화면에 수백 번 불려 173ms 였다. 규칙은 하나만 만들어 두고 쓴다. */
+  let NF = null;
+  try { NF = new Intl.NumberFormat('ko-KR'); } catch (e) { NF = null; }
+  const fmtNum = n => {
+    const v = Number(n) || 0;
+    return NF ? NF.format(v) : v.toLocaleString('ko-KR');
+  };
+  const won = n => fmtNum(n) + '원';
+  const num = n => fmtNum(n);
   /* 적립은 봉사지마다 단위가 다르다 — 돈이면 원, 천보금처럼 사료면 kg */
-  const credit = (n, unit) => (unit === 'kg')
-    ? (Number(n) || 0).toLocaleString('ko-KR') + 'kg'
-    : won(n);
+  const credit = (n, unit) => (unit === 'kg') ? fmtNum(n) + 'kg' : won(n);
   const unitLabel = unit => (unit === 'kg' ? '사료' : '후원금');
   function fmtDate(v) {
     if (!v) return '-';

@@ -808,6 +808,31 @@ window.Community = (function () {
     if (el.innerHTML === html) return;
     el.innerHTML = html;
   }
+
+  /* ============================================================
+     글 목록 — 보이는 것이 같으면 **아예 손대지 않는다**
+     ------------------------------------------------------------
+     탭을 돌아오면 적어 둔 화면을 보여 준 뒤, 서버에서 **같은 글**을
+     받아 와서 통째로 다시 그렸다 (긴 작업 0.5~0.6초).
+     ★ 지금 innerHTML 과 견주면 안 된다 — 사진·아바타를 채우면서
+       style·class 가 붙어 **늘 달라 보인다.**
+       그래서 **만들어 낸 글자**의 지문을 칸에 적어 두고 그것과 견준다.
+       (적어 둔 화면에는 그 지문도 함께 들어 있다)
+     ============================================================ */
+  function fingerprint(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+    return str.length.toString(36) + '.' + h.toString(36);
+  }
+  /* 바꿨으면 true, 같아서 그냥 뒀으면 false */
+  function putList(el, html) {
+    if (!el) return false;
+    const fp = fingerprint(html);
+    if (el.dataset.fp === fp) return false;
+    el.innerHTML = html;
+    el.dataset.fp = fp;
+    return true;
+  }
   /* 글자 대신 카드 모양으로 — 무엇이 올지 미리 보이게 */
   const skel = n => {
     let out = '';
@@ -901,7 +926,11 @@ window.Community = (function () {
     $('#headTitle').textContent = '안녕하세요, ' + ME.name + '님';
     $('#headLead').textContent = '우리가 함께 걸은 기록이에요.';
 
-    paint(
+    /* ★ 돌아온 탭이면 **껍데기를 다시 그리지 않는다.**
+       예전에는 여기서 통째로 갈아엎어, 적어 둔 화면이 사라지고
+       #list 가 새 칸이 돼 「같은 글인가」를 견줄 수조차 없었다.
+       (다른 탭은 ①에서 이미 이렇게 고쳤는데 홈만 남아 있었다) */
+    shell(
       '<div id="pin"></div>' +
       '<div id="ask"></div>' +
       '<div class="titlerow">' +
@@ -909,7 +938,9 @@ window.Community = (function () {
       '<button class="iconbtn sq" type="button" id="wallBtn" aria-label="사진 모아보기">' +
       ic('grid') + '</button></div>' +
       '<div id="list">' + loading() + '</div>' +
-      '<div id="more"></div>');
+      '<div id="more"></div>',
+      ['pin', 'ask', 'chips', 'list', 'more']);
+    /* 손잡이는 늘 다시 매단다 — 적어 둔 화면에는 글자만 들어 있다 */
     $('#wallBtn').onclick = photoWall;
 
     paintChips();
@@ -919,8 +950,8 @@ window.Community = (function () {
     if (last) {
       F.rows = last.rows.slice();
       F.pins = last.pinned || [];
-      $('#pin').innerHTML = F.pins.map(pinnedCard).join('');
-      $('#list').innerHTML = F.rows.map(postCard).join('');
+      putList($('#pin'), F.pins.map(pinnedCard).join(''));
+      putList($('#list'), F.rows.map(postCard).join(''));
       bindOnce();
       loadAvatars($('#list'));
       loadPhotos($('#list'));
@@ -1084,7 +1115,7 @@ window.Community = (function () {
       /* 공지는 세 개까지라 여기에 다 보인다 — 「모두 보기」가 필요 없다 */
       const pins = res.pinned || [];
       F.pins = pins;
-      $('#pin').innerHTML = pins.map(pinnedCard).join('');
+      putList($('#pin'), pins.map(pinnedCard).join(''));
     }
 
     const rows = res.rows || [];
@@ -1098,14 +1129,17 @@ window.Community = (function () {
       if (b) b.onclick = () => writeSheet();
       return;
     }
-    $('#list').innerHTML = F.rows.map(postCard).join('');
+    /* ★ 보이는 것이 같으면 다시 그리지 않는다 — 돌아온 탭에서 0.5~0.6초 */
+    const 바뀜 = putList($('#list'), F.rows.map(postCard).join(''));
     bindOnce();
-    loadAvatars($('#list'));
     paintChips();
     paintMoreButton();
-    loadPhotos($('#list'));
-    wireCbar($('#list'));
-    clipCheck($('#list'));
+    if (바뀜) {
+      loadAvatars($('#list'));
+      loadPhotos($('#list'));
+      wireCbar($('#list'));
+      clipCheck($('#list'));
+    }
     /* 다음에 켤 때 바로 보여 줄 수 있게 첫 장을 적어 둔다 */
     if (first) saveFeed(res);
     /* 한가할 때 다음에 볼 사진 주소를 미리 받아 둔다 */
@@ -1465,15 +1499,25 @@ window.Community = (function () {
     }
   }
 
-  /* 본문이 두 줄을 정말 넘는지 보고, 안 넘치면 「더 보기」를 치운다 */
+  /* 본문이 두 줄을 정말 넘는지 보고, 안 넘치면 「더 보기」를 치운다
+     ------------------------------------------------------------
+     ★ **재기와 지우기를 번갈아 하면 안 된다.**
+     scrollHeight 를 읽을 때마다 브라우저는 글자 배치를 다시 센다.
+     바로 앞에서 class 를 지워 놨으면 **처음부터 다시** 센다 —
+     본문이 많은 화면에서 이것만 813ms 였다.
+     먼저 전부 재고(읽기만), 그 다음에 한꺼번에 지운다. */
   function clipCheck(root) {
-    (root || document).querySelectorAll('.bd.clip').forEach(bd => {
-      if (bd.scrollHeight <= bd.clientHeight + 1) {
-        bd.classList.remove('clip');
-        const btn = bd.parentElement &&
-          bd.parentElement.querySelector('.morebd[data-more="' + bd.dataset.body + '"]');
-        if (btn) btn.remove();
-      }
+    const list = (root || document).querySelectorAll('.bd.clip');
+    if (!list.length) return;
+    const 안넘침 = [];
+    /* 1단계 — 읽기만 한다 */
+    list.forEach(bd => { if (bd.scrollHeight <= bd.clientHeight + 1) 안넘침.push(bd); });
+    /* 2단계 — 그제야 고친다 */
+    안넘침.forEach(bd => {
+      bd.classList.remove('clip');
+      const btn = bd.parentElement &&
+        bd.parentElement.querySelector('.morebd[data-more="' + bd.dataset.body + '"]');
+      if (btn) btn.remove();
     });
   }
 
