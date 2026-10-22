@@ -209,8 +209,9 @@ window.Community = (function () {
       /* 오래 걸리면 기다리는 줄 알게 */
       const slow = setTimeout(() => toast('글을 여는 중…'), 400);
       let ok = await openPost(id, true);
-      if (!ok) {
-        /* 갓 올라온 글일 수 있다 — 한 번만 더 */
+      if (!ok && lastOpenFail !== 'gone') {
+        /* 갓 올라온 글일 수 있다 — 한 번만 더.
+           ★ 서버가 「그런 글 없다」고 한 것이면 다시 물어봐야 소용없다 */
         await new Promise(r => setTimeout(r, 1000));
         ok = await openPost(id, true);
       }
@@ -218,13 +219,21 @@ window.Community = (function () {
       /* 마지막 한 번을 적어 둔다 — 안 될 때 무엇이 문제였는지 보려고 */
       try {
         localStorage.setItem('baljaguk.lastDeep', JSON.stringify({
-          to: deepTo, ok: !!ok, at: new Date().toISOString(), sw: swVersion
+          to: deepTo, ok: !!ok, why: ok ? '' : lastOpenFail,
+          at: new Date().toISOString(), sw: swVersion
         }));
       } catch (e) { }
       /* 되든 안 되든 목적지는 비운다 — 안 그러면 없는 글을 계속 다시 연다 */
       if (ok) deepDone = { to: deepTo, at: Date.now() };
       deepTo = null;
-      if (!ok) toast('글을 열지 못했어요. 피드에서 찾아봐 주세요', 'err');
+      /* ★ 지워진 글과 인터넷 문제를 구별해서 말한다.
+         오늘 커뮤니티를 비우면서 예전 알림이 모두 없는 글을 가리키게 됐다 —
+         그때 「피드에서 찾아봐 주세요」라고 하면 찾을 수 없는 것을 찾게 된다 */
+      if (!ok) {
+        toast(lastOpenFail === 'gone'
+          ? '지워진 글이에요'
+          : '글을 열지 못했어요. 잠시 뒤 다시 해주세요', 'err');
+      }
     } finally {
       deepBusy = false;
     }
@@ -4110,7 +4119,13 @@ window.Community = (function () {
      ============================================================ */
   /* quiet 면 못 열었을 때 말풍선을 띄우지 않고 false 만 돌려준다
      (알림으로 들어온 길은 한 번 더 해보고 나서 말한다) */
+  /* 마지막으로 글을 못 연 까닭 — 'gone'(지워짐) 또는 'fail'(못 받아옴).
+     알림·주소로 열 때는 조용히(quiet) 부르느라 openPost 가 말을 안 한다.
+     그래서 까닭을 여기 적어 두고, 부른 쪽이 알맞은 말을 고른다. */
+  let lastOpenFail = '';
+
   async function openPost(id, quiet) {
+    lastOpenFail = '';
     let p = findRow(id);
     let gone = false;
     /* 맨 위에 고정된 공지는 목록(F.rows)에 없고 F.pins 에 따로 온다.
@@ -4126,6 +4141,7 @@ window.Community = (function () {
     }
     if (!p) {
       /* 지워진 글과 「못 받아온 것」은 다르다 */
+      lastOpenFail = gone ? 'gone' : 'fail';
       if (!quiet) {
         toast(gone ? '지워진 글이에요' : '지금은 열 수 없어요. 잠시 뒤 다시 해주세요', 'err');
       }
