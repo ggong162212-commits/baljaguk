@@ -1287,9 +1287,14 @@ window.Community = (function () {
 
     /* 인스타 피드처럼 — 사람 줄 → 사진 → 아이콘 줄 → 본문 → 댓글 */
     const body = String(p.body || '');
-    /* 두 줄을 넘는지는 그려 봐야 안다 — 일단 접어 두고,
-       그릴 때 실제로 안 넘치면 「더 보기」를 치운다 (clipCheck) */
-    const long = !!body;
+    /* 두 줄을 넘는지는 그려 봐야 정확히 안다. 그런데 **모든 글을** 재면
+       앱을 켤 때 그것만으로 0.8초가 든다(점검 담당 측정).
+       그래서 **짧은 글은 재지도 않는다** —
+       두 줄에 들어가는 글자를 기기별로 재 보니
+       320px 39자 · 360px 45 · 375px 47 · 390px 49 · 430px 57 이었다.
+       줄바꿈이 없고 38자 이하면 어느 폰에서도 두 줄을 안 넘는다.
+       그보다 길면 접어 두고, 실제로 안 넘치면 clipCheck 가 치운다. */
+    const long = !!body && (body.length > 38 || body.indexOf('\n') >= 0);
 
     /* 칭찬 글은 머리를 통째로 다르게 쓴다 — 한 줄로 두 사람을 보여 준다 */
     const przHead = (p.type === 'praise' && window.Praise) ? Praise.head(p) : '';
@@ -1524,6 +1529,15 @@ window.Community = (function () {
      본문이 많은 화면에서 이것만 813ms 였다.
      먼저 전부 재고(읽기만), 그 다음에 한꺼번에 지운다. */
   function clipCheck(root) {
+    /* ★ 첫 그림을 막지 않는다.
+       여기서 scrollHeight 를 읽으면 그 자리에서 **홈 전체 배치**가
+       한꺼번에 계산된다 — 앱을 켤 때 첫 카드가 그만큼 늦게 뜬다.
+       어차피 「더 보기」를 치우는 일은 한 박자 뒤여도 된다. */
+    const el = root || document;
+    requestAnimationFrame(() => requestAnimationFrame(() => clipNow(el)));
+  }
+
+  function clipNow(root) {
     const list = (root || document).querySelectorAll('.bd.clip');
     if (!list.length) return;
     const 안넘침 = [];
