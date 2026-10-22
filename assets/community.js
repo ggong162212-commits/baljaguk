@@ -493,7 +493,9 @@ window.Community = (function () {
       const out = box.querySelector('[data-nOut]');
       if (out) out.onclick = () => {
         if (!Push.openOutside()) {
-          toast('오른쪽 아래 ··· 를 눌러 「Safari로 열기」를 골라주세요');
+          toast(Push.inKakao
+            ? '오른쪽 아래 ··· 를 눌러 「Safari로 열기」를 골라주세요'
+            : '··· 또는 공유 단추를 눌러 「브라우저에서 열기」를 골라주세요');
         }
       };
       return;
@@ -575,14 +577,20 @@ window.Community = (function () {
         '준비가 끝나면 여기서 켤 수 있어요.');
     }
     if (st === 'inapp') {
-      return card('alert', '카카오톡 안에서는 알림을 켤 수 없어요',
-        '카카오톡 안 브라우저는 알림을 받지 못해요.<br>' +
+      /* 어느 앱 안인지에 맞춰 말한다 — 네이버·인스타 안에서도
+         「카카오톡 안에서는…」이라고 하던 것 */
+      const 앱 = Push.appName || '이 앱';
+      return card('alert', 앱 + ' 안에서는 알림을 켤 수 없어요',
+        앱 + ' 안 브라우저는 알림을 받지 못해요.<br>' +
         '크롬이나 사파리로 열어주세요.',
         '<button class="btn primary lg block" type="button" data-nOut style="margin-top:16px">' +
         '다른 브라우저로 열기</button>' +
         (Push.isIOS
           ? '<p class="mut xs" style="margin-top:10px;line-height:1.6">' +
-            '아이폰은 오른쪽 아래 <b>···</b> → <b>Safari로 열기</b> 를 눌러주세요.</p>'
+            (Push.inKakao
+              ? '아이폰은 오른쪽 아래 <b>···</b> → <b>Safari로 열기</b> 를 눌러주세요.'
+              : '아이폰은 <b>···</b> 또는 <b>공유</b> → <b>브라우저에서 열기</b> 를 눌러주세요.') +
+            '</p>'
           : ''));
     }
     if (st === 'needHome') {

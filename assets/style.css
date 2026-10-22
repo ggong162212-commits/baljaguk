@@ -1000,8 +1000,11 @@ html[data-theme="dark"] .pill-note{color:#E7C983}
 .bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--brand);border-radius:99px}
 .tagrow{display:flex;gap:6px;flex-wrap:wrap}
-.linkline{display:flex;align-items:center;justify-content:center;gap:6px;padding:20px 0 8px;color:var(--ink-3);font-size:13px}
-.linkline a{color:var(--brand-deep);font-weight:700}
+.linkline{display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 0 4px;color:var(--ink-3);font-size:13px}
+/* 누르는 자리를 44px 로 — 글자만 13px 이라 21px 밖에 안 됐다
+   (로그인 화면의 「사용법 보기」·「후원금 현황 보기」) */
+.linkline a{color:var(--brand-deep);font-weight:700;
+  display:inline-flex;align-items:center;min-height:44px;padding:0 8px}
 .confetti{position:fixed;inset:0;pointer-events:none;z-index:150;overflow:hidden}
 .confetti i{position:absolute;font-size:20px;animation:fall linear forwards}
 @keyframes fall{from{transform:translateY(-40px) rotate(0)}to{transform:translateY(105vh) rotate(420deg);opacity:.2}}

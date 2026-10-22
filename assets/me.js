@@ -64,8 +64,33 @@
   /* ---------- ① 로그인 전 ---------- */
   function paintLogin(err) {
     $('#headLead').textContent = '발자국 구성원만 쓸 수 있는 공간이에요.';
+    /* ============================================================
+       앱 안 브라우저(카톡·네이버·인스타…)로 들어온 사람에게 **먼저** 알린다
+       ------------------------------------------------------------
+       단톡방 링크는 카톡 안에서 열린다. 여기서 카카오 로그인과
+       본인 확인까지 다 마친 다음, 알림을 켜려다 그제서야
+       「다른 브라우저로 열기」를 만난다 — 크롬·사파리는 로그인이 따로라
+       **카카오 로그인을 한 번 더** 해야 한다.
+       그러니 로그인하기 **전에** 알려 준다.
+       ============================================================ */
+    const 앱 = (window.Push && Push.inApp) ? (Push.appName || '이 앱') : '';
+    const 앱안내 = 앱
+      ? '<div class="card flat" id="inappNote" style="padding:14px 16px;text-align:left;' +
+        'border:1px solid var(--line);margin-bottom:12px">' +
+        '<div class="sm" style="font-weight:700">알림까지 받으시려면</div>' +
+        '<div class="sm mut" style="margin-top:6px;line-height:1.65">' +
+        앱 + ' 안에서는 알림을 받을 수 없어요. ' +
+        (Push.isIOS ? '<b>사파리</b>로' : '<b>크롬</b>으로') + ' 열어 로그인하시면 ' +
+        '알림까지 한 번에 끝나요.<br>' +
+        '<span class="xs">지금 여기서 로그인하셔도 되고, 나중에 옮겨도 돼요 — ' +
+        '그때는 카카오 로그인을 한 번 더 하게 돼요.</span></div>' +
+        '<button class="btn ghost block" type="button" id="goOut" style="margin-top:12px">' +
+        (Push.isIOS ? '사파리로 열기' : '크롬으로 열기') + '</button>' +
+        '</div>'
+      : '';
     paint(
       (err ? '<div class="pill-note">' + esc(err) + '</div>' : '') +
+      앱안내 +
       steps(0) +
       '<div class="card mecard">' +
       '<span class="big" style="background:var(--brand-soft);color:var(--brand-deep)">' + ic('paw') + '</span>' +
@@ -86,6 +111,14 @@
       '</div>' +
       '<div class="linkline"><a href="guide.html?from=login">처음이신가요? 사용법 보기 →</a></div>');
     $('#go').onclick = () => DB.kakaoLogin(backHere());
+    const out = $('#goOut');
+    if (out) out.onclick = () => {
+      if (!Push.openOutside()) {
+        UI.toast(Push.inKakao
+          ? '오른쪽 아래 ··· 를 눌러 「Safari로 열기」를 골라주세요'
+          : '··· 또는 공유 단추를 눌러 「브라우저에서 열기」를 골라주세요');
+      }
+    };
   }
 
   /* ---------- ② 로그인했지만 아직 명부와 안 이어짐 ----------

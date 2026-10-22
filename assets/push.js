@@ -16,11 +16,20 @@ window.Push = (function () {
   /* ---------- 지금 어떤 상태인가 ---------- */
   const ua = navigator.userAgent || '';
 
-  /* 카톡 안 브라우저 — 여기서는 알림을 켤 수 없다 */
+  /* 앱 안 브라우저 — 여기서는 알림을 켤 수 없다.
+     ★ 인스타·페이스북 안에서도 못 받는데 판별이 안 돼서,
+       아이폰에서는 「홈 화면에 추가해주세요」가 떴다 —
+       인스타 안에는 그 메뉴가 아예 없다. */
   const inKakao = /KAKAOTALK/i.test(ua);
   const inNaver = /NAVER\(inapp/i.test(ua);
   const inLine = /\bLine\//i.test(ua);
-  const inApp = inKakao || inNaver || inLine;
+  const inInsta = /Instagram/i.test(ua);
+  const inFb = /FBAN|FBAV|FB_IAB/i.test(ua);
+  const inApp = inKakao || inNaver || inLine || inInsta || inFb;
+  /* 어느 앱인지 — 안내 문구를 그 앱 이름으로 쓴다
+     (예전에는 네이버·라인 안에서도 「카카오톡 안에서는…」이라고 했다) */
+  const appName = inKakao ? '카카오톡' : inNaver ? '네이버 앱' : inLine ? '라인'
+    : inInsta ? '인스타그램' : inFb ? '페이스북' : '이 앱';
 
   const isIOS = /iPhone|iPad|iPod/i.test(ua) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -77,7 +86,7 @@ window.Push = (function () {
   /* ---------- 켜기 ---------- */
   async function enable() {
     const st = state();
-    if (st === 'inapp') throw new Error('카카오톡 안에서는 알림을 켤 수 없어요');
+    if (st === 'inapp') throw new Error(appName + ' 안에서는 알림을 켤 수 없어요');
     if (st === 'needHome') throw new Error('먼저 홈 화면에 추가해주세요');
     if (st === 'unsupported') throw new Error('이 브라우저는 알림을 못 받아요');
     if (!KEY) throw new Error('알림이 아직 준비 중이에요');
@@ -167,18 +176,33 @@ window.Push = (function () {
      안드로이드는 크롬으로 바로 보낼 수 있다.
      아이폰은 자동으로 못 보내서 그림으로 안내한다. */
   function openOutside() {
-    const url = location.href.replace(/^https?:\/\//, '');
-    if (/Android/i.test(ua)) {
+    const abs = location.href;
+    const url = abs.replace(/^https?:\/\//, '');
+    const 크롬으로 = () => {
       location.href = 'intent://' + url +
         '#Intent;scheme=https;package=com.android.chrome;end';
+    };
+    /* ★ 카톡 안이면 **카톡에게** 열어 달라고 한다 — 그 사람의 기본 브라우저로.
+       intent:// 는 크롬 고정이라, 삼성 인터넷을 쓰는 사람도 크롬이 열리고
+       크롬을 지웠으면 플레이스토어로 갔다.
+       카톡이 이 주소를 못 알아들으면 아무 일도 안 일어나므로,
+       안드로이드에서는 잠시 뒤 크롬으로 한 번 더 해 본다. */
+    if (inKakao) {
+      try { location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(abs); }
+      catch (e) { }
+      if (/Android/i.test(ua)) {
+        setTimeout(() => { if (!document.hidden) 크롬으로(); }, 1400);
+      }
       return true;
     }
-    return false;   /* 아이폰 — 안내만 */
+    if (/Android/i.test(ua)) { 크롬으로(); return true; }
+    return false;   /* 아이폰(카톡 아님) — 안내만 */
   }
 
   return {
     state, enable, disable, current, openOutside, sync,
-    inApp: inApp, inKakao: inKakao, isIOS: isIOS, standalone: standalone,
+    inApp: inApp, inKakao: inKakao, appName: appName,
+    isIOS: isIOS, standalone: standalone,
     hasKey: !!KEY
   };
 })();
