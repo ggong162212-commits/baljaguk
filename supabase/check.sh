@@ -140,6 +140,24 @@ else
   exit 1
 fi
 
+echo ""
+echo "── 화면 안 <script> 가 아직 안 읽힌 것을 쓰나 (defer 사고)"
+if node "$HERE/check-pages.js"; then
+  :
+else
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+echo ""
+echo "── 화면 아홉 개를 띄워 콘솔 오류 보기 (헤드리스 크롬이 있을 때만)"
+if node "$HERE/check-console.js"; then
+  :
+else
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
 # 만들어진 함수 목록을 파일로도 남긴다 — 실서버와 대조할 때 쓴다
 docker exec -i "$NAME" psql -U postgres -At -c   "select string_agg(p.proname, ',' order by p.proname) from pg_proc p
      join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public';"   > "$HERE/.functions.txt" 2>/dev/null || true

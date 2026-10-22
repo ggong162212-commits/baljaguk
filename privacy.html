@@ -22,7 +22,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 </noscript>
-<link rel="stylesheet" href="assets/style.css?v=202610221303">
+<link rel="stylesheet" href="assets/style.css?v=202610221332">
 <style>
   .pv h3{font-size:15px;margin:0 0 8px}
   .pv .card{margin-bottom:12px}
@@ -204,12 +204,16 @@
   <div style="height:40px"></div>
 </main>
 
-<script defer src="assets/config.js?v=202610221303"></script>
-<script defer src="assets/icons.js?v=202610221303"></script>
-<script defer src="assets/ui.js?v=202610221303"></script>
+<script defer src="assets/config.js?v=202610221332"></script>
+<script defer src="assets/icons.js?v=202610221332"></script>
+<script defer src="assets/ui.js?v=202610221332"></script>
 <script>
-  UI.initTheme();
+  /* ★ 여기서는 UI 를 **바로** 쓰면 안 된다.
+     바깥 script 들이 defer 라 아직 안 읽혔다 —
+     「UI is not defined」 로 이 블록 전체가 멈춰 달·해 단추와
+     돌아가기 단추가 안 됐다. 깜빡임은 <head> 의 인라인 한 줄이 이미 막는다. */
   document.addEventListener('DOMContentLoaded', function () {
+    UI.initTheme();
     document.querySelector('[data-theme-btn]').addEventListener('click', UI.toggleTheme);
     UI.paintThemeButtons();
 
