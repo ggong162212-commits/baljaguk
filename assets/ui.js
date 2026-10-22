@@ -337,6 +337,34 @@
     return ov;
   }
 
+  /* ---------- 조사 ----------
+     「1365 정보」**은** 처럼 어색하게 나오던 것.
+     앞말에 받침이 있는지로 고른다. 숫자로 끝나면 읽는 소리로 본다
+     (1365 → 「오」, 받침 없음 → 는). 영어로 끝나면 받침 없는 쪽.
+     쓰는 법: UI.josa('1365 정보', '은')  →  '는' */
+  function josa(word, pair) {
+    const s = String(word == null ? '' : word).trim();
+    if (!s) return pair;
+    const ch = s.charCodeAt(s.length - 1);
+    let bat = 0, 모름 = false;
+    if (ch >= 0xAC00 && ch <= 0xD7A3) bat = (ch - 0xAC00) % 28;
+    /* 영 일 이 삼 사 오 육 칠 팔 구 의 받침 */
+    else if (ch >= 48 && ch <= 57) bat = [21, 8, 0, 16, 0, 0, 1, 8, 8, 0][ch - 48];
+    else 모름 = true;
+    const 로형 = (pair === '으로' || pair === '로');
+    /* 「로」는 받침이 없을 때와 ㄹ 받침일 때 쓴다 (서울로 · 세로) */
+    const 있다 = !모름 && bat !== 0 && !(로형 && bat === 8);
+    const 표 = {
+      '은': ['는', '은'], '는': ['는', '은'],
+      '이': ['가', '이'], '가': ['가', '이'],
+      '을': ['를', '을'], '를': ['를', '을'],
+      '과': ['와', '과'], '와': ['와', '과'],
+      '으로': ['로', '으로'], '로': ['로', '으로']
+    };
+    const t = 표[pair];
+    return t ? t[있다 ? 1 : 0] : pair;
+  }
+
   /* ---------- 포맷 ---------- */
   /* ★ toLocaleString 은 **부를 때마다** 자리수 규칙을 새로 만든다.
      피드 한 화면에 수백 번 불려 173ms 였다. 규칙은 하나만 만들어 두고 쓴다. */
@@ -730,7 +758,7 @@
 
   window.UI = {
     $, $$, initTheme, toggleTheme, paintThemeButtons, toast, sheet, closeSheet, confirmSheet,
-    copy, wizard, won, num, credit, unitLabel, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
+    copy, wizard, won, num, credit, unitLabel, josa, fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, esc, avatar, initGrow,
     resizeImage, cropSquare, cropPhoto, downloadCSV, cheer, debounce, onEnter, human, toLocalInput, fromLocalInput
   };
 })();
