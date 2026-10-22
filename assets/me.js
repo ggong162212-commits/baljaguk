@@ -74,23 +74,29 @@
        그러니 로그인하기 **전에** 알려 준다.
        ============================================================ */
     const 앱 = (window.Push && Push.inApp) ? (Push.appName || '이 앱') : '';
+    /* 어디로 열라고 할지 — 카톡은 **기본 브라우저**로 열어 주니 이름을 박지 않는다 */
+    const 어디 = !앱 ? '' : Push.inKakao ? '다른 브라우저'
+      : (Push.isIOS ? '사파리' : '크롬');
+    /* 「크롬으로」·「사파리로」 — 받침이 있으면 으로 (받침 ㄹ 은 로) */
+    const 으로 = w => {
+      const c = (w || '').charCodeAt((w || '').length - 1) - 0xAC00;
+      const 받침 = (c >= 0 && c < 11172) ? c % 28 : 0;
+      return (받침 === 0 || 받침 === 8) ? '로' : '으로';
+    };
+    /* ★ 이 안내는 **로그인 단추 아래**에 둔다.
+       위에 두면 SE 375 에서 「카카오로 로그인」이 첫 화면 밖으로 밀렸다
+       (단추 아래끝이 654/667 이라 여유가 13px 뿐이다). */
     const 앱안내 = 앱
-      ? '<div class="card flat" id="inappNote" style="padding:14px 16px;text-align:left;' +
-        'border:1px solid var(--line);margin-bottom:12px">' +
-        '<div class="sm" style="font-weight:700">알림까지 받으시려면</div>' +
-        '<div class="sm mut" style="margin-top:6px;line-height:1.65">' +
-        앱 + ' 안에서는 알림을 받을 수 없어요. ' +
-        (Push.isIOS ? '<b>사파리</b>로' : '<b>크롬</b>으로') + ' 열어 로그인하시면 ' +
-        '알림까지 한 번에 끝나요.<br>' +
-        '<span class="xs">지금 여기서 로그인하셔도 되고, 나중에 옮겨도 돼요 — ' +
-        '그때는 카카오 로그인을 한 번 더 하게 돼요.</span></div>' +
-        '<button class="btn ghost block" type="button" id="goOut" style="margin-top:12px">' +
-        (Push.isIOS ? '사파리로 열기' : '크롬으로 열기') + '</button>' +
+      ? '<div class="card flat" id="inappNote" style="padding:11px 13px;text-align:left;' +
+        'border:1px solid var(--line);margin-top:12px">' +
+        '<div class="sm" style="line-height:1.55"><b>' + 앱 + '</b> 안에서는 알림을 못 받아요. ' +
+        '<b>' + 어디 + '</b>' + 으로(어디) + ' 열어 로그인하면 알림까지 한 번에 끝나요.</div>' +
+        '<button class="btn ghost block" type="button" id="goOut" style="margin-top:9px">' +
+        어디 + 으로(어디) + ' 열기</button>' +
         '</div>'
       : '';
     paint(
       (err ? '<div class="pill-note">' + esc(err) + '</div>' : '') +
-      앱안내 +
       steps(0) +
       '<div class="card mecard">' +
       '<span class="big" style="background:var(--brand-soft);color:var(--brand-deep)">' + ic('paw') + '</span>' +
@@ -102,11 +108,16 @@
       '<div class="sm mut" style="line-height:1.9">' +
       '<b style="color:var(--brand-deep)">1</b> 카카오로 로그인하고<br>' +
       '<b style="color:var(--brand-deep)">2</b> 이름과 휴대폰 뒤 4자리로 본인 확인</div>' +
-      '<div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.6">' +
-      '카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인해요. 다음부터는 카카오 로그인만 하면 바로 들어와요.</div>' +
+      /* ★ 앱 안 브라우저일 때는 이 설명을 접는다.
+         아래 「알림을 못 받아요」 안내까지 넣으면 SE 375 에서
+         로그인 단추가 첫 화면 밖으로 밀린다 — 단추가 먼저다. */
+      (앱 ? '' :
+        '<div class="mut" style="font-size:11.5px;margin-top:10px;line-height:1.6">' +
+        '카카오는 닉네임만 알려줘서, 명부의 누구인지 한 번만 확인해요. 다음부터는 카카오 로그인만 하면 바로 들어와요.</div>') +
       '</div>' +
       '<div style="margin-top:16px"><button class="kakao" id="go">' + KAKAO +
       '<span>카카오로 로그인</span></button></div>' +
+      앱안내 +
       '<p class="mut" style="font-size:11.5px;margin-top:12px">닉네임만 받아와요. 카카오톡 친구목록이나 메시지는 보지 않습니다.</p>' +
       '</div>' +
       '<div class="linkline"><a href="guide.html?from=login">처음이신가요? 사용법 보기 →</a></div>');

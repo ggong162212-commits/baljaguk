@@ -191,7 +191,30 @@ window.Push = (function () {
       try { location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(abs); }
       catch (e) { }
       if (/Android/i.test(ua)) {
-        setTimeout(() => { if (!document.hidden) 크롬으로(); }, 1400);
+        /* ★ 「카톡이 못 알아들었으면 크롬으로」 를 1.4초 뒤에 해 보는데,
+           **카톡이 화면을 멈춰 두면 그 타이머가 돌아올 때 터진다** —
+           이미 다른 브라우저가 열렸는데 크롬이 한 번 더 열린다.
+           그래서 ① 화면을 한 번이라도 떠났으면 그만두고
+               ② 타이머가 예정보다 2.5초 넘게 늦게 터졌으면(멈췄다 온 것)
+                  역시 그만둔다. */
+        let 떠났다 = false;
+        const 표시 = () => { 떠났다 = true; };
+        const 그만 = () => {
+          document.removeEventListener('visibilitychange', 눈);
+          window.removeEventListener('pagehide', 표시);
+          window.removeEventListener('blur', 표시);
+        };
+        const 눈 = () => { if (document.hidden) 떠났다 = true; };
+        document.addEventListener('visibilitychange', 눈);
+        window.addEventListener('pagehide', 표시);
+        window.addEventListener('blur', 표시);
+        const 잰때 = Date.now();
+        setTimeout(() => {
+          그만();
+          if (떠났다 || document.hidden) return;
+          if (Date.now() - 잰때 > 1400 + 2500) return;   /* 멈췄다 돌아온 것 */
+          크롬으로();
+        }, 1400);
       }
       return true;
     }
