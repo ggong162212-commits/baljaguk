@@ -65,22 +65,23 @@
   const CSS =
     '.card.post.praise{background:var(--surface);' +
     'background:color-mix(in srgb,var(--brand-soft) 45%,var(--surface))}' +
-    /* 칭찬 글 머리 — 한 줄로 [사진]이름 → [사진]이름 · 칭찬해요 */
-    '.przwho{display:flex;align-items:center;gap:8px;margin-bottom:2px}' +
+    /* 칭찬 글 머리 — 한 줄로 [사진]이름 → [사진]이름 칭찬해요 · 12시간 전 */
+    '.who.przwho{display:flex;align-items:center;gap:8px;margin-bottom:10px}' +
     '.prz-line{display:flex;align-items:center;gap:6px;flex:1;min-width:0}' +
     '.prz-one{display:flex;align-items:center;gap:6px;border:none;background:none;padding:0;' +
-    'cursor:pointer;color:var(--ink);min-width:0;font-family:inherit}' +
+    'cursor:pointer;color:var(--ink);min-width:60px;font-family:inherit}' +
     '.prz-one .avatar{width:32px;height:32px;font-size:14px;flex:none}' +
-    /* ★ 이름만 줄여 쓴다 — 사진·화살표·「칭찬해요」는 늘 보인다 */
+    /* ★ 이름만 줄여 쓴다 — 사진·화살표·「칭찬해요 · 시간」은 늘 보인다 */
     '.prz-one .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;' +
     'text-overflow:ellipsis;min-width:0}' +
     '.prz-ar{flex:none;display:grid;place-items:center;color:var(--ink-3)}' +
     '.prz-ar svg,.prz-ar .svg{width:15px;height:15px}' +
     '.prz-tag{flex:none;font-size:12px;font-weight:800;color:var(--brand-deep);' +
     'white-space:nowrap;margin-left:2px}' +
-    '.prz-at{font-size:12px;color:var(--ink-3);margin:0 0 10px 40px}' +
-    /* 아주 좁으면 이름을 더 줄인다 */
-    '@media (max-width:370px){.prz-one .nm{max-width:64px}.prz-one .avatar{width:28px;height:28px}}' +
+    '.prz-at{font-size:12px;font-weight:500;color:var(--ink-3)}' +
+    /* 폰(SE·Galaxy·13)은 사이를 좁히고 이름을 더 줄인다 — 「칭찬해요 · 시간」 자리를 먼저 지킨다 */
+    '@media (max-width:400px){.prz-one{min-width:50px}.prz-one .nm{max-width:64px;font-size:13px}.prz-one .avatar{width:28px;height:28px}' +
+    '.who.przwho{gap:4px}.who.przwho > .iconbtn.sq{margin-right:-6px}.prz-line{gap:3px}.prz-one{gap:4px}.prz-ar svg,.prz-ar .svg{width:12px;height:12px}.prz-tag{margin-left:0}}' +
     '.pr-search{position:relative}' +
     '.pr-list{display:grid;gap:2px;margin-top:10px;max-height:46vh;overflow:auto}' +
     '.pr-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 8px;border:none;' +
@@ -197,6 +198,8 @@
     const who = p.author || {};
     const to = p.praised || (p.praised_member_id ? { id: p.praised_member_id, name: '구성원' } : null);
     if (!to) return '';
+    /* 한 줄에 넣느라 올해 날짜는 연도를 뺀다 (2026.09.12 → 09.12) */
+    const at = String(relTime(p.created_at) || '').replace(new Date().getFullYear() + '.', '');
 
     const one = (m, cls) =>
       '<button class="prz-one ' + cls + '" type="button" ' +
@@ -213,13 +216,12 @@
       one(who, 'from') +
       '<span class="prz-ar" aria-hidden="true">' + window.ic('chevron') + '</span>' +
       one(to, 'to') +
-      '<span class="prz-tag">칭찬해요</span>' +
+      '<span class="prz-tag">칭찬해요<span class="prz-at"> · ' + at +
+      (p.edited_at ? ' · 수정됨' : '') + '</span></span>' +
       '</div>' +
       '<button class="iconbtn sq" type="button" data-menu="' + esc(p.id) + '" ' +
       'aria-label="이 글 메뉴">' + window.ic('more') + '</button>' +
-      '</div>' +
-      '<div class="prz-at">' + relTime(p.created_at) +
-      (p.edited_at ? ' · 수정됨' : '') + '</div>';
+      '</div>';
   }
 
   /* ---------- 나 탭 ---------- */
