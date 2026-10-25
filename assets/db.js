@@ -2758,6 +2758,285 @@
     }
   };
 
+  /* ============================================================
+     사진·영상 콘테스트 — 「내가 찍은 사진이 제일 잘나가 📸」
+     ------------------------------------------------------------
+     화면은 assets/contest.js 가 그린다. 여기는 **약속한 모양**만 지킨다.
+       DB.contest.info()      → { id, title, subtitle, start_at, end_at,
+                                  max_entries, title_max, body_max,
+                                  entry_count, mine_count,
+                                  phase: 'hidden'|'soon'|'open'|'closed',
+                                  preview }
+       DB.contest.mine()      → [{ id, title, body, media_path, media_kind,
+                                   poster_path, shelter, pet_names,
+                                   volunteer_id, created_at, updated_at }]
+       DB.contest.save(entry) → 새로 내기 / 고치기 (entry.id 가 있으면 고치기)
+       DB.contest.remove(id, 지울파일[])
+     규칙(개수·기간·글자 수·봉사지·내 것인가)은 **서버가 다시 본다**.
+     여기서 미리 보는 것은 사람에게 빨리 알려 주려는 것뿐이다.
+     ============================================================ */
+  const CONTEST = {
+    MAX_ENTRIES: 3,      /* 한 사람이 낼 수 있는 작품 수 */
+    TITLE_MAX: 20,
+    BODY_MAX: 200,
+    SHELTER_MAX: 40,
+    PET_MAX: 10,         /* 아이 이름 몇 개까지 */
+    PET_NAME_MAX: 20,
+    LONG_EDGE: 2048,     /* 사진은 후기(1280)보다 덜 줄인다 */
+    PHOTO_Q: 0.85,
+    /* 보관함 경로 — contest/<로그인 id>/<작품칸>/파일 */
+    DIR: 'contest'
+  };
+
+  /* 열쇠 안에 든 내 로그인 id — 보관함 경로에 쓴다 */
+  function authUid() {
+    if (!HAS_SB) return 'demo';
+    if (!session || !session.access_token) return '';
+    try {
+      const raw = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const txt = decodeURIComponent(Array.prototype.map.call(
+        atob(raw + '='.repeat((4 - raw.length % 4) % 4)),
+        c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+      return String(JSON.parse(txt).sub || '');
+    } catch (e) { return ''; }
+  }
+
+  /* 체험 모드 저장소 — 설정 한 줄과 작품 칸을 만들어 둔다.
+     체험에서는 **지금 열려 있는** 콘테스트로 둔다 (끝까지 해 볼 수 있게) */
+  function contestDemo() {
+    const d = demoRead();
+    if (!d.contest_entries) d.contest_entries = [];
+    if (!d.contest) {
+      d.contest = {
+        id: 'demo-contest',
+        title: '내가 찍은 사진이 제일 잘나가 📸',
+        subtitle: '발자국 봉사 사진·영상 콘테스트',
+        start_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        end_at: '2026-11-30T23:59:59+09:00',
+        max_entries: CONTEST.MAX_ENTRIES,
+        title_max: CONTEST.TITLE_MAX,
+        body_max: CONTEST.BODY_MAX
+      };
+      demoWrite(d);
+    }
+    return d;
+  }
+
+  /* 지금 어떤 때인가 — 서버 contest_info() 와 **같은 규칙** */
+  function contestPhase(c) {
+    if (!c || !c.start_at) return 'hidden';
+    const now = Date.now();
+    if (now < Date.parse(c.start_at)) return 'soon';
+    if (c.end_at && now > Date.parse(c.end_at)) return 'closed';
+    return 'open';
+  }
+
+  /* 서버가 돌려주는 까닭을 사람 말로 */
+  function contestWhy(why, c) {
+    const cf = c || {};
+    const map = {
+      nomember: '명부와 이어진 계정이 아니에요',
+      noconfig: '콘테스트가 아직 준비 중이에요',
+      hidden: '아직 시작하지 않았어요',
+      soon: '아직 시작하지 않았어요',
+      closed: '마감됐어요. 이제 보기만 할 수 있어요',
+      title: '제목을 ' + (cf.title_max || CONTEST.TITLE_MAX) + '자 안으로 적어 주세요',
+      body: '설명을 ' + (cf.body_max || CONTEST.BODY_MAX) + '자 안으로 적어 주세요',
+      kind: '사진이나 영상만 낼 수 있어요',
+      nomedia: '사진 한 장이나 영상 한 개를 올려 주세요',
+      shelter: '어느 봉사지인지 적어 주세요',
+      shelterlong: '봉사지는 ' + CONTEST.SHELTER_MAX + '자 안으로 적어 주세요',
+      pets: '아이 이름은 ' + CONTEST.PET_MAX + '개까지 적을 수 있어요',
+      petlong: '아이 이름은 하나에 ' + CONTEST.PET_NAME_MAX + '자까지예요',
+      vol: '내가 간 봉사에서만 고를 수 있어요',
+      toomany: '작품은 ' + (cf.max_entries || CONTEST.MAX_ENTRIES) + '개까지 낼 수 있어요',
+      notmine: '내 작품만 고칠 수 있어요',
+      notadmin: '운영진만 할 수 있어요'
+    };
+    return map[why] || '저장하지 못했어요';
+  }
+
+  /* 아이 이름 다듬기 — 앞뒤 공백을 떼고 빈 것은 버린다 (서버와 같은 규칙) */
+  const petList = (v) => (Array.isArray(v) ? v : String(v || '').split(','))
+    .map(x => String(x).trim()).filter(Boolean);
+
+  DB.contest = {
+    MAX: CONTEST,
+
+    async info() {
+      if (!HAS_SB) {
+        const d = contestDemo(), me = myDemoId(), c = d.contest;
+        return Object.assign({}, c, {
+          entry_count: (d.contest_entries || []).length,
+          mine_count: (d.contest_entries || []).filter(e => e.member_id === me).length,
+          phase: contestPhase(c),
+          preview: !!(await DB.isAdmin().catch(() => false))
+        });
+      }
+      return await rest('rpc/contest_info', { method: 'POST', body: {} });
+    },
+
+    async mine() {
+      if (!HAS_SB) {
+        const d = contestDemo(), me = myDemoId();
+        return (d.contest_entries || []).filter(e => e.member_id === me)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+      }
+      const me = await DB.community.myId();
+      return await rest('contest_entries?select=id,title,body,media_path,media_kind,' +
+        'poster_path,shelter,pet_names,volunteer_id,created_at,updated_at' +
+        '&member_id=eq.' + enc(me) + '&order=created_at.asc') || [];
+    },
+
+    /* 작품칸 — 사진·영상을 올릴 자리. 저장 전에 먼저 만든다 */
+    newKey() {
+      return CONTEST.DIR + '/' + (authUid() || 'me') + '/' + uid();
+    },
+
+    /* 사진 — 후기와 같은 함수를 쓰고 경로만 contest/… 로 둔다 */
+    async uploadPhoto(key, dataUrl) {
+      if (!HAS_SB) return { path: dataUrl, thumb: null };
+      return await DB.community.uploadPhoto(key, dataUrl, 'c' + Date.now());
+    },
+
+    async uploadVideo(key, file) {
+      if (!HAS_SB) return URL.createObjectURL(file);
+      return await DB.community.uploadVideo(key, file);
+    },
+
+    /* 영상 첫 그림 */
+    async uploadPoster(key, dataUrl) {
+      if (!HAS_SB) return dataUrl;
+      const r = await DB.community.uploadPhoto(key, dataUrl, 'poster');
+      return r.path;
+    },
+
+    async save(entry) {
+      const v = entry || {};
+      if (!HAS_SB) {
+        const d = contestDemo(), me = myDemoId(), c = d.contest;
+        const phase = contestPhase(c);
+        const bad = (why) => { throw new Error(contestWhy(why, c)); };
+        if (phase !== 'open') bad(phase);
+        const title = String(v.title || '').trim();
+        const body = String(v.body || '').trim();
+        const shelter = String(v.shelter || '').trim();
+        const pets = petList(v.pet_names);
+        if (!title || title.length > c.title_max) bad('title');
+        if (!body || body.length > c.body_max) bad('body');
+        if (!String(v.media_path || '').trim()) bad('nomedia');
+        if (!shelter) bad('shelter');
+        if (shelter.length > CONTEST.SHELTER_MAX) bad('shelterlong');
+        if (pets.length > CONTEST.PET_MAX) bad('pets');
+        if (pets.some(x => x.length > CONTEST.PET_NAME_MAX)) bad('petlong');
+
+        const row = {
+          title, body,
+          media_path: String(v.media_path).trim(),
+          media_kind: v.media_kind === 'video' ? 'video' : 'photo',
+          poster_path: v.poster_path || null,
+          shelter, pet_names: pets,
+          volunteer_id: v.volunteer_id || null
+        };
+        if (v.id) {
+          const old = (d.contest_entries || []).find(e => e.id === v.id && e.member_id === me);
+          if (!old) bad('notmine');
+          Object.assign(old, row, { updated_at: new Date().toISOString() });
+          demoWrite(d);
+          return { ok: true, id: old.id };
+        }
+        if ((d.contest_entries || []).filter(e => e.member_id === me).length >= c.max_entries)
+          bad('toomany');
+        const made = Object.assign({
+          id: uid(), member_id: me, created_at: new Date().toISOString(), updated_at: null
+        }, row);
+        d.contest_entries.push(made);
+        demoWrite(d);
+        return { ok: true, id: made.id };
+      }
+
+      const r = await rest('rpc/contest_save', {
+        method: 'POST',
+        body: {
+          p_id: v.id || null,
+          p_title: String(v.title || '').trim(),
+          p_body: String(v.body || '').trim(),
+          p_media_path: String(v.media_path || '').trim(),
+          p_media_kind: v.media_kind === 'video' ? 'video' : 'photo',
+          p_poster_path: v.poster_path || null,
+          p_shelter: String(v.shelter || '').trim(),
+          p_pet_names: petList(v.pet_names),
+          p_volunteer: v.volunteer_id || null
+        }
+      });
+      if (!r || !r.ok) throw new Error(contestWhy(r && r.why));
+      return r;
+    },
+
+    /* 지우기 — 파일부터, 그다음 줄. (줄만 지우면 파일이 떠돌아 공간만 먹는다) */
+    async remove(id, paths) {
+      if (!HAS_SB) {
+        const d = contestDemo(), me = myDemoId();
+        const n = (d.contest_entries || []).length;
+        d.contest_entries = (d.contest_entries || [])
+          .filter(e => !(e.id === id && e.member_id === me));
+        demoWrite(d);
+        if (d.contest_entries.length === n) throw new Error(contestWhy('notmine'));
+        return { ok: true };
+      }
+      for (const p of (paths || []).filter(Boolean)) {
+        try {
+          await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community/' + p,
+            { method: 'DELETE' });
+        } catch (e) { /* 파일이 이미 없으면 그냥 간다 */ }
+      }
+      const r = await rest('rpc/contest_remove', { method: 'POST', body: { p_id: id } });
+      if (!r || !r.ok) throw new Error(contestWhy(r && r.why));
+      return r;
+    },
+
+    /* ---------- 운영진 ---------- */
+    /* 낸 작품 전체 (이름만 붙는다 — 연락처·학번은 서버가 안 준다) */
+    async all() {
+      if (!HAS_SB) {
+        const d = contestDemo();
+        return (d.contest_entries || []).slice()
+          .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+          .map(e => Object.assign({}, e, { author: (demoMember(e.member_id) || {}).name || '' }));
+      }
+      return await rest('rpc/contest_all', { method: 'POST', body: {} }) || [];
+    },
+
+    /* 시작일·마감일 정하기. 보내지 않은 칸은 그대로 둔다 */
+    async set(v) {
+      const o = v || {};
+      if (!HAS_SB) {
+        const d = contestDemo();
+        if (o.clear_start) d.contest.start_at = null;
+        else if (o.start_at) d.contest.start_at = o.start_at;
+        if (o.end_at) d.contest.end_at = o.end_at;
+        if (o.title) d.contest.title = o.title;
+        if (o.subtitle) d.contest.subtitle = o.subtitle;
+        if (o.max_entries) d.contest.max_entries = Number(o.max_entries);
+        demoWrite(d);
+        return { ok: true, id: d.contest.id };
+      }
+      const r = await rest('rpc/contest_set', {
+        method: 'POST',
+        body: {
+          p_start: o.start_at || null,
+          p_end: o.end_at || null,
+          p_title: o.title || null,
+          p_subtitle: o.subtitle || null,
+          p_max: o.max_entries || null,
+          p_clear_start: !!o.clear_start
+        }
+      });
+      if (!r || !r.ok) throw new Error(contestWhy(r && r.why));
+      return r;
+    }
+  };
+
   /* 새 파일(pastvol.js 등)이 서버 함수를 부를 때 — 401 다시 받기·쉬운 말 오류를 그대로 쓴다 */
   DB.rpc = (name, body) => rest('rpc/' + name, { method: 'POST', body: body || {} });
   window.DB = DB;

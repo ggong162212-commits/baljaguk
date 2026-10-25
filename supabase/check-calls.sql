@@ -97,7 +97,9 @@ begin
         continue;
       end if;
 
-      foreach col in array string_to_array(replace(cols, ' ', ''), ',')
+      /* 칸 목록이 여러 줄에 걸쳐 있으면 줄바꿈이 칸 이름에 붙어 와서
+         있는 칸을 「없다」 고 했다 — 빈칸·줄바꿈·탭을 모두 뗀다 */
+      foreach col in array string_to_array(regexp_replace(cols, '[[:space:]]', '', 'g'), ',')
       loop
         if col <> '' and not exists (
           select 1 from information_schema.columns

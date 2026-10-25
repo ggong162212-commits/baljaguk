@@ -2511,6 +2511,7 @@ window.Community = (function () {
       if ((b = hit('data-pin'))) return togglePin(b.dataset.pin);
       if ((b = hit('data-best'))) return markBest(b.dataset.best, b.dataset.bc);
       if (hit('data-myans')) return myAnswersSheet();
+      if (hit('data-contest')) return openContest();
       if ((b = hit('data-ask'))) return writeSheet(b.dataset.ask);
       if ((b = hit('data-askno'))) {
         skipReview(b.dataset.askno);
@@ -4607,14 +4608,86 @@ window.Community = (function () {
     };
   }
 
+  /* ============================================================
+     사진·영상 콘테스트 — 설문 탭 맨 위 큰 카드
+     ------------------------------------------------------------
+     화면은 assets/contest.js 가 그린다. 여기는 **들어가는 문**만 둔다.
+     phase  hidden  아직 날짜를 안 정했다 → 운영진에게만 「미리보기」로 보인다
+            soon    시작일이 아직 안 됐다
+            open    진행 중 — 마감까지 D-n
+            closed  마감 — 보기만
+     ============================================================ */
+  function ddayTo(when) {
+    if (!when) return null;
+    const ms = Date.parse(when);
+    if (!isFinite(ms)) return null;
+    /* 한국 날짜끼리 센다 — 시간으로 재면 밤에 하루가 밀린다 */
+    const day = s => Math.floor(Date.parse(new Date(s)
+      .toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })) / 86400000);
+    return day(ms) - day(Date.now());
+  }
+
+  function contestCard(info) {
+    if (!info) return '';
+    const phase = info.phase || 'hidden';
+    /* 날짜를 안 정했으면 구성원에게는 아예 안 보인다 */
+    if (phase === 'hidden' && !info.preview) return '';
+
+    const n = Number(info.entry_count || 0);
+    const mineN = Number(info.mine_count || 0);
+    const d = ddayTo(info.end_at);
+    let tag = '', lead = '';
+    if (phase === 'hidden') {
+      tag = '운영진 미리보기';
+      lead = '아직 날짜를 안 정했어요 · 구성원에게는 보이지 않아요';
+    } else if (phase === 'soon') {
+      tag = '곧 시작';
+      lead = UI.fmtDate(info.start_at) + '부터 작품을 낼 수 있어요';
+    } else if (phase === 'closed') {
+      tag = '마감';
+      lead = '모두 ' + n + '작품이 모였어요 · 이제 보기만 할 수 있어요';
+    } else {
+      tag = d === null ? '진행 중' : (d > 0 ? 'D-' + d : (d === 0 ? '오늘 마감' : '마감'));
+      lead = (mineN ? '내 작품 ' + mineN + '개 · ' : '') + '지금까지 ' + n + '작품 도착';
+    }
+
+    return '<button class="card" type="button" data-contest ' +
+      'style="width:100%;text-align:left;margin-bottom:12px;padding:16px 16px 14px;' +
+      'border:1px solid var(--line);background:linear-gradient(135deg,var(--brand-soft),' +
+      'var(--surface) 72%);box-shadow:var(--shadow-sm)">' +
+      '<div class="row" style="gap:8px;align-items:center">' +
+      '<span class="badge" style="background:var(--brand-deep);color:#fff">' + esc(tag) + '</span>' +
+      '<span class="mut sm grow" style="text-align:right">' + esc(info.subtitle || '') + '</span>' +
+      '</div>' +
+      '<div style="font-family:var(--font-title);font-size:21px;line-height:1.3;' +
+      'margin-top:9px;color:var(--ink)">' + esc(info.title || '사진 콘테스트') + '</div>' +
+      '<div class="mut sm" style="margin-top:6px;line-height:1.55">' + esc(lead) + '</div>' +
+      '<div class="row" style="gap:6px;align-items:center;margin-top:11px;' +
+      'color:var(--brand-deep);font-weight:700;font-size:14px">' +
+      '<span>' + (phase === 'open' ? (mineN ? '내 작품 보기' : '작품 내러 가기') : '자세히 보기') +
+      '</span>' + ic('chevron') + '</div>' +
+      '</button>';
+  }
+
+  /* 콘테스트 화면 — 파일이 아직 없으면 조용히 죽지 않게 알려 준다 */
+  function openContest() {
+    if (window.Contest && Contest.open) return Contest.open();
+    toast('콘테스트 화면을 준비하고 있어요', 'warn');
+  }
+
   async function renderPolls() {
     $('#headTitle').textContent = '설문';
     $('#headLead').textContent = '모두의 생각을 모아요.';
     /* 돌아온 탭이면 보던 것을 그대로 두고 뒤에서 새로 받는다 */
     if (!warm) paint(loading());
     let res;
+    /* 콘테스트 카드는 설문과 **같이** 받아온다 — 한 발 늦게 끼어들지 않게.
+       못 받아 와도 설문은 그대로 보여 준다 */
+    const cInfoP = (DB.contest ? DB.contest.info() : Promise.resolve(null))
+      .catch(() => null);
     try { res = await DB.community.feed({ type: 'poll', limit: 30 }); }
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
+    const top = contestCard(await cInfoP);
     const rows = res.rows || [];
     /* 카드의 동작(설문·반응·댓글)이 F.rows 를 보고 돌아간다 */
     F.rows = rows;
@@ -4627,10 +4700,13 @@ window.Community = (function () {
       '<span class="s">지난 설문과 1365 정보를 봐요</span></span>' +
       '<span class="end">' + ic('chevron') + '</span></button>';
 
-    if (!rows.length) return paint(mine +
-      '<div class="card center" style="padding:28px 22px">' +
-      illus('emptyPoll') +
-      '<h3 style="margin-top:12px;font-size:17px">아직 설문이 없어요</h3></div>');
+    if (!rows.length) {
+      paint(top + mine +
+        '<div class="card center" style="padding:28px 22px">' +
+        illus('emptyPoll') +
+        '<h3 style="margin-top:12px;font-size:17px">아직 설문이 없어요</h3></div>');
+      return bindOnce();
+    }
     /* 구성원에게 중요한 건 지금 참여할 수 있는 설문이다.
        마감된 것은 아래로 내린다 */
     const closedOf = p => {
@@ -4640,7 +4716,7 @@ window.Community = (function () {
     const live = rows.filter(p => !closedOf(p));
     const done = rows.filter(closedOf);
 
-    paint(mine +
+    paint(top + mine +
       (live.length
         ? '<div class="section-title">' + ic('clipboard') + '<span>진행 중</span></div>' +
           live.map(postCard).join('')
@@ -5310,6 +5386,8 @@ window.Community = (function () {
 
   return {
     start, openPast,                 /* openPast — pastvol.js 전체 보기에서 */
+    /* readVideo — contest.js 가 같은 규칙(30초·20MB·첫 그림)으로 영상을 읽는다 */
+    readVideo,
     /* 아래 셋은 시험에서만 부른다 */
     __readVideo: readVideo, __live: onLive, __cropPhoto: cropPhoto
   };

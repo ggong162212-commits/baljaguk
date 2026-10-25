@@ -85,6 +85,19 @@ alter table storage.objects add column if not exists metadata jsonb;
 
 alter table storage.objects enable row level security;
 
+/* 경로를 폴더로 쪼개 준다 — 실서버 Supabase 가 갖고 있는 함수.
+   'contest/<로그인 id>/<작품 id>/x.jpg' → {contest, <로그인 id>, <작품 id>} */
+create or replace function storage.foldername(name text)
+returns text[]
+language plpgsql immutable
+as $$
+declare parts text[];
+begin
+  parts := string_to_array(name, '/');
+  return parts[1:array_length(parts, 1) - 1];
+end
+$$;
+
 -- realtime — 실시간 발행용 발행물
 do $$
 begin

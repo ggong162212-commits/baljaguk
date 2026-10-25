@@ -3644,6 +3644,11 @@
       '<span class="hint">표를 모두 담은 파일 하나를 내려받아요. ' +
       '사진은 파일이 커서 목록(주소)만 담아요.</span></div>' +
 
+      '<div class="card"><h3>사진 콘테스트</h3>' +
+      '<div class="sub">「내가 찍은 사진이 제일 잘나가 📸」 — ' +
+      '시작일을 정하면 그날부터 구성원에게 열려요. 정하기 전에는 운영진만 보여요.</div>' +
+      '<div class="sp"></div><div id="contestBox" class="mut sm">불러오는 중…</div></div>' +
+
       '<div class="card"><h3>동아리 정보</h3>' +
       '<div class="sub">신청 폼·설문·구성원 등록에 두루 쓰여요.</div><div class="sp"></div>' +
       '<div class="grid2">' +
@@ -3814,7 +3819,117 @@
     };
 
     paintUsage();
+    paintContest();
     const bk = $('#bkGo');
     if (bk) bk.onclick = backupAll;
+  }
+
+  /* ============================================================
+     사진 콘테스트 — 시작일·마감일 정하기, 낸 작품 보기
+     ------------------------------------------------------------
+     시작일이 비어 있으면 구성원에게 **아예 안 보인다** (운영진 미리보기만).
+     날짜를 정하면 그날부터 열린다. 규칙은 서버가 다시 본다.
+     ============================================================ */
+  const CPHASE = {
+    hidden: ['아직 안 열림', '구성원에게는 보이지 않아요'],
+    soon: ['곧 시작', '시작일이 되면 열려요'],
+    open: ['진행 중', '구성원이 작품을 낼 수 있어요'],
+    closed: ['마감', '이제 보기만 할 수 있어요']
+  };
+
+  async function paintContest() {
+    const box = $('#contestBox');
+    if (!box) return;
+    let info = null;
+    try { info = await DB.contest.info(); }
+    catch (e) { box.innerHTML = '<span class="mut sm">불러오지 못했어요</span>'; return; }
+
+    const c = info || {};
+    const ph = CPHASE[c.phase || 'hidden'] || CPHASE.hidden;
+    const n = Number(c.entry_count || 0);
+
+    box.innerHTML =
+      '<div class="row" style="gap:8px;align-items:center;margin-bottom:10px">' +
+      '<span class="badge">' + esc(ph[0]) + '</span>' +
+      '<span class="mut sm">' + esc(ph[1]) + '</span></div>' +
+      '<div class="kv"><span class="k">낸 작품</span><span class="v">' + n + '개</span></div>' +
+      '<div class="divider"></div>' +
+      '<label class="field"><span class="lb">시작일</span>' + dtField('cStart', c.start_at || null) +
+      '<span class="hint">비워 두면 구성원에게 안 보여요. 시각을 안 적으면 00:00 로 둬요.</span></label>' +
+      '<label class="field"><span class="lb">마감일</span>' + dtField('cEnd', c.end_at || null) +
+      '<span class="hint">시각을 안 적으면 23:59 로 둬요.</span></label>' +
+      '<label class="field"><span class="lb">한 사람이 낼 수 있는 작품 수</span>' +
+      '<input class="input" type="number" min="1" max="10" id="cMax" value="' +
+      (Number(c.max_entries) || 3) + '"></label>' +
+      '<button class="btn primary block" type="button" id="cSave">저장하기</button>' +
+      '<div class="row" style="gap:8px;margin-top:8px">' +
+      '<button class="btn ghost grow" type="button" id="cList">낸 작품 보기 (' + n + ')</button>' +
+      (c.start_at
+        ? '<button class="btn ghost" type="button" id="cHide">다시 숨기기</button>'
+        : '') + '</div>';
+
+    $('#cSave').onclick = async () => {
+      const btn = $('#cSave');
+      const start = readDt('cStart', '00:00');
+      const end = readDt('cEnd', '23:59');
+      if (start && end && Date.parse(end) <= Date.parse(start))
+        return toast('마감일이 시작일보다 빨라요', 'err');
+      btn.disabled = true;
+      try {
+        await DB.contest.set({
+          start_at: start, end_at: end,
+          max_entries: Math.max(1, Math.min(10, Number($('#cMax').value) || 3))
+        });
+        toast('저장했어요', 'ok');
+        paintContest();
+      } catch (e) {
+        toast(e.message || '저장하지 못했어요', 'err');
+        btn.disabled = false;
+      }
+    };
+
+    const hide = $('#cHide');
+    if (hide) hide.onclick = async () => {
+      if (!await confirmSheet('콘테스트를 다시 숨길까요?',
+        '시작일을 비워요. 구성원에게는 안 보이고, 낸 작품은 그대로 남아요.', '숨기기')) return;
+      try {
+        await DB.contest.set({ clear_start: true });
+        toast('숨겼어요', 'ok');
+        paintContest();
+      } catch (e) { toast(e.message || '바꾸지 못했어요', 'err'); }
+    };
+
+    $('#cList').onclick = contestSheet;
+  }
+
+  async function contestSheet() {
+    let rows = [];
+    try { rows = await DB.contest.all() || []; }
+    catch (e) { return toast(e.message || '불러오지 못했어요', 'err'); }
+
+    const one = (e) => {
+      const pets = (e.pet_names || []).filter(Boolean);
+      return '<div style="padding:11px 12px;background:var(--surface-2);border-radius:13px;' +
+        'margin-bottom:8px">' +
+        '<div class="row between" style="gap:8px">' +
+        '<b class="sm">' + esc(e.title || '') + '</b>' +
+        '<span class="mut xs">' + (e.media_kind === 'video' ? '영상' : '사진') + '</span></div>' +
+        '<div class="mut xs" style="margin-top:4px">📍 ' + esc(e.shelter || '-') +
+        (pets.length ? ' · 🐾 ' + esc(pets.join(', ')) : ' · 🐾 이름 모름') + '</div>' +
+        '<div class="sm" style="margin-top:6px;line-height:1.6">' + esc(cut(e.body, 120)) + '</div>' +
+        '<div class="mut xs" style="margin-top:6px">' + esc(e.author || '') + ' · ' +
+        fmtDateTime(e.created_at) + (e.updated_at ? ' (고침)' : '') + '</div>' +
+        '</div>';
+    };
+
+    const ov = sheet({
+      title: '낸 작품 ' + rows.length + '개',
+      body: rows.length
+        ? rows.map(one).join('')
+        : '<p class="mut sm" style="margin:0">아직 낸 작품이 없어요.</p>',
+      foot: '<button class="btn ghost block" type="button" data-x>닫기</button>'
+    });
+    const x = ov.querySelector('[data-x]');
+    if (x) x.onclick = closeSheet;
   }
 })();
