@@ -511,7 +511,13 @@
         : '<div class="pill-note" style="margin-top:18px">' + max + '작품을 다 냈어요. 마감 전까지 고치기만 할 수 있어요.</div>')
       : (st.phase === 'soon' || st.phase === 'hidden'
         ? '<button class="btn soft block lg" type="button" disabled style="margin-top:18px">' +
-          (st.phase === 'soon' ? esc(md(i.start_at)) + '부터 낼 수 있어요' : '시작하면 낼 수 있어요') + '</button>'
+          (st.phase === 'soon' ? esc(md(i.start_at)) + '부터 낼 수 있어요' : '시작하면 낼 수 있어요') + '</button>' +
+          /* 시작 전에는 운영진만 폼 모양을 열어 볼 수 있다 — 아무것도 저장되지 않는다 */
+          (st.admin
+            ? '<button class="btn ghost block lg" type="button" data-ctpreview style="margin-top:8px">' +
+              '📝 작품 내기 폼 미리보기</button>' +
+              '<p class="mut xs" style="margin:6px 2px 0;text-align:center">운영진만 보여요 · 낸 작품은 저장되지 않아요</p>'
+            : '')
         : '');
 
     const slots = [];
@@ -599,6 +605,8 @@
     const b = ROOT.querySelector('[data-ctback]');
     if (b) b.onclick = () => OPTS.onBack();
     $$('[data-ctnew]').forEach(x => x.onclick = () => form(null));
+    /* 시작 전 — 운영진 폼 미리보기 (저장하는 길이 없는 폼) */
+    $$('[data-ctpreview]').forEach(x => x.onclick = () => form(null, true));
     $$('[data-ctopen]').forEach(x => x.onclick = () => {
       const e = mine.find(m => m.id === x.dataset.ctopen);
       if (e) (st.phase === 'open' ? form(e) : view(e));
@@ -633,13 +641,21 @@
   }
 
   /* ---------- 내기 · 고치기 ---------- */
-  async function form(e) {
+  /* preview = true — 시작 전에 운영진이 폼 모양만 보는 것.
+     ★ 「작품 내기」 단추를 **아예 만들지 않는다.** 그래서 save.onclick 이 없고,
+       작품을 올리는 길(api().save → 사진 업로드)이 코드에 남아 있지 않다.
+       사진을 골라도 그 자리에서 작게 만들어 보여 주기만 한다(업로드 아님). */
+  async function form(e, preview) {
     const edit = !!e;
     let media = null;                 /* 새로 고른 것 — null 이면 그대로 */
     const ov = UI.sheet({
-      title: edit ? '작품 고치기' : '내 작품 내기',
+      title: preview ? '작품 내기 폼 미리보기' : (edit ? '작품 고치기' : '내 작품 내기'),
       noFocus: true,
       body:
+        (preview
+          ? '<div class="ct-pre" style="margin:0 0 12px">📝 <b>미리보기예요</b> · ' +
+            '낸 작품은 저장되지 않아요. 눌러 보고 적어 봐도 아무것도 올라가지 않아요.</div>'
+          : '') +
         '<button class="ct-pick" type="button" data-ctpick aria-label="사진이나 영상 고르기"></button>' +
         '<input type="file" data-ctfile accept="image/*,video/mp4,video/quicktime" hidden>' +
         '<p class="mut xs" style="margin:6px 2px 14px">사진 1장 또는 영상 1개 (' + VIDEO_MAX_SEC + '초·' + VIDEO_MAX_MB + 'MB 이하)</p>' +
@@ -660,11 +676,13 @@
         '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
         '<span class="grow sm" style="font-weight:700">이름을 몰라요</span></button></div>' +
         (edit ? '<button class="btn danger block" type="button" data-ctdel style="margin-top:4px">' + ic('trash') + ' 이 작품 지우기</button>' : ''),
-      foot: '<button class="btn primary lg" type="button" data-ctsave>' + (edit ? '고친 것 저장' : '작품 내기') + '</button>'
+      foot: preview
+        ? '<button class="btn soft lg" type="button" disabled>미리보기라 낼 수 없어요</button>'
+        : '<button class="btn primary lg" type="button" data-ctsave>' + (edit ? '고친 것 저장' : '작품 내기') + '</button>'
     });
     const q = s => ov.querySelector(s);
     const pick = q('[data-ctpick]'), file = q('[data-ctfile]'), t = q('[data-ctt]'), b = q('[data-ctb]'), sel = q('[data-ctv]');
-    const save = q('[data-ctsave]');
+    const save = q('[data-ctsave]');   /* 미리보기에는 없다 */
     if (edit) { t.value = e.title || ''; b.value = e.body || ''; }
 
     const count = () => {
@@ -784,7 +802,8 @@
     paintAn();
     if (edit && e.shelter) loadAn();
 
-    save.onclick = async () => {
+    /* ★ 미리보기면 save 가 없다 — 여기 아래(올리기·사진 업로드)로는 들어갈 수 없다 */
+    if (save) save.onclick = async () => {
       /* 적어 두고 「더하기」를 안 누른 이름도 담는다 */
       if (anNew.value.trim() && !addAn()) return;
       const v = { id: edit ? e.id : undefined, title: t.value.trim(), body: b.value.trim(),
