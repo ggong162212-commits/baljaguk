@@ -1138,6 +1138,8 @@
       pinned: !!p.pinned, hidden: !!p.hidden, edited_at: p.edited_at || null,
       /* 임시 저장 — 아직 안 올린 설문 (운영진만 본다) */
       draft: !!p.draft,
+      /* 발자국 이야기 — 아이 정보 한 덩어리 */
+      story: p.story || null,
       insta_ok: !!p.insta_ok,
       mine: p.author_id === meId,
       author: demoMember(p.author_id),
@@ -1685,6 +1687,8 @@
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null,
           draft: !!v.draft,
+          /* 발자국 이야기 — { shelter, name, sex, age } (fix-21) */
+          story: v.story || null,
           insta_ok: !!v.insta_ok, is_question: !!v.is_question,
           best_comment_id: null, solved_at: null,
           praised_member_id: v.praised_member_id || null
@@ -1774,6 +1778,8 @@
           /* 설문은 「임시 저장」 으로 먼저 — 올릴 때 알림이 한 번 간다 (fix-20).
              칸이 없는 서버에서도 다른 글은 그대로 올라가게 있을 때만 보낸다 */
           ...(v.draft ? { draft: true } : {}),
+          /* 발자국 이야기 — { shelter, name, sex, age } (fix-21). 같은 이유로 있을 때만 */
+          ...(v.story ? { story: v.story } : {}),
           /* 칭찬 글만 — 칸이 없는 서버(fix-praise.sql 전)에서도 다른 글은 그대로 올라가게 */
           ...(v.praised_member_id ? { praised_member_id: v.praised_member_id } : {}),
           author_id: await DB.community.myId()

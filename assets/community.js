@@ -1002,7 +1002,9 @@ window.Community = (function () {
       (F.kind === 'place' && F.place
         ? chip(true, '봉사지: ' + esc(F.place) + ' <span class="x">✕</span>', 'data-f="clear"')
         : chip(false, '봉사지별', 'data-f="place"')) +
-      chip(F.kind === 'free', '자유게시판', 'data-f="free"');
+      chip(F.kind === 'free', '자유게시판', 'data-f="free"') +
+      /* 발자국 이야기 — story.js 가 있을 때만 (파일이 없으면 칩도 없다) */
+      (window.Story ? chip(F.kind === 'story', '이야기', 'data-f="story"') : '');
 
     $$('#chips [data-f]').forEach(b => b.addEventListener('click', async () => {
       const k = b.dataset.f;
@@ -1087,7 +1089,9 @@ window.Community = (function () {
     try {
       res = await DB.community.feed({
         cursor: F.cursor,
-        type: F.kind === 'free' ? 'free' : (F.kind === 'place' ? 'review' : null),
+        type: F.kind === 'free' ? 'free'
+          : (F.kind === 'story' ? 'story'
+            : (F.kind === 'place' ? 'review' : null)),
         place: F.kind === 'place' ? F.place : null,
         limit: 20
       });
@@ -1299,7 +1303,9 @@ window.Community = (function () {
     /* 칭찬 글은 머리를 통째로 다르게 쓴다 — 한 줄로 두 사람을 보여 준다 */
     const przHead = (p.type === 'praise' && window.Praise) ? Praise.head(p) : '';
 
-    return '<article class="card post' + (p.type === 'praise' || p.type === 'fame' ? ' ' + p.type : '') + '" data-post="' + esc(p.id) + '">' +
+    return '<article class="card post' +
+      (p.type === 'praise' || p.type === 'fame' || p.type === 'story' ? ' ' + p.type : '') +
+      '" data-post="' + esc(p.id) + '">' +
       (przHead ? przHead : '<div class="who">' +
       '<button class="facebtn" type="button" data-peek="' + esc(who.id || '') + '" ' +
       'data-pname="' + esc(who.name) + '" data-pphoto="' + esc(who.photo || who.photo_path || '') + '" ' +
@@ -1327,6 +1333,9 @@ window.Community = (function () {
 
       /* 하트 · 말풍선 · 좋아요 n개 */
       actionRow(p) +
+
+      /* 「🐾 이름 · 여아 · 2살」 「📍보호소」 (story.js) */
+      (p.type === 'story' && window.Story ? Story.line(p) : '') +
 
       /* 본문은 두 줄까지, 길면 「더 보기」 */
       (body
@@ -3070,7 +3079,10 @@ window.Community = (function () {
       const act = b.dataset.act;
       closeSheet();
       try {
-        if (act === 'edit') return editSheet(p);
+        /* 이야기는 아이 정보까지 함께 고친다 (story.js) */
+        if (act === 'edit') return (p.type === 'story' && window.Story)
+          ? Story.edit(p, { done: () => { dropViewCache(); renderHome(true); } })
+          : editSheet(p);
         if (act === 'del') {
           if (!await confirmSheet('이 글을 지울까요?',
             '이 글과 댓글 · 사진 · 반응이 모두 지워져요. 되돌릴 수 없어요.',
@@ -3421,6 +3433,7 @@ window.Community = (function () {
         row('free', 'edit', '자유글', '일상 이야기를 나눠요') +
         row('question', 'info', '질문', '궁금한 걸 물어봐요') +
         (window.Praise ? row('praise', 'paw', '칭찬해요', '고마운 구성원을 모두 앞에서 칭찬해요') : '') +  /* praise.js */
+        (window.Story ? row('story', 'heart', '발자국 이야기', '보호소 아이의 이야기를 들려줘요') : '') +  /* story.js */
         (admin ? row('notice', 'alert', '공지', '모두에게 알리는 글이에요') : '')
     });
 
@@ -3432,6 +3445,8 @@ window.Community = (function () {
         else if (k === 'free') freeWizard();
         else if (k === 'question') questionSheet();
         else if (k === 'praise') Praise.write({ photoStep, done: () => { closeSheet(); cheer && cheer(); dropViewCache(); toast('칭찬을 올렸어요', 'ok'); F.kind = 'all'; F.place = ''; saveFilter({ kind: 'all', place: '' }); renderHome(true); } });
+        /* 발자국 이야기 — 올리면 「이야기」 칩이 켜진 피드로 보낸다 */
+        else if (k === 'story') Story.write({ photoStep, done: () => { closeSheet(); cheer && cheer(); dropViewCache(); toast('이야기를 올렸어요', 'ok'); F.kind = 'story'; F.place = ''; saveFilter({ kind: 'story', place: '' }); renderHome(true); } });
         else noticeWizard();
       }, 180);
     });
@@ -4191,6 +4206,7 @@ window.Community = (function () {
           (p.place ? (p.date ? ' · ' : '') + esc(p.place) : '') + '</div>'
           : '') +
         (p.type === 'fame' && window.Fame ? Fame.head(p) : '') +  /* fame.js */
+        (p.type === 'story' && window.Story ? Story.line(p) : '') +  /* story.js */
 
         (p.body ? '<div class="bd">' + esc(p.body) + '</div>' : '') +
         photoStrip(p) +
