@@ -743,8 +743,9 @@
      1. 폼 관리
      ============================================================ */
   function renderForm() {
-    const picks = [['survey', '활동의견 · 개파'], ['id1365', '1365 명부']];
-    if (F.formPick !== 'id1365') F.formPick = 'survey';
+    const picks = [['survey', '활동의견 · 개파'], ['id1365', '1365 명부'],
+      ['contest', '📸 사진 콘테스트']];
+    if (['id1365', 'contest'].indexOf(F.formPick) < 0) F.formPick = 'survey';
     $('#formPick').innerHTML = picks.map(([k, l]) =>
       '<button type="button" class="' + (F.formPick === k ? 'on' : '') + '" data-fp="' + k + '">' + l + '</button>').join('');
     $$('#formPick [data-fp]').forEach(b => b.addEventListener('click', () => {
@@ -754,12 +755,37 @@
     $('#goApplyTab').onclick = () => go('apply');
 
     const onIds = F.formPick === 'id1365';
-    $('#surveyPanel').hidden = onIds;
+    const onContest = F.formPick === 'contest';
+    $('#surveyPanel').hidden = onIds || onContest;
     $('#id1365Panel').hidden = !onIds;
-    $('#formLead').textContent = onIds
-      ? '자원봉사센터에 낼 회원 명부를 모으는 곳이에요.'
-      : '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.';
+    $('#contestPanel').hidden = !onContest;
+    $('#formMoved').hidden = onContest;
+    $('#formLead').textContent = onContest
+      ? '구성원이 봉사 사진·영상을 「작품」으로 내는 곳이에요.'
+      : (onIds
+        ? '자원봉사센터에 낼 회원 명부를 모으는 곳이에요.'
+        : '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.');
+    if (onContest) return renderContest();
     return onIds ? renderId1365() : renderSurvey();
+  }
+
+  /* 폼 관리 → 📸 사진 콘테스트 */
+  function renderContest() {
+    $('#contestPanel').innerHTML =
+      '<div class="card"><h3>사진 콘테스트</h3>' +
+      '<div class="sub">「내가 찍은 사진이 제일 잘나가 📸」 — ' +
+      '시작일을 정하면 그날부터 구성원에게 열려요. 정하기 전에는 운영진만 보여요.</div>' +
+      '<div class="sp"></div><div id="contestBox" class="mut sm">불러오는 중…</div></div>' +
+
+      '<div class="card"><h3>앱에서 보기</h3>' +
+      '<div class="sub">구성원에게 보이는 화면을 그대로 열어 봐요. ' +
+      '커뮤니티 「설문」 탭 맨 위 카드예요.</div><div class="sp"></div>' +
+      '<button class="btn ghost block" type="button" id="goAppContest">' +
+      '커뮤니티 설문 탭 열기</button>' +
+      '<span class="hint">아직 날짜를 안 정했으면 운영진에게만 「미리보기」로 보여요.</span></div>';
+    const g = $('#goAppContest');
+    if (g) g.onclick = () => window.open('me.html', '_blank', 'noopener');
+    return paintContest();
   }
 
   /* ------------------------------------------------------------
@@ -3644,11 +3670,6 @@
       '<span class="hint">표를 모두 담은 파일 하나를 내려받아요. ' +
       '사진은 파일이 커서 목록(주소)만 담아요.</span></div>' +
 
-      '<div class="card"><h3>사진 콘테스트</h3>' +
-      '<div class="sub">「내가 찍은 사진이 제일 잘나가 📸」 — ' +
-      '시작일을 정하면 그날부터 구성원에게 열려요. 정하기 전에는 운영진만 보여요.</div>' +
-      '<div class="sp"></div><div id="contestBox" class="mut sm">불러오는 중…</div></div>' +
-
       '<div class="card"><h3>동아리 정보</h3>' +
       '<div class="sub">신청 폼·설문·구성원 등록에 두루 쓰여요.</div><div class="sp"></div>' +
       '<div class="grid2">' +
@@ -3659,7 +3680,9 @@
       '<span class="hint">신청 폼에 안내로 뜨고, 승인된 구성원의 학과로 자동 입력돼요.</span></label>' +
       '<button class="btn primary block" id="saveClub">저장하기</button>' +
       '<p class="sm mut" style="margin:12px 0 0">회비·계좌·공지처럼 <b>신청 폼에만</b> 쓰는 건 ' +
-      '<button type="button" class="linkbtn" id="goFormSettings">가입 탭</button> 에서 고쳐요.</p></div>' +
+      '<button type="button" class="linkbtn" id="goFormSettings">가입 탭</button> 에서 고쳐요.<br>' +
+      '사진 콘테스트는 <button type="button" class="linkbtn" id="goContestTab">폼 관리 탭</button> 에서 해요.' +
+      '</p></div>' +
 
       '<div class="card"><h3>봉사지</h3>' +
       '<div class="sub">정기적으로 가는 곳을 등록해두면 봉사모임 만들 때 골라서 쓸 수 있어요.</div>' +
@@ -3711,6 +3734,8 @@
       toast('저장했어요', 'ok'); renderSettings();
     };
     $('#goFormSettings').onclick = () => go('apply');
+    const gc = $('#goContestTab');
+    if (gc) gc.onclick = () => { F.formPick = 'contest'; go('form'); };
     const gf = $('#goFeedback'); if (gf) gf.onclick = feedbackSheet;
     const gr = $('#goReports');  if (gr) gr.onclick = reportsSheet;
     const gs = $('#goStaff');    if (gs) gs.onclick = staffSheet;
@@ -3819,7 +3844,7 @@
     };
 
     paintUsage();
-    paintContest();
+    /* 콘테스트 칸은 폼 관리 탭으로 옮겼다 — 여기서는 안 그린다 */
     const bk = $('#bkGo');
     if (bk) bk.onclick = backupAll;
   }

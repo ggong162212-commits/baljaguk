@@ -4654,7 +4654,12 @@ window.Community = (function () {
   }
 
   function contestCard(info) {
-    if (!info) return '';
+    /* 설정이 아직 없다 (운영진이 날짜를 안 정했다) — 운영진에게만 미리보기로 */
+    if (!info) {
+      if (!AM_ADMIN) return '';
+      info = { phase: 'hidden', preview: true, title: '내가 찍은 사진이 제일 잘나가 📸',
+        subtitle: '발자국 봉사 사진·영상 콘테스트' };
+    }
     const phase = info.phase || 'hidden';
     /* 날짜를 안 정했으면 구성원에게는 아예 안 보인다 */
     if (phase === 'hidden' && !info.preview) return '';
@@ -4714,11 +4719,14 @@ window.Community = (function () {
     let res;
     /* 콘테스트 카드는 설문과 **같이** 받아온다 — 한 발 늦게 끼어들지 않게.
        못 받아 와도 설문은 그대로 보여 준다 */
-    const cInfoP = (DB.contest ? DB.contest.info() : Promise.resolve(null))
-      .catch(() => null);
+    /* 'err' = 서버에 contest.sql 이 아직 없다 → 아무것도 안 보인다.
+       null = 올라가 있지만 운영진이 날짜를 안 정했다 → 운영진에게만 미리보기 */
+    const cInfoP = (DB.contest ? DB.contest.info() : Promise.resolve('err'))
+      .catch(() => 'err');
     try { res = await DB.community.feed({ type: 'poll', limit: 30 }); }
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
-    const top = contestCard(await cInfoP);
+    const ci = await cInfoP;
+    const top = ci === 'err' ? '' : contestCard(ci);
     const rows = res.rows || [];
     /* 카드의 동작(설문·반응·댓글)이 F.rows 를 보고 돌아간다 */
     F.rows = rows;
