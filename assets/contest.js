@@ -38,6 +38,8 @@
   const BODY_MAX = 200;
   const SHELTER_MAX = 30;
   const PET_MAX = 15;
+  const PET_COUNT = 10;             /* 아이 이름 개수 — 서버도 11개째부터 막는다 */
+  const PET_OVER = '아이 이름은 ' + PET_COUNT + '개까지 적을 수 있어요';
   const PHOTO_SIDE = 2048;          /* 후기(1280)보다 덜 줄인다 */
   const PHOTO_Q = 0.86;
   const VIDEO_MAX_SEC = 30;
@@ -151,6 +153,7 @@
     if (chars(b) > BODY_MAX) throw new Error('설명은 ' + BODY_MAX + '자까지예요');
     if (!String(v.shelter || '').trim()) throw new Error('어느 봉사지였는지 적어 주세요');
     if (chars(String(v.shelter).trim()) > SHELTER_MAX) throw new Error('봉사지는 ' + SHELTER_MAX + '자까지예요');
+    if (cleanNames(v.pet_names).length > PET_COUNT) throw new Error(PET_OVER);
   }
   /* 「봄이, 여름이」 처럼 쉼표로 적어도, 칩으로 골라도 같은 모양 — 겹친 이름은 하나만 */
   function cleanNames(a) {
@@ -159,7 +162,7 @@
       const t = String(n || '').trim().slice(0, PET_MAX);
       if (t && out.indexOf(t) < 0) out.push(t);
     });
-    return out.slice(0, 10);
+    return out;
   }
   /* 작품 카드 · 크게 보기 · 축하 화면에 같이 쓰는 한 줄 */
   function whereLine(x) {
@@ -592,7 +595,7 @@
         '<select class="input" data-ctv aria-label="내가 간 지난 봉사에서 고르기"><option value="">내가 간 봉사에서 고르기</option></select>' +
         '<input class="input" data-cts style="margin-top:8px" maxlength="' + SHELTER_MAX + '" placeholder="목록에 없으면 보호소 이름을 직접" ' +
         'autocomplete="off" aria-label="봉사지(보호소) 이름"></div>' +
-        '<div class="field"><span class="lb">사진·영상 속 아이 이름 <span class="req">*</span></span>' +
+        '<div class="field"><span class="lb">사진·영상 속 아이 이름 <span class="req">*</span><span class="ct-cnt" data-ctc="p"></span></span>' +
         '<div data-ctan class="ct-an"></div>' +
         '<div class="row" style="gap:6px;margin-top:8px">' +
         '<input class="input grow" data-ctpetin maxlength="40" placeholder="여럿이면 쉼표로 (봄이, 여름이)" autocomplete="off" enterkeyhint="done" aria-label="아이 이름">' +
@@ -683,11 +686,16 @@
         : '<div class="mut xs">' + (shel.value.trim() ? '이 보호소에 등록된 아이가 없어요. 아래에 적어 주세요.' : '봉사지를 고르면 그 보호소 아이들이 나와요.') + '</div>';
       anBox.querySelectorAll('[data-ctpet]').forEach(x => x.onclick = () => {
         const n = x.dataset.ctpet, k = names.indexOf(n);
-        if (k >= 0) names.splice(k, 1); else { names.push(n); setUnk(false); }
+        if (k >= 0) names.splice(k, 1);
+        else if (names.length >= PET_COUNT) return UI.toast(PET_OVER, 'err');
+        else { names.push(n); setUnk(false); }
         paintAn();
       });
       unk.classList.toggle('on', unknown);
       unk.setAttribute('aria-pressed', String(unknown));
+      const pc = q('[data-ctc="p"]');
+      pc.textContent = unknown ? '' : names.length + ' / ' + PET_COUNT;
+      pc.classList.toggle('over', names.length > PET_COUNT);
     };
     const setUnk = on => { unknown = on; if (on) names = []; };
     const loadAn = async () => {
@@ -700,11 +708,17 @@
       known = list.filter(a => !a.adopted).map(a => String(a.name || '').trim()).filter(Boolean).slice(0, 30);
       paintAn();
     };
+    /* 넘치면 하나도 안 넣고 칸에 그대로 둔다 — 몇 개를 지울지 사람이 고른다 */
     const addAn = () => {
-      const add = cleanNames(anNew.value);
-      if (!add.length) return;
-      add.forEach(n => { if (names.indexOf(n) < 0) names.push(n); });
+      const add = cleanNames(anNew.value).filter(n => names.indexOf(n) < 0);
+      if (!add.length) { anNew.value = ''; return true; }
+      if (names.length + add.length > PET_COUNT) {
+        UI.toast(PET_OVER + ' (지금 ' + names.length + '개)', 'err');
+        return false;
+      }
+      add.forEach(n => names.push(n));
       anNew.value = ''; setUnk(false); paintAn();
+      return true;
     };
     q('[data-ctadd]').onclick = addAn;
     UI.onEnter ? UI.onEnter(anNew, addAn) : anNew.addEventListener('keydown', ev => {
@@ -716,7 +730,7 @@
 
     save.onclick = async () => {
       /* 적어 두고 「더하기」를 안 누른 이름도 담는다 */
-      if (anNew.value.trim()) addAn();
+      if (anNew.value.trim() && !addAn()) return;
       const v = { id: edit ? e.id : undefined, title: t.value.trim(), body: b.value.trim(),
         shelter: shel.value.trim(), pet_names: unknown ? [] : names.slice(),
         volunteer_id: sel.value || null, media };
@@ -724,6 +738,7 @@
         if (!edit && !media) throw new Error('사진이나 영상을 골라 주세요');
         checkText(v);
         if (!unknown && !v.pet_names.length) throw new Error('아이 이름을 적거나 「이름을 몰라요」를 눌러 주세요');
+        if (v.pet_names.length > PET_COUNT) throw new Error(PET_OVER);
       } catch (err) { return UI.toast(err.message, 'err'); }
       save.disabled = true;
       save.textContent = media ? '올리는 중…' : '저장하는 중…';
@@ -770,5 +785,5 @@
     ov.querySelector('[data-ctok]').onclick = () => UI.closeSheet();
   }
 
-  window.Contest = { open, mountCard, info: () => load(), phaseOf, LIMITS: { MAX_ENTRIES, TITLE_MAX, BODY_MAX, PHOTO_SIDE, VIDEO_MAX_SEC, VIDEO_MAX_MB, DEFAULT_END } };
+  window.Contest = { open, mountCard, info: () => load(), phaseOf, LIMITS: { MAX_ENTRIES, PET_COUNT, TITLE_MAX, BODY_MAX, PHOTO_SIDE, VIDEO_MAX_SEC, VIDEO_MAX_MB, DEFAULT_END } };
 })();

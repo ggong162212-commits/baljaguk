@@ -5,9 +5,9 @@
      ② 어떤 이야기인가요? — 1000자까지
      ③ 사진 — 1~5장 (다른 글과 같은 사진 단계, 영상은 안 받는다)
    · 피드 카드: 사진 → 하트 줄 → 「🐾 이름 · 남아 · 2살」 「📍보호소」 → 본문(더 보기 규칙 그대로)
-   · 고치기: 쓴 사람·운영진 — 아이 정보·이야기·사진을 한 시트에서
-   · 서버: posts.type='story' + story(jsonb) — 칸 모양이 정해지면 아래 FIELD·toRow·fromRow 만 바꾼다
-     체험 모드는 createPost/feed 가 story 칸을 안 옮겨서 이 파일이 체험 저장소에 직접 붙인다
+   · 고치기: 쓴 사람만 (운영진은 지우기만) — 아이 정보·이야기·사진을 한 시트에서
+   · 서버: posts.type='story' + story(jsonb) (fix-21) — 칸 모양이 바뀌면 아래 FIELD·toRow·fromRow 만 바꾼다
+     체험 모드도 db.js 가 story 칸을 저장하고 피드 줄에 넣어 준다
    쓰는 법:
      Story.write({ photoStep, done })   — community.js 글쓰기에서
      Story.line(p)                      — postCard·글 시트에서 (이야기 글일 때만, 하트 줄 다음 · 본문 앞)
@@ -17,7 +17,6 @@
 (function () {
   const { esc } = UI;
   const ic = n => window.ic(n);
-  const isDemo = () => !!(DB.isDemo && DB.isDemo());
 
   /* ---------- 바꾸기 쉬운 값 ---------- */
   const FIELD = 'story';                 /* posts 의 칸 이름 (jsonb) */
@@ -28,14 +27,7 @@
 
   /* 서버 칸 ↔ 화면 모양. 칸이 따로 생기면 여기만 고친다 */
   const toRow = m => ({ [FIELD]: { shelter: m.shelter, name: m.name, sex: m.sex, age: m.age || null } });
-  function fromRow(p) {
-    let m = p && p[FIELD];
-    if (!m && p && isDemo()) {
-      /* 체험 피드 줄에는 story 칸이 없다 — 체험 저장소에서 찾는다 */
-      try { const d = JSON.parse(localStorage.getItem('baljaguk.demo') || '{}'); const x = (d.posts || []).find(q => q.id === p.id); m = x && x[FIELD]; } catch (e) { }
-    }
-    return m || {};
-  }
+  const fromRow = p => (p && p[FIELD]) || {};
 
   /* ---------- 모양 ---------- */
   const CSS =
@@ -201,18 +193,9 @@
         const made = await DB.community.createPost(Object.assign({
           type: 'story', body: v.body, photos: (ph.list || []).filter(x => !/^video:/.test(String(x))).slice(0, PH_MAX)
         }, toRow(m)));
-        if (isDemo() && made && made.id) demoPatch(made.id, toRow(m));
         if (o && o.done) await o.done(made, v);
       }
     });
-  }
-  /* 체험 저장소에 story 칸 붙이기 — db.js 체험 createPost 가 모르는 칸이라 */
-  function demoPatch(id, patch) {
-    try {
-      const d = JSON.parse(localStorage.getItem('baljaguk.demo') || '{}');
-      const p = (d.posts || []).find(x => x.id === id);
-      if (p) { Object.assign(p, patch); localStorage.setItem('baljaguk.demo', JSON.stringify(d)); }
-    } catch (e) { }
   }
 
   /* ---------- 카드 한 줄 ---------- */
