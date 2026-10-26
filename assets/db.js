@@ -1136,6 +1136,8 @@
       place: p.place || null, date: p.date || null,
       body: (p.hidden && p.author_id !== meId) ? '' : p.body,
       pinned: !!p.pinned, hidden: !!p.hidden, edited_at: p.edited_at || null,
+      /* 임시 저장 — 아직 안 올린 설문 (운영진만 본다) */
+      draft: !!p.draft,
       insta_ok: !!p.insta_ok,
       mine: p.author_id === meId,
       author: demoMember(p.author_id),
@@ -1258,6 +1260,19 @@
       return await rest('rpc/push_test', {
         method: 'POST', body: { p_kind: kind, p_title: title, p_body: body }
       });
+    },
+
+    /* 이 종류를 켜 둔 **사람**이 몇 명인가 (기기 수가 아니다. 나는 뺀다)
+       — 「구성원 n명에게 알림이 가요」 를 올리기 전에 보여 주려고 */
+    async reach(kind) {
+      if (!HAS_SB) {
+        /* 체험 모드에는 구독이 없다 — 나 말고 명부에 있는 사람 수로 둔다 */
+        const d = demoRead(), me = myDemoId();
+        return (d.members || []).filter(m => m.status !== 'left' && m.id !== me).length;
+      }
+      return Number(await rest('rpc/push_reach', {
+        method: 'POST', body: { p_kind: kind || 'post' }
+      })) || 0;
     }
   };
 
@@ -1590,7 +1605,10 @@
       const o = opt || {};
       if (!HAS_SB) {
         const d = cdemo(), meId = myDemoId();
+        /* 임시 저장은 운영진에게만 — 서버 feed() 와 같은 규칙 */
+        const amAdmin = await DB.isAdmin().catch(() => false);
         let list = d.posts.slice()
+          .filter(p => !p.draft || amAdmin)
           .filter(p => !p.hidden || p.author_id === meId)
           .filter(p => !o.type || p.type === o.type || (o.type === 'free' && p.type === 'praise'))
           /* 공식 설문은 설문 탭에만 */
@@ -1666,6 +1684,7 @@
           type: v.type || 'review', event_id: v.event_id || null,
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned, hidden: false, edited_at: null,
+          draft: !!v.draft,
           insta_ok: !!v.insta_ok, is_question: !!v.is_question,
           best_comment_id: null, solved_at: null,
           praised_member_id: v.praised_member_id || null
@@ -1752,6 +1771,9 @@
           place: v.place || null, date: v.date || null,
           body: String(v.body || ''), pinned: !!v.pinned,
           insta_ok: !!v.insta_ok, is_question: !!v.is_question,
+          /* 설문은 「임시 저장」 으로 먼저 — 올릴 때 알림이 한 번 간다 (fix-20).
+             칸이 없는 서버에서도 다른 글은 그대로 올라가게 있을 때만 보낸다 */
+          ...(v.draft ? { draft: true } : {}),
           /* 칭찬 글만 — 칸이 없는 서버(fix-praise.sql 전)에서도 다른 글은 그대로 올라가게 */
           ...(v.praised_member_id ? { praised_member_id: v.praised_member_id } : {}),
           author_id: await DB.community.myId()
@@ -1948,6 +1970,25 @@
     },
 
     setPinned: (id, on) => DB.community.updatePost(id, { pinned: !!on }),
+
+    /* 임시 저장한 글을 올린다 — **이때** 알림이 한 번 간다 (fix-20).
+       서버가 dedupe_key 'post:'||id 로 두 번 가는 것을 막는다 */
+    async publishPost(id) {
+      if (!HAS_SB) {
+        const d = cdemo();
+        const p = (d.posts || []).find(x => x.id === id);
+        if (!p) throw new Error('글을 찾지 못했어요');
+        p.draft = false;
+        demoWrite(d);
+        return { ok: true };
+      }
+      const r = await rest('rpc/post_publish', { method: 'POST', body: { p_id: id } });
+      if (!r || !r.ok) {
+        throw new Error(r && r.why === 'notmine' ? '올릴 수 있는 사람이 아니에요'
+          : r && r.why === 'nopost' ? '글을 찾지 못했어요' : '올리지 못했어요');
+      }
+      return r;
+    },
 
     /* ---------- 댓글 ---------- */
     async comments(postId) {

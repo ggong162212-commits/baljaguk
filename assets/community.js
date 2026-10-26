@@ -2549,6 +2549,7 @@ window.Community = (function () {
       if ((b = hit('data-cmenu'))) return feedCommentMenu(b.dataset.cmenu);
       if ((b = hit('data-vote'))) return castVote(b);
       if ((b = hit('data-close'))) return closePoll(b.dataset.close);
+      if ((b = hit('data-pub'))) return publishPoll(b.dataset.pub);
       if ((b = hit('data-signup'))) return doSignup(b.dataset.signup, false);
       if ((b = hit('data-cancel'))) return doSignup(b.dataset.cancel, true);
       if ((b = hit('data-retry'))) return go(cur);
@@ -4435,6 +4436,11 @@ window.Community = (function () {
     const iVoted = (q.options || []).some(o => o.mine);
 
     return '<div style="margin-top:10px">' +
+      /* 아직 안 올린 설문 — 운영진만 보인다 (fix-20) */
+      (p.draft
+        ? '<div class="pill-note" style="margin:0 0 10px">아직 올리지 않았어요 · ' +
+          '운영진만 보여요<br>다 고쳤으면 아래 「올리기」 를 눌러 주세요. 그때 알림이 한 번 가요.</div>'
+        : '') +
       '<div style="font-weight:700;font-size:14.5px;margin-bottom:9px">' +
       (quiz ? '<span class="badge" style="margin-right:6px">퀴즈</span>' : '') +
       esc(q.question) + '</div>' +
@@ -4479,9 +4485,13 @@ window.Community = (function () {
 
       (quiz && !q.revealed && p.mine
         ? '<button class="linkbtn" type="button" data-reveal="' + esc(p.id) + '">지금 발표하기</button>'
-        : (!quiz && !closed && (p.mine || AM_ADMIN)
+        : (!quiz && !closed && !p.draft && (p.mine || AM_ADMIN)
           ? '<button class="linkbtn" type="button" data-close="' + esc(p.id) + '">일찍 마감</button>'
-          : '')) + '</div></div>';
+          : '')) + '</div>' +
+      (p.draft && (p.mine || AM_ADMIN)
+        ? '<button class="btn primary block" type="button" data-pub="' + esc(p.id) + '" ' +
+          'style="margin-top:11px">올리기 (알림 보내기)</button>'
+        : '') + '</div>';
   }
 
   /* ---------- 내 지난 응답 ----------
@@ -4718,10 +4728,16 @@ window.Community = (function () {
       const q = p.poll || {};
       return !!(q.closed_at || (q.closes_at && Date.parse(q.closes_at) < Date.now()));
     };
-    const live = rows.filter(p => !closedOf(p));
-    const done = rows.filter(closedOf);
+    /* 임시 저장은 운영진에게만 온다 (서버가 걸러 준다) — 맨 위에 따로 */
+    const draft = rows.filter(p => p.draft);
+    const live = rows.filter(p => !p.draft && !closedOf(p));
+    const done = rows.filter(p => !p.draft && closedOf(p));
 
     paint(top + mine +
+      (draft.length
+        ? '<div class="section-title">' + ic('edit') +
+          '<span>임시 저장 · 아직 안 올렸어요</span></div>' + draft.map(postCard).join('')
+        : '') +
       (live.length
         ? '<div class="section-title">' + ic('clipboard') + '<span>진행 중</span></div>' +
           live.map(postCard).join('')
@@ -4799,6 +4815,23 @@ window.Community = (function () {
     } catch (e) { toast(e.message || '마감하지 못했어요', 'err'); }
   }
 
+  /* ---------- 올리기 (임시 저장한 설문) ----------
+     ★ 알림이 나가는 **유일한** 자리다. 몇 명에게 가는지 먼저 보여 준다.
+     한 번 올린 글은 다시 올려도 알림이 더 가지 않는다
+     (서버가 dedupe_key 'post:'||id 로 막는다) */
+  async function publishPoll(postId) {
+    let n = 0;
+    try { n = await DB.push.reach('post'); } catch (e) { }
+    const 말 = (n ? '알림을 켠 구성원 ' + num(n) + '명에게 알림이 가요.' : '알림을 켠 구성원에게 알림이 가요.') +
+      '\n올린 뒤에는 응답이 생기면 설문은 고칠 수 없어요.';
+    if (!await confirmSheet('이 설문을 올릴까요?', 말, '올리기')) return;
+    try {
+      await DB.community.publishPost(postId);
+      toast('올렸어요 · 알림을 보냈어요', 'ok');
+      renderPolls();
+    } catch (e) { toast(e.message || '올리지 못했어요', 'err'); }
+  }
+
   /* ---------- 설문 만들기 (운영진만) ----------
      질문이 다섯 개라 한 번에 하나씩 묻는다 */
   function pollSheet() {
@@ -4814,7 +4847,8 @@ window.Community = (function () {
 
     UI.wizard({
       title: '설문 만들기',
-      doneLabel: '올리기',
+      /* 여기서는 아직 안 올린다 — 고친 뒤 카드에서 「올리기」 를 누른다 */
+      doneLabel: '임시 저장',
       steps: [
         {
           key: 'q', short: '질문',
@@ -4892,8 +4926,12 @@ window.Community = (function () {
         }
       ],
       done: async v => {
+        /* ★ 바로 올리지 않는다 — 「임시 저장」 으로 둔다 (fix-20).
+           예전에는 글이 들어오는 순간 72명에게 알림이 갔다. 운영진이
+           선택지·마감을 고치는 사이에 이미 나가 있었다.
+           다 고친 뒤 카드의 「올리기」 를 누를 때 한 번만 간다. */
         await DB.community.createPost({
-          type: 'poll', body: '',
+          type: 'poll', body: '', draft: true,
           poll: {
             question: v.q, options: v.opts,
             multi: v.how.multi, anonymous: v.how.anon,
@@ -4901,7 +4939,7 @@ window.Community = (function () {
           }
         });
         closeSheet();
-        toast('올렸어요', 'ok');
+        toast('임시 저장했어요 — 「올리기」 를 누르면 알림이 가요', 'ok');
         renderPolls();
       }
     });

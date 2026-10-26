@@ -119,6 +119,9 @@ fi
 if [ -f "$HERE/contest.sql" ]; then
   run "contest.sql" "$HERE/contest.sql"
 fi
+if [ -f "$HERE/fix-20.sql" ]; then
+  run "fix-20.sql" "$HERE/fix-20.sql"
+fi
 
 # 함수 본문은 만들 때 검사되지 않는다 — 실제로 들여다본다
 if [ -f "$HERE/check-calls.sql" ]; then
