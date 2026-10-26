@@ -295,8 +295,9 @@
     '.ct-step .tx b{font-weight:800}' +
     '.ct-step .tx .mut{display:block;font-size:12.5px;color:var(--ink-3);margin-top:1px}' +
     /* 내 작품 */
-    '.ct-mine{display:grid;gap:8px}' +
-    '.ct-entry{display:flex;gap:12px;align-items:center;width:100%;border:none;text-align:left;cursor:pointer;color:var(--ink);' +
+    /* ★ 칸 폭을 화면에 묶는다 — 안 묶으면 한 줄로 긴 「📍·🐾」 줄이 칸을 넓혀 화면 전체가 옆으로 밀렸다(이름 10개) */
+    '.ct-mine{display:grid;gap:8px;grid-template-columns:minmax(0,1fr)}' +
+    '.ct-entry{display:flex;gap:12px;align-items:center;width:100%;min-width:0;border:none;text-align:left;cursor:pointer;color:var(--ink);' +
     'background:var(--surface);border-radius:var(--r-md);padding:10px;box-shadow:var(--shadow-sm);font-family:inherit;min-height:96px}' +
     '.ct-thumb{position:relative;flex:none;width:76px;height:76px;border-radius:14px;overflow:hidden;background:var(--surface-2);' +
     'display:grid;place-items:center;font-size:26px}' +
