@@ -4669,10 +4669,15 @@ window.Community = (function () {
       '</button>';
   }
 
-  /* 콘테스트 화면 — 파일이 아직 없으면 조용히 죽지 않게 알려 준다 */
+  /* 콘테스트 화면 — contest.js 가 설문 탭 자리(#view)를 빌려 쓴다.
+     「설문으로」 를 누르면 돌아온다. 파일이 없으면 조용히 죽지 않게 알려 준다 */
   function openContest() {
-    if (window.Contest && Contest.open) return Contest.open();
-    toast('콘테스트 화면을 준비하고 있어요', 'warn');
+    if (!(window.Contest && Contest.open))
+      return toast('콘테스트 화면을 준비하고 있어요', 'warn');
+    /* 돌아온 탭 캐시를 비운다 — 안 비우면 다음에 설문 탭에서 이 화면이 한 번 비친다 */
+    delete viewCache.poll;
+    const fab = $('#fab'); if (fab) fab.hidden = true;
+    Contest.open($('#view'), { onBack: () => go('poll') });
   }
 
   async function renderPolls() {

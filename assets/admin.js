@@ -3842,7 +3842,13 @@
     if (!box) return;
     let info = null;
     try { info = await DB.contest.info(); }
-    catch (e) { box.innerHTML = '<span class="mut sm">불러오지 못했어요</span>'; return; }
+    catch (e) {
+      /* 서버에 contest.sql 을 아직 올리지 않았다 —
+         깨진 칸을 보여 주지 말고 카드째로 숨긴다 */
+      const card = box.closest('.card');
+      if (card) card.hidden = true; else box.innerHTML = '';
+      return;
+    }
 
     const c = info || {};
     const ph = CPHASE[c.phase || 'hidden'] || CPHASE.hidden;

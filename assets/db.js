@@ -2911,8 +2911,38 @@
       return r.path;
     },
 
+    /* 사진 주소 — contest.js 가 먼저 이것을 찾는다 (없으면 community.photoUrl) */
+    mediaUrl(path) { return DB.community.photoUrl(path); },
+
     async save(entry) {
-      const v = entry || {};
+      let v = entry || {};
+
+      /* ── 화면(contest.js)은 **고른 파일 그대로** 준다:
+           media: null(그대로 두기) | { kind:'photo', data:dataURL }
+                                   | { kind:'video', file, poster:dataURL }
+         올리는 일은 여기서 한다 — 후기 올리기와 같은 함수를 쓰고
+         보관함 경로만 contest/<로그인 id>/<작품칸>/ 으로 둔다. */
+      if (v.media || (!v.media_path && v.id)) {
+        const key = v.media_key || DB.contest.newKey();
+        const m = v.media;
+        let path = v.media_path || '', kind = v.media_kind || 'photo', poster = v.poster_path || null;
+
+        if (m && m.kind === 'video' && m.file) {
+          path = await DB.contest.uploadVideo(key, m.file);
+          kind = 'video';
+          poster = m.poster ? await DB.contest.uploadPoster(key, m.poster) : null;
+        } else if (m && m.data) {
+          const r = await DB.contest.uploadPhoto(key, m.data);
+          path = r.path; kind = 'photo'; poster = null;
+        } else if (!path && v.id) {
+          /* 고치기인데 사진을 안 바꿨다 — 전에 낸 것을 그대로 쓴다 */
+          const old = (await DB.contest.mine()).find(x => x.id === v.id);
+          if (old) { path = old.media_path; kind = old.media_kind; poster = old.poster_path; }
+        }
+        v = Object.assign({}, v, {
+          media: null, media_path: path, media_kind: kind, poster_path: poster
+        });
+      }
       if (!HAS_SB) {
         const d = contestDemo(), me = myDemoId(), c = d.contest;
         const phase = contestPhase(c);
