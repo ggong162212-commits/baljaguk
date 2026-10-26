@@ -51,89 +51,43 @@ create trigger draft_no_react_trg before insert on reactions
   for each row execute function draft_no_react();
 
 
--- ── 3) 댓글 알림 — draft 글이면 건너뛴다 (fix-9 에 한 겹 더)
-create or replace function outbox_on_comment()
-returns trigger
-language plpgsql security definer
-set search_path = public
-as $fn$
+-- ── 3) 알림도 한 겹 더 — **실서버 정의에 draft 확인 줄만 끼워 넣는다**
+--    ★ 두 함수(outbox_on_comment · outbox_on_reaction)를 이 파일의 글로
+--      통째로 다시 쓰면 안 된다. 실서버 쪽에 이 저장소에 없는 것이
+--      (예: actor_id — 「새 소식」 얼굴) 더해져 있으면 그게 사라진다.
+--      그래서 fix-20 처럼 지금 올라간 정의를 읽어서 **한 줄만** 끼운다.
+--      끼울 자리를 못 찾으면 아무것도 바꾸지 않고 멈춘다.
+do $outer$
 declare
-  who text; owner uuid; parent_owner uuid;
+  src text; i int; n int := 0;
+  fn  text;
+  fns constant text[] := array['outbox_on_comment', 'outbox_on_reaction'];
+  anchor constant text := E'\nbegin\n';
+  line   constant text :=
+    E'\n  /* fix-22 — 아직 안 올린 글(draft)은 알림을 내지 않는다 */\n'
+    || '  if exists (select 1 from posts where id = new.post_id'
+    || E' and coalesce(draft, false)) then return new; end if;\n';
 begin
-  /* 아직 안 올린 글(draft)은 알림을 내지 않는다 */
-  if exists (select 1 from posts where id = new.post_id and coalesce(draft, false)) then
-    return new;
-  end if;
+  foreach fn in array fns loop
+    select pg_get_functiondef(p.oid) into src from pg_proc p
+     where p.pronamespace = 'public'::regnamespace and p.proname = fn limit 1;
+    if src is null then raise exception '% 를 못 찾았어요', fn; end if;
 
-  select name into who from members where id = new.author_id;
-  select author_id into owner from posts where id = new.post_id;
-  if new.parent_id is not null then
-    select author_id into parent_owner from comments where id = new.parent_id;
-  end if;
+    /* 이미 끼워져 있으면 그냥 둔다 (두 번 Run 해도 안전하게) */
+    if position('fix-22' in src) > 0 then
+      raise notice '  % — 이미 들어 있어요', fn;
+      continue;
+    end if;
 
-  /* 대댓글 — 내 댓글에 답글 */
-  if parent_owner is not null and parent_owner <> new.author_id then
-    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
-    values (parent_owner, 'reply',
-            coalesce(who, '누군가') || '님이 내 댓글에 답글을 남겼어요',
-            left(coalesce(new.body, ''), 40),
-            'me.html#post=' || new.post_id, notice_key(parent_owner, new.id))
-    on conflict (dedupe_key) do nothing;
-  end if;
-
-  /* 댓글 — 내 글에. 글쓴이가 위에서 이미 받았으면 안 보낸다 */
-  if owner is not null and owner <> new.author_id
-     and (parent_owner is null or parent_owner <> owner) then
-    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
-    values (owner, 'comment',
-            coalesce(who, '누군가') || '님이 댓글을 남겼어요',
-            left(coalesce(new.body, ''), 40),
-            'me.html#post=' || new.post_id, notice_key(owner, new.id))
-    on conflict (dedupe_key) do nothing;
-  end if;
-  return new;
-end;
-$fn$;
-
-drop trigger if exists outbox_comment_trg on comments;
-create trigger outbox_comment_trg after insert on comments
-  for each row execute function outbox_on_comment();
-
-
--- ── 4) 반응 알림 — draft 글이면 건너뛴다 (fix-17 에 한 겹 더)
-create or replace function outbox_on_reaction()
-returns trigger
-language plpgsql security definer
-set search_path = public
-as $fn$
-declare
-  owner_ uuid;
-  who_   text;
-  slot_  text;
-begin
-  select author_id into owner_ from posts
-   where id = new.post_id and not hidden and not coalesce(draft, false);
-  if owner_ is null or owner_ = new.member_id then return new; end if;
-
-  select name into who_ from members where id = new.member_id;
-
-  /* 10분 칸 — 같은 칸 안에서는 한 번만 쌓인다 (연달아 울리지 않게) */
-  slot_ := to_char(date_trunc('hour', now())
-             + (floor(extract(minute from now()) / 10) * interval '10 min'),
-           'YYYYMMDDHH24MI');
-
-  insert into push_outbox (member_id, kind, title, body, url, actor_id, dedupe_key)
-  values (owner_, 'reaction',
-          coalesce(who_, '누군가') || '님이 내 글을 좋아해요',
-          '',
-          'me.html#post=' || new.post_id,
-          new.member_id,
-          'reaction:' || new.post_id || ':' || owner_ || ':' || slot_)
-  on conflict (dedupe_key) do nothing;
-  return new;
-end;
-$fn$;
-
-drop trigger if exists outbox_reaction_trg on reactions;
-create trigger outbox_reaction_trg after insert on reactions
-  for each row execute function outbox_on_reaction();
+    i := position(anchor in src);
+    if i = 0 then
+      raise exception '% — draft 확인 줄을 넣을 자리(begin)를 못 찾았어요', fn;
+    end if;
+    src := left(src, i - 1) || anchor || line || substr(src, i + length(anchor));
+    execute src;
+    n := n + 1;
+    raise notice '  % — draft 글이면 알림을 건너뛰게 했어요', fn;
+  end loop;
+  raise notice '  알림 함수 % 개를 고쳤어요 (나머지 본문은 실서버 그대로)', n;
+end
+$outer$;
