@@ -411,6 +411,13 @@
       return fail();
     } finally { clearTimeout(late); }
     try { window.scrollTo(0, 0); } catch (e) { }
+    /* 「폼 열어보기」(#contest=preview) 로 들어왔으면 미리보기 폼을 바로 연다.
+       미리보기 단추가 있을 때만 — 즉 시작 전이고 운영진일 때만 열린다.
+       시작한 뒤에는 그 단추가 없으니 콘테스트 화면만 보인다. */
+    if (OPTS.preview) {
+      OPTS.preview = false;                       /* 한 번만 */
+      if (ROOT && ROOT.querySelector('[data-ctpreview]')) form(null, true);
+    }
   }
 
   /* 못 그렸을 때 — 빈 화면 대신 「다시 시도」와 「설문으로」.

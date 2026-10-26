@@ -12,6 +12,31 @@
   /* 로그인하고 돌아올 주소 — 주소에 ? 나 # 가 붙어 있어도 깨끗한 쪽으로 */
   const backHere = () => location.origin + location.pathname;
 
+  /* ============================================================
+     딥링크 + 카카오 로그인
+     ------------------------------------------------------------
+     `me.html#contest=1` 같은 주소를 로그인 **전에** 받으면,
+     카카오에 갔다 오는 길에 그 자리를 잃는다 —
+     카카오(Supabase)가 돌아올 때 주소의 # 뒤를 자기 것으로 덮어쓴다.
+     그래서 로그인 화면을 그릴 때 적어 두고, 로그인한 뒤에 되살린다.
+     ============================================================ */
+  const DEEP = 'baljaguk.deep';
+  const DEEPRE = /^(post|vol|poll|news|contest)=/;
+  function keepDeep() {
+    try {
+      const h = String(location.hash || '').replace(/^#/, '');
+      if (DEEPRE.test(h)) sessionStorage.setItem(DEEP, h);
+    } catch (e) { }
+  }
+  function restoreDeep() {
+    if (location.hash) return;
+    let h = '';
+    try { h = sessionStorage.getItem(DEEP) || ''; sessionStorage.removeItem(DEEP); } catch (e) { }
+    if (!DEEPRE.test(h)) return;
+    /* hashchange 를 일으키지 않는다 — community.js 가 켜질 때 한 번만 읽게 */
+    try { history.replaceState(null, '', location.pathname + location.search + '#' + h); } catch (e) { }
+  }
+
   /* 지금 몇 단계인지 — 처음 오는 사람이 길을 잃지 않게 */
   const steps = n =>
     '<div class="steps" style="margin:0 2px 14px">' +
@@ -46,6 +71,9 @@
     catch (e) { return paintLogin('지금은 연결이 잘 안 돼요. 잠시 뒤 다시 해주세요.'); }
 
     if (!me || !me.login) return paintLogin('');
+    /* 로그인 전에 적어 둔 딥링크를 되살린다 (카카오가 # 뒤를 덮어썼다).
+       되살리면 아래 「운영진 화면으로 보내기」도 걸리지 않는다 — 가려던 곳이 있다 */
+    restoreDeep();
     /* 운영진이 마지막에 운영진 화면을 보고 있었다면 그쪽으로 보낸다.
        주소는 하나로 기억하고, 돌아오는 길은 상단 전환 스위치에 있다. */
     if (me.linked && me.status !== 'left') {
@@ -63,6 +91,7 @@
 
   /* ---------- ① 로그인 전 ---------- */
   function paintLogin(err) {
+    keepDeep();   /* 가려던 자리를 적어 둔다 — 카카오에 갔다 와도 그곳으로 */
     $('#headLead').textContent = '발자국 구성원만 쓸 수 있는 공간이에요.';
     /* ============================================================
        앱 안 브라우저(카톡·네이버·인스타…)로 들어온 사람에게 **먼저** 알린다

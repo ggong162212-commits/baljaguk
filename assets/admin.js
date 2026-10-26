@@ -769,30 +769,47 @@
     return onIds ? renderId1365() : renderSurvey();
   }
 
-  /* 폼 관리 → 📸 사진 콘테스트 */
+  /* 폼 관리 → 📸 사진 콘테스트
+     다른 폼(가입 신청·활동의견)과 같은 차례로 — 상태 → 링크 → 양식 → 설정 */
   function renderContest() {
     $('#contestPanel').innerHTML =
       '<div class="card"><h3>사진 콘테스트</h3>' +
       '<div class="sub">「내가 찍은 사진이 제일 잘나가 📸」 — ' +
       '시작일을 정하면 그날부터 구성원에게 열려요. 정하기 전에는 운영진만 보여요.</div>' +
       '<div class="sp"></div><div id="contestBox" class="mut sm">불러오는 중…</div></div>' +
-
-      '<div class="card"><h3>앱에서 보기</h3>' +
-      '<div class="sub">구성원에게 보이는 화면을 그대로 열어 봐요. ' +
-      '커뮤니티 「설문」 탭 맨 위 카드예요.</div><div class="sp"></div>' +
-      '<button class="btn ghost block" type="button" id="goAppContest">' +
-      '커뮤니티 설문 탭 열기</button>' +
-      /* .field 밖이라 hint 모양(12px 회색)이 안 먹었다 — 작은 회색 글씨로 직접 준다 */
-      '<div class="mut sm" style="margin-top:8px">아직 날짜를 안 정했으면 운영진에게만 ' +
-      '「미리보기」로 보여요.</div></div>';
-    const g = $('#goAppContest');
-    /* ★ 그냥 me.html 을 열면 **아무것도 안 나온다.**
-       운영진은 `baljaguk.side = 'admin'` 이라서, 해시가 없는 me.html 은
-       곧바로 admin.html 로 되돌아간다 (me.js). 새 탭이 열렸다 바로 돌아오니
-       「눌렀는데 아무 일도 안 생겨요」로 보인다.
-       해시를 붙이면 되돌아가지 않고, 그대로 설문 탭이 열린다 (#poll=1). */
-    if (g) g.onclick = () => window.open('me.html#poll=1', '_blank', 'noopener');
+      '<div id="contestLink"></div>' +
+      '<div id="contestFields"></div>' +
+      '<div id="contestSet"></div>';
     return paintContest();
+  }
+
+  /* 콘테스트 링크 — 커뮤니티 콘테스트 화면으로 바로 가는 주소.
+     ★ 해시가 꼭 있어야 한다. 운영진은 side='admin' 이라서 해시 없는
+       me.html 은 곧바로 admin.html 로 되돌아간다 (me.js). */
+  const contestURL = what =>
+    new URL('me.html', location.href).href + '#contest=' + (what || '1');
+
+  /* 단톡방에 바로 붙일 공지 문구 */
+  function contestNotice(c) {
+    const L = (window.Contest && Contest.LIMITS) || {};
+    const max = Number((c || {}).max_entries) || L.MAX_ENTRIES || 3;
+    const end = (c && c.end_at) ? fmtDateTime(c.end_at) : '';
+    /* 시작일을 아직 안 정했으면 그렇게 적는다 — 「미정 ~ 마감」 으로 읽히지 않게 */
+    const when = (c && c.start_at)
+      ? '기간: ' + fmtDateTime(c.start_at) + (end ? ' ~ ' + end : '')
+      : '시작일 미정' + (end ? ' · 마감 ' + end : '');
+    return '📸 내가 찍은 사진이 제일 잘나가\n' +
+      '발자국 봉사 사진·영상 콘테스트\n\n' +
+      when + '\n\n' +
+      '내는 방법\n' +
+      '1. 봉사에서 찍은 사진 1장이나 영상 1개를 골라요 (영상 ' +
+      (L.VIDEO_MAX_SEC || 30) + '초·' + (L.VIDEO_MAX_MB || 20) + 'MB 이하)\n' +
+      '2. 제목·설명·봉사지·아이 이름을 붙여요\n' +
+      '3. 한 사람 ' + max + '작품까지, 마감 전엔 고치고 지울 수 있어요\n\n' +
+      '상은 네 개\n' +
+      '🥇 1등 · 🥈 2등 · 🥉 3등 · ❤️ 인기상\n' +
+      '(마감 뒤 익명 투표로 정해요)\n\n' +
+      '참여: ' + contestURL();
   }
 
   /* ------------------------------------------------------------
@@ -3886,12 +3903,59 @@
     const ph = CPHASE[c.phase || 'hidden'] || CPHASE.hidden;
     const n = Number(c.entry_count || 0);
 
+    const started = !!c.start_at;
+    const L = (window.Contest && Contest.LIMITS) || {};
+    const max = Number(c.max_entries) || L.MAX_ENTRIES || 3;
+    const url = contestURL();
+
     box.innerHTML =
       '<div class="row" style="gap:8px;align-items:center;margin-bottom:10px">' +
       '<span class="badge">' + esc(ph[0]) + '</span>' +
       '<span class="mut sm">' + esc(ph[1]) + '</span></div>' +
       '<div class="kv"><span class="k">낸 작품</span><span class="v">' + n + '개</span></div>' +
+      (c.start_at ? '<div class="kv"><span class="k">시작</span><span class="v">' + esc(fmtDateTime(c.start_at)) + '</span></div>' : '') +
+      (c.end_at ? '<div class="kv"><span class="k">마감</span><span class="v">' + esc(fmtDateTime(c.end_at)) + '</span></div>' : '');
+
+    /* ① 링크 — 다른 폼의 주소 칸과 같은 모양 */
+    $('#contestLink').innerHTML =
+      '<div class="card"><h3>콘테스트 링크</h3>' +
+      '<div class="sub">단톡방에 이 주소를 올리면 커뮤니티 콘테스트 화면이 바로 열려요. ' +
+      '로그인 전이면 카카오 로그인 뒤에 그 화면으로 가요.</div>' +
+      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' +
+      esc(url) + '</div></div>' +
+      '<div class="row" style="gap:8px;margin-top:10px">' +
+      '<button class="btn soft sm grow" type="button" id="cCopy">링크 복사</button>' +
+      '<button class="btn ghost sm grow" type="button" id="cOpen">폼 열어보기</button></div>' +
+      '<button class="btn ghost sm block" type="button" id="cNotice" style="margin-top:8px">공지 문구 복사</button>' +
+      '<div class="mut sm" style="margin-top:8px">' +
+      (started
+        ? '「폼 열어보기」는 구성원에게 보이는 콘테스트 화면을 열어요.'
+        : '아직 날짜를 안 정했으니 구성원에게는 안 보여요. 「폼 열어보기」를 누르면 ' +
+          '운영진만 볼 수 있는 <b>작품 내기 폼 미리보기</b>가 열려요 — 낸 작품은 저장되지 않아요.') +
+      '</div>' +
       '<div class="divider"></div>' +
+      '<button class="btn ghost sm block" type="button" id="goAppContest">커뮤니티 설문 탭 열기</button>' +
+      '<div class="mut sm" style="margin-top:8px">설문 탭 맨 위 카드로 들어가는 길이에요.</div></div>';
+
+    /* ③ 양식 — 작품 내기 폼에 그대로 보이는 칸 (읽기만) */
+    $('#contestFields').innerHTML =
+      '<div class="card"><h3>양식</h3>' +
+      '<div class="sub">아래 칸이 작품 내기 폼에 그대로 보여요.</div><div class="sp"></div>' +
+      [['사진 1장 또는 영상 1개', '필수 · 영상은 ' + (L.VIDEO_MAX_SEC || 30) + '초 · ' + (L.VIDEO_MAX_MB || 20) + 'MB 이하'],
+       ['제목', '필수 · ' + (L.TITLE_MAX || 20) + '자까지'],
+       ['설명', '필수 · ' + (L.BODY_MAX || 200) + '자까지'],
+       ['어느 봉사지에서?', '필수 · 내가 간 봉사에서 고르거나 보호소 이름을 직접'],
+       ['사진·영상 속 아이 이름', '필수 · ' + (L.PET_COUNT || 10) + '개까지, 또는 「이름을 몰라요」'],
+       ['한 사람이 낼 수 있는 작품', max + '작품까지']
+      ].map(([k, v]) =>
+        '<div class="kv"><span class="k">' + esc(k) + '</span>' +
+        '<span class="v" style="text-align:right">' + esc(v) + '</span></div>').join('') +
+      '</div>';
+
+    /* ④ 설정 — 예전에 있던 것 그대로, 아래로 모았다 */
+    $('#contestSet').innerHTML =
+      '<div class="card"><h3>설정</h3>' +
+      '<div class="sub">날짜와 작품 수를 정해요.</div><div class="sp"></div>' +
       '<label class="field"><span class="lb">시작일</span>' + dtField('cStart', c.start_at || null) +
       '<span class="hint">비워 두면 구성원에게 안 보여요. 시각을 안 적으면 00:00 로 둬요.</span></label>' +
       '<label class="field"><span class="lb">마감일</span>' + dtField('cEnd', c.end_at || null) +
@@ -3904,7 +3968,16 @@
       '<button class="btn ghost grow" type="button" id="cList">낸 작품 보기 (' + n + ')</button>' +
       (c.start_at
         ? '<button class="btn ghost" type="button" id="cHide">다시 숨기기</button>'
-        : '') + '</div>';
+        : '') + '</div></div>';
+
+    /* 링크 카드 손가락 잇기 */
+    $('#cCopy').onclick = () => copy(url, '콘테스트 주소를 복사했어요');
+    /* 시작 전에는 미리보기 폼까지, 시작 뒤에는 콘테스트 화면만 */
+    $('#cOpen').onclick = () =>
+      window.open(contestURL(started ? '1' : 'preview'), '_blank', 'noopener');
+    $('#cNotice').onclick = () => copy(contestNotice(c), '공지 문구를 복사했어요');
+    /* ★ 해시 없는 me.html 은 운영진을 admin.html 로 되돌린다 (me.js) */
+    $('#goAppContest').onclick = () => window.open('me.html#poll=1', '_blank', 'noopener');
 
     $('#cSave').onclick = async () => {
       const btn = $('#cSave');

@@ -132,7 +132,7 @@ window.Community = (function () {
         const i = str.indexOf('#');
         if (i >= 0) to = str.slice(i + 1);
         else {
-          const q = /[?&](post|vol|poll|news)=([^&]+)/.exec(str);
+          const q = /[?&](post|vol|poll|news|contest)=([^&]+)/.exec(str);
           if (q) to = q[1] + '=' + q[2];
         }
         if (!to) return;
@@ -164,7 +164,7 @@ window.Community = (function () {
 
   function openFromHash() {
     const h = String(location.hash || '').replace(/^#/, '');
-    if (h && /^(post|vol|poll|news)=(.+)$/.test(h)) {
+    if (h && /^(post|vol|poll|news|contest)=(.+)$/.test(h)) {
       deepTo = h;
       /* 주소는 바로 지운다 (새로고침해도 또 열리지 않게) —
          대신 목적지는 deepTo 가 들고 있는다 */
@@ -185,12 +185,21 @@ window.Community = (function () {
       return;
     }
     deepBusy = true;
-    const m = /^(post|vol|poll|news)=(.+)$/.exec(deepTo);
+    const m = /^(post|vol|poll|news|contest)=(.+)$/.exec(deepTo);
     const [, what, rawId] = m;
 
     try {
       if (what === 'vol') { go('vol'); deepTo = null; return; }
       if (what === 'poll') { go('poll'); deepTo = null; return; }
+      /* 콘테스트 화면으로 바로 — `#contest=preview` 면 운영진 폼 미리보기까지.
+         ★ 먼저 설문 탭을 다 그린 다음에 연다. 안 그리면 뒤늦게 끝난
+           renderPolls() 가 콘테스트 화면을 덮어쓴다 (「‹ 설문으로」 도 이 탭으로 돌아온다) */
+      if (what === 'contest') {
+        deepTo = null;
+        await go('poll');
+        openContest(rawId === 'preview');
+        return;
+      }
       if (what === 'news') { go('me'); deepTo = null; return; }
 
       const id = decodeURIComponent(rawId);
@@ -4727,7 +4736,7 @@ window.Community = (function () {
 
   /* 콘테스트 화면 — contest.js 가 설문 탭 자리(#view)를 빌려 쓴다.
      「설문으로」 를 누르면 돌아온다. 파일이 없으면 조용히 죽지 않게 알려 준다 */
-  function openContest() {
+  function openContest(preview) {
     if (!(window.Contest && Contest.open))
       return toast('콘테스트 화면을 준비하고 있어요', 'warn');
     /* 돌아온 탭 캐시를 비운다 — 안 비우면 다음에 설문 탭에서 이 화면이 한 번 비친다 */
@@ -4735,7 +4744,8 @@ window.Community = (function () {
     /* 이 동안 softRefresh 는 설문 목록을 다시 그리지 않는다 (숫자만 맞춘다) */
     contestOn = true;
     const fab = $('#fab'); if (fab) fab.hidden = true;
-    Contest.open($('#view'), { onBack: () => go('poll') });
+    /* preview — 운영진이 폼 모양만 보러 들어온 길 (#contest=preview) */
+    Contest.open($('#view'), { onBack: () => go('poll'), preview: !!preview });
   }
 
   async function renderPolls() {
