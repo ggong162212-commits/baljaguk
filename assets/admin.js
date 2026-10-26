@@ -782,9 +782,16 @@
       '커뮤니티 「설문」 탭 맨 위 카드예요.</div><div class="sp"></div>' +
       '<button class="btn ghost block" type="button" id="goAppContest">' +
       '커뮤니티 설문 탭 열기</button>' +
-      '<span class="hint">아직 날짜를 안 정했으면 운영진에게만 「미리보기」로 보여요.</span></div>';
+      /* .field 밖이라 hint 모양(12px 회색)이 안 먹었다 — 작은 회색 글씨로 직접 준다 */
+      '<div class="mut sm" style="margin-top:8px">아직 날짜를 안 정했으면 운영진에게만 ' +
+      '「미리보기」로 보여요.</div></div>';
     const g = $('#goAppContest');
-    if (g) g.onclick = () => window.open('me.html', '_blank', 'noopener');
+    /* ★ 그냥 me.html 을 열면 **아무것도 안 나온다.**
+       운영진은 `baljaguk.side = 'admin'` 이라서, 해시가 없는 me.html 은
+       곧바로 admin.html 로 되돌아간다 (me.js). 새 탭이 열렸다 바로 돌아오니
+       「눌렀는데 아무 일도 안 생겨요」로 보인다.
+       해시를 붙이면 되돌아가지 않고, 그대로 설문 탭이 열린다 (#poll=1). */
+    if (g) g.onclick = () => window.open('me.html#poll=1', '_blank', 'noopener');
     return paintContest();
   }
 

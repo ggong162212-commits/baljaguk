@@ -778,11 +778,14 @@ window.Community = (function () {
      ============================================================ */
   const viewCache = {};
   let warm = false;        /* 지금 화면에 보여 줄 것이 이미 있나 */
+  /* 콘테스트 화면이 설문 탭 자리(#view)를 빌려 쓰고 있나 — softRefresh 가 덮어쓰지 않게 */
+  let contestOn = false;
 
   function go(tab) {
     /* 떠나기 전 지금 화면을 적어 둔다 */
     if (cur && $('#view')) viewCache[cur] = $('#view').innerHTML;
     cur = tab;
+    contestOn = false;
     if (tab !== 'home') { const np = $('#newPill'); if (np) np.remove(); }
     /* 돌아온 탭이면 곧바로 보여 준다 — 비었다가 채워지지 않게 */
     warm = false;
@@ -1331,8 +1334,9 @@ window.Community = (function () {
       /* 사진이 먼저 — 두 번 톡 누르면 하트 */
       photoStrip(p) +
 
-      /* 하트 · 말풍선 · 좋아요 n개 */
-      actionRow(p) +
+      /* 하트 · 말풍선 · 좋아요 n개
+         ★ 아직 안 올린 설문(draft)에는 두지 않는다 — 올리기 전에 반응·알림이 생기지 않게 */
+      (p.draft ? '' : actionRow(p)) +
 
       /* 「🐾 이름 · 여아 · 2살」 「📍보호소」 (story.js) */
       (p.type === 'story' && window.Story ? Story.line(p) : '') +
@@ -1347,7 +1351,7 @@ window.Community = (function () {
         : '') +
 
       /* 댓글 n개 모두 보기 — 본문 다음에 */
-      ((p.comment_count || 0)
+      ((p.comment_count || 0) && !p.draft
         ? '<button class="morecmt" type="button" data-cmt="' + esc(p.id) + '">' +
           '댓글 ' + num(p.comment_count) + '개 모두 보기</button>'
         : '') +
@@ -1358,7 +1362,7 @@ window.Community = (function () {
         : '') +
       animalChips(p) +
       (p.poll ? pollBlock(p) : '') +
-      commentBlock(p) +
+      (p.draft ? '' : commentBlock(p)) +
       '</article>';
   }
 
@@ -2854,6 +2858,17 @@ window.Community = (function () {
       const el = document.activeElement;
       if (el && /INPUT|TEXTAREA/.test(el.tagName)) return;
       if (document.querySelector('.overlay')) return;
+      /* ★ 콘테스트 화면이 설문 탭 자리에 떠 있으면 **통째로 다시 그리지 않는다.**
+         예전에는 7초마다(그리고 다른 앱에 갔다 오면 바로) renderPolls() 가
+         콘테스트 화면을 설문 목록으로 덮어썼다.
+         대신 숫자만 조용히 맞춘다 (Contest.sync — 도착한 작품 수·남은 날). */
+      if (contestOn) {
+        if (document.querySelector('#view .ct-hero')) {
+          if (window.Contest && Contest.sync) { try { await Contest.sync(); } catch (e) { } }
+          return;
+        }
+        contestOn = false;           /* 화면이 이미 다른 것으로 바뀌었다 */
+      }
       if (cur === 'home') await quietFeedPatch();
       else if (cur === 'vol') await renderVol();
       else if (cur === 'poll') await renderPolls();
@@ -4229,6 +4244,16 @@ window.Community = (function () {
 
     loadPhotos(ov);
     loadAvatars(ov);   /* 글 상세에서 프로필 사진이 안 보이던 것 */
+
+    /* ★ 아직 안 올린 설문(draft)은 댓글을 받지 않는다 — 올리기 전에 알림이 생기지 않게.
+       입력줄과 댓글 목록 자리에 왜 안 되는지만 적어 둔다 */
+    if (p.draft) {
+      ov.querySelector('#dList').innerHTML =
+        '<div class="pill-note" style="margin:0">아직 올리지 않았어요 · ' +
+        '올린 뒤에 댓글을 달 수 있어요</div>';
+      const cw = ov.querySelector('.cwrite'); if (cw) cw.hidden = true;
+      return true;
+    }
     /* @ 로 사람 부르기 — 질문의 답에도 */
     const dMent = attachMention(ov.querySelector('#dIn'), ov.querySelector('#dMenu'));
     let dReplyTo = null;   /* 답글을 달 댓글 — 시트와 같게 */
@@ -4707,6 +4732,8 @@ window.Community = (function () {
       return toast('콘테스트 화면을 준비하고 있어요', 'warn');
     /* 돌아온 탭 캐시를 비운다 — 안 비우면 다음에 설문 탭에서 이 화면이 한 번 비친다 */
     delete viewCache.poll;
+    /* 이 동안 softRefresh 는 설문 목록을 다시 그리지 않는다 (숫자만 맞춘다) */
+    contestOn = true;
     const fab = $('#fab'); if (fab) fab.hidden = true;
     Contest.open($('#view'), { onBack: () => go('poll') });
   }

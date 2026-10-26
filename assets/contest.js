@@ -390,15 +390,51 @@
   }
 
   /* ---------- 콘테스트 화면 ---------- */
-  let ROOT = null, OPTS = {}, seq = 0;
+  let ROOT = null, OPTS = {}, seq = 0, PHASE = null;
   async function open(root, o) {
     css();
     ROOT = root || document.getElementById('view');
     OPTS = o || {};
     if (!ROOT) return;
     ROOT.innerHTML = '<div class="mut sm" style="padding:24px 4px">불러오는 중…</div>';
-    await render();
+    /* ★ 여기서 무엇이 잘못되면 「불러오는 중…」 에서 멈춘 **빈 화면**이 된다.
+       (느린 연결·막힌 조회·아직 안 읽힌 파일 — 어느 쪽이든)
+       그러니 12초만 기다리고, 안 되면 왜 안 되는지와 돌아갈 길을 보여 준다. */
+    let late = null;
+    try {
+      await Promise.race([
+        render(),
+        new Promise((_, no) => { late = setTimeout(() => no(new Error('너무 오래 걸려요')), 12000); })
+      ]);
+    } catch (e) {
+      console.warn('[발자국] 콘테스트 화면을 못 그렸어요:', e);
+      return fail();
+    } finally { clearTimeout(late); }
     try { window.scrollTo(0, 0); } catch (e) { }
+  }
+
+  /* 못 그렸을 때 — 빈 화면 대신 「다시 시도」와 「설문으로」.
+     여기서는 ic() 같은 다른 파일을 **쓰지 않는다** (그 파일이 원인일 수도 있다) */
+  function fail() {
+    if (!ROOT) return;
+    seq++;        /* 늦게 돌아온 render 가 이 화면을 덮지 않게 */
+    ROOT.innerHTML =
+      (OPTS.onBack ? '<button class="ct-back" type="button" data-ctback>‹ 설문으로</button>' : '') +
+      '<div class="card center" style="padding:26px 20px">' +
+      '<div style="font-size:34px" aria-hidden="true">📵</div>' +
+      '<h3 style="margin-top:8px;font-size:17px">콘테스트를 불러오지 못했어요</h3>' +
+      '<p class="mut sm" style="margin-top:6px;line-height:1.55">잠깐 연결이 안 됐을 수 있어요. ' +
+      '다시 시도해 보고, 그래도 안 되면 조금 뒤에 열어 주세요.</p>' +
+      '<div class="sp"></div>' +
+      '<button class="btn primary block lg" type="button" data-ctretry>다시 시도</button>' +
+      (OPTS.onBack
+        ? '<button class="btn ghost block" type="button" data-ctback style="margin-top:8px">설문으로 돌아가기</button>'
+        : '') +
+      '</div>';
+    const r = ROOT.querySelector('[data-ctretry]');
+    if (r) r.onclick = () => open(ROOT, OPTS);
+    ROOT.querySelectorAll('[data-ctback]').forEach(b =>
+      b.onclick = () => { if (OPTS.onBack) OPTS.onBack(); });
   }
 
   async function render() {
@@ -407,6 +443,7 @@
     let mine = [];
     if (st.phase !== 'hidden' || st.admin) { try { mine = (await api().mine()) || []; } catch (e) { } }
     if (my !== seq || !ROOT) return;
+    PHASE = st.phase;
     const i = st.info || { end_at: DEFAULT_END, max_entries: MAX_ENTRIES, entry_count: 0 };
     const max = i.max_entries || MAX_ENTRIES;
     const canEdit = st.phase === 'open';
@@ -498,6 +535,24 @@
     if (slot && typeof window.Contest.voteView === 'function') {
       try { window.Contest.voteView(slot, i); } catch (e) { console.warn('[발자국] 투표 화면을 못 그렸어요:', e); }
     }
+  }
+
+  /* 숫자만 조용히 맞추기 — 설문 탭(community.js)의 softRefresh 가 7초마다 부른다.
+     이 화면을 통째로 다시 그리면 보던 자리와 누르던 것이 튄다.
+     그래서 **바뀐 숫자만** 갈아 끼우고, 단계(phase)가 바뀌었을 때만 다시 그린다. */
+  async function sync() {
+    if (!ROOT || !ROOT.querySelector('.ct-hero')) return;
+    let st;
+    try { st = await load(); } catch (e) { return; }
+    if (!ROOT || !ROOT.querySelector('.ct-hero')) return;   /* 그 사이에 떠났으면 그만 */
+    if (st.phase !== PHASE) return render();                /* 열렸거나 마감됐으면 다시 */
+    const i = st.info || {};
+    const n = ROOT.querySelector('.ct-count .n');
+    const v = String(i.entry_count || 0);
+    if (n && n.textContent !== v) n.textContent = v;        /* 「지금까지 n작품 도착」 */
+    const d = ROOT.querySelector('.ct-dday');
+    const dd = st.phase === 'open' ? dday(i.end_at) : '';
+    if (d && dd && d.textContent !== dd) d.textContent = dd; /* 「D-35」 */
   }
 
   function step(n, tx, sub) {
@@ -786,5 +841,5 @@
     ov.querySelector('[data-ctok]').onclick = () => UI.closeSheet();
   }
 
-  window.Contest = { open, mountCard, info: () => load(), phaseOf, LIMITS: { MAX_ENTRIES, PET_COUNT, TITLE_MAX, BODY_MAX, PHOTO_SIDE, VIDEO_MAX_SEC, VIDEO_MAX_MB, DEFAULT_END } };
+  window.Contest = { open, sync, mountCard, info: () => load(), phaseOf, LIMITS: { MAX_ENTRIES, PET_COUNT, TITLE_MAX, BODY_MAX, PHOTO_SIDE, VIDEO_MAX_SEC, VIDEO_MAX_MB, DEFAULT_END } };
 })();
