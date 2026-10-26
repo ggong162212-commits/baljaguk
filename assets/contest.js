@@ -40,6 +40,7 @@
   const PET_MAX = 15;
   const PET_COUNT = 10;             /* 아이 이름 개수 — 서버도 11개째부터 막는다 */
   const PET_OVER = '아이 이름은 ' + PET_COUNT + '개까지 적을 수 있어요';
+  const PET_FIELD_MAX = 30;         /* 아이 이름 칸 — 한 칸에 쉼표로 적는다 */
   const PHOTO_SIDE = 2048;          /* 후기(1280)보다 덜 줄인다 */
   const PHOTO_Q = 0.86;
   const VIDEO_MAX_SEC = 30;
@@ -153,7 +154,20 @@
     if (chars(b) > BODY_MAX) throw new Error('설명은 ' + BODY_MAX + '자까지예요');
     if (!String(v.shelter || '').trim()) throw new Error('어느 봉사지였는지 적어 주세요');
     if (chars(String(v.shelter).trim()) > SHELTER_MAX) throw new Error('봉사지는 ' + SHELTER_MAX + '자까지예요');
+    if (!cleanNames(v.pet_names).length) throw new Error('사진 속 아이 이름을 적어 주세요');
     if (cleanNames(v.pet_names).length > PET_COUNT) throw new Error(PET_OVER);
+  }
+
+  /* 봉사지 목록 — 운영진 설정(club_settings.places)에 적힌 보호소 이름만.
+     커뮤니티는 window.__settings 를 들고 있고, 없으면 서버에 한 번 물어본다 */
+  async function shelters() {
+    let s = window.__settings;
+    if (!s) { try { s = await DB.settings.get(); } catch (e) { s = null; } }
+    let raw = s && s.places;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+    return (Array.isArray(raw) ? raw : [])
+      .map(x => (typeof x === 'string' ? x : String((x && x.name) || '')).trim())
+      .filter(Boolean);
   }
   /* 「봄이, 여름이」 처럼 쉼표로 적어도, 칩으로 골라도 같은 모양 — 겹친 이름은 하나만 */
   function cleanNames(a) {
@@ -500,7 +514,7 @@
     const steps = '<div class="section-title">' + ic('clipboard') + '<span>참여 방법</span></div>' +
       '<div class="ct-steps">' +
       step(1, '<b>봉사에서 찍은 사진 1장</b>이나 <b>영상 1개</b>를 골라요', '영상은 ' + VIDEO_MAX_SEC + '초 · ' + VIDEO_MAX_MB + 'MB 이하') +
-      step(2, '<b>제목</b>·<b>설명</b>·<b>봉사지</b>·<b>아이 이름</b>을 붙여요', '제목 ' + TITLE_MAX + '자 · 설명 ' + BODY_MAX + '자까지 · 어느 봉사지인지, 아이 이름도 같이 적어요') +
+      step(2, '<b>제목</b>·<b>설명</b>을 쓰고 <b>봉사지</b>를 고르고 <b>아이 이름</b>을 적어요', '제목 ' + TITLE_MAX + '자 · 설명 ' + BODY_MAX + '자까지 · 봉사지는 고르기만 하면 돼요 · 아이가 여럿이면 쉼표로') +
       step(3, '한 사람 <b>' + max + '작품</b>까지, 마감 전엔 고치고 지울 수 있어요', '마감 뒤 익명 투표로 상을 정해요') +
       '</div>';
 
@@ -596,17 +610,6 @@
     }
   }
 
-  let VOLS = null;
-  async function myVols() {
-    if (VOLS) return VOLS;
-    try {
-      const r = window.PastVol ? await PastVol.load({ mine: true, limit: 50 }) : null;
-      VOLS = (r && r.rows) || [];
-    } catch (e) { VOLS = []; }
-    return VOLS;
-  }
-  const volLabel = v => (UI.fmtDate ? UI.fmtDate(v.date) : v.date) + ' ' + (v.place || v.title || '');
-
   function bind(st, mine) {
     const $$ = s => [...ROOT.querySelectorAll(s)];
     const b = ROOT.querySelector('[data-ctback]');
@@ -670,25 +673,22 @@
         '<input class="input" data-ctt maxlength="' + (TITLE_MAX * 2) + '" placeholder="예) 산책 첫날 웃는 봄이" autocomplete="off" enterkeyhint="next"></label>' +
         '<label class="field"><span class="lb">설명 <span class="req">*</span><span class="ct-cnt" data-ctc="b"></span></span>' +
         '<textarea class="input" data-ctb rows="4" maxlength="' + (BODY_MAX * 2) + '" placeholder="어떤 순간이었는지 자랑해 주세요"></textarea></label>' +
+        /* 봉사지 — 설정에 적힌 보호소 중 **하나만** 고른다 (직접 적기 없음) */
         '<div class="field"><span class="lb">어느 봉사지에서? <span class="req">*</span></span>' +
-        '<select class="input" data-ctv aria-label="내가 간 지난 봉사에서 고르기"><option value="">내가 간 봉사에서 고르기</option></select>' +
-        '<input class="input" data-cts style="margin-top:8px" maxlength="' + SHELTER_MAX + '" placeholder="목록에 없으면 보호소 이름을 직접" ' +
-        'autocomplete="off" aria-label="봉사지(보호소) 이름"></div>' +
-        '<div class="field"><span class="lb">사진·영상 속 아이 이름 <span class="req">*</span><span class="ct-cnt" data-ctc="p"></span></span>' +
-        '<div data-ctan class="ct-an"></div>' +
-        '<div class="row" style="gap:6px;margin-top:8px">' +
-        '<input class="input grow" data-ctpetin maxlength="40" placeholder="여럿이면 쉼표로 (봄이, 여름이)" autocomplete="off" enterkeyhint="done" aria-label="아이 이름">' +
-        '<button type="button" class="btn ghost" data-ctadd>더하기</button></div>' +
-        '<button type="button" class="check" data-ctunk style="margin-top:8px;width:100%;text-align:left" aria-pressed="false">' +
-        '<span class="box tick" aria-hidden="true">' + ic('check') + '</span>' +
-        '<span class="grow sm" style="font-weight:700">이름을 몰라요</span></button></div>' +
+        '<div class="chips" data-ctshel></div></div>' +
+        /* 아이 이름 — 칸 하나. 칩·더하기·「이름을 몰라요」 는 없앴다 (너무 번거로웠다) */
+        '<label class="field"><span class="lb">사진·영상 속 아이 이름 <span class="req">*</span>' +
+        '<span class="ct-cnt" data-ctc="p"></span></span>' +
+        '<input class="input" data-ctpet maxlength="' + PET_FIELD_MAX + '" ' +
+        'placeholder="예) 열무 · 여럿이면 쉼표로" autocomplete="off" enterkeyhint="done" ' +
+        'aria-label="아이 이름"></label>' +
         (edit ? '<button class="btn danger block" type="button" data-ctdel style="margin-top:4px">' + ic('trash') + ' 이 작품 지우기</button>' : ''),
       foot: preview
         ? '<button class="btn soft lg" type="button" disabled>미리보기라 낼 수 없어요</button>'
         : '<button class="btn primary lg" type="button" data-ctsave>' + (edit ? '고친 것 저장' : '작품 내기') + '</button>'
     });
     const q = s => ov.querySelector(s);
-    const pick = q('[data-ctpick]'), file = q('[data-ctfile]'), t = q('[data-ctt]'), b = q('[data-ctb]'), sel = q('[data-ctv]');
+    const pick = q('[data-ctpick]'), file = q('[data-ctfile]'), t = q('[data-ctt]'), b = q('[data-ctb]');
     const save = q('[data-ctsave]');   /* 미리보기에는 없다 */
     if (edit) { t.value = e.title || ''; b.value = e.body || ''; }
 
@@ -733,94 +733,50 @@
       paintPick();
     };
 
-    /* 봉사지 — 지난 봉사를 고르면 보호소 이름이 채워진다. 직접 고쳐 적으면 고른 봉사는 풀린다 */
-    const shel = q('[data-cts]');
-    let vols = [];
-    if (edit) shel.value = e.shelter || '';
-    myVols().then(list => {
-      vols = list;
-      sel.innerHTML += list.map(v => '<option value="' + esc(v.id) + '">' + esc(volLabel(v)) + '</option>').join('');
-      if (edit && e.volunteer_id && list.some(v => v.id === e.volunteer_id)) sel.value = e.volunteer_id;
-    });
-    sel.onchange = () => {
-      const v = vols.find(x => x.id === sel.value);
-      if (v) { shel.value = v.place || v.title || ''; loadAn(); }
+    /* 봉사지 — 설정에 적힌 보호소 중 **하나만** 누른다.
+       지난 봉사 날짜 목록과 「직접 적기」는 없앴다 (너무 번거로웠다) */
+    const shelBox = q('[data-ctshel]');
+    let shelter = edit ? String(e.shelter || '').trim() : '';
+    const paintShel = list => {
+      shelBox.innerHTML = list.length
+        ? list.map(nm =>
+          '<button type="button" class="chip' + (nm === shelter ? ' on' : '') + '" data-ctsh="' + esc(nm) + '" ' +
+          'aria-pressed="' + (nm === shelter) + '">' + esc(nm) + '</button>').join('')
+        : '<div class="mut xs">봉사지 목록이 아직 비어 있어요. 운영진 설정에서 봉사지를 더해 주세요.</div>';
+      shelBox.querySelectorAll('[data-ctsh]').forEach(x => x.onclick = () => {
+        shelter = x.getAttribute('data-ctsh');
+        paintShel(list);
+      });
     };
-    shel.addEventListener('input', () => {
-      const v = vols.find(x => x.id === sel.value);
-      if (v && shel.value.trim() !== (v.place || v.title || '')) sel.value = '';
-      clearTimeout(anT); anT = setTimeout(loadAn, 350);
+    paintShel([]);
+    shelters().then(list => {
+      /* 고치기인데 그 보호소가 목록에서 빠졌으면 그것도 같이 보여 준다 */
+      if (shelter && list.indexOf(shelter) < 0) list = list.concat([shelter]);
+      paintShel(list);
     });
 
-    /* 아이 이름 — 후기 「만난 친구」 모양: 그 보호소 아이들 칩 + 목록에 없으면 적어서 더하기.
-       여기서는 이름 글자만 담는다 (동물 명부에 새로 만들지 않는다) */
-    const anBox = q('[data-ctan]'), anNew = q('[data-ctpetin]'), unk = q('[data-ctunk]');
-    let names = edit ? cleanNames(e.pet_names) : [], known = [], anT = 0, anSeq = 0;
-    let unknown = edit && !names.length;
-    const paintAn = () => {
-      const all = known.slice();
-      names.forEach(n => { if (all.indexOf(n) < 0) all.push(n); });
-      anBox.innerHTML = all.length
-        ? '<div class="row" style="gap:7px;flex-wrap:wrap">' + all.map(n =>
-          '<button type="button" class="apaw pick' + (names.indexOf(n) >= 0 ? ' on' : '') + '" data-ctpet="' + esc(n) + '" ' +
-          'aria-pressed="' + (names.indexOf(n) >= 0) + '">' + ic('paw') + '<span>' + esc(n) + '</span></button>').join('') + '</div>'
-        : '<div class="mut xs">' + (shel.value.trim() ? '이 보호소에 등록된 아이가 없어요. 아래에 적어 주세요.' : '봉사지를 고르면 그 보호소 아이들이 나와요.') + '</div>';
-      anBox.querySelectorAll('[data-ctpet]').forEach(x => x.onclick = () => {
-        const n = x.dataset.ctpet, k = names.indexOf(n);
-        if (k >= 0) names.splice(k, 1);
-        else if (names.length >= PET_COUNT) return UI.toast(PET_OVER, 'err');
-        else { names.push(n); setUnk(false); }
-        paintAn();
-      });
-      unk.classList.toggle('on', unknown);
-      unk.setAttribute('aria-pressed', String(unknown));
-      const pc = q('[data-ctc="p"]');
-      pc.textContent = unknown ? '' : names.length + ' / ' + PET_COUNT;
-      pc.classList.toggle('over', names.length > PET_COUNT);
+    /* 아이 이름 — 칸 하나. 쉼표로 나눠 담는다 (서버와 같은 규칙) */
+    const petIn = q('[data-ctpet]');
+    if (edit) petIn.value = cleanNames(e.pet_names).join(', ');
+    const petCount = () => {
+      const n = chars(petIn.value), c = q('[data-ctc="p"]');
+      c.textContent = n + ' / ' + PET_FIELD_MAX;
+      c.classList.toggle('over', n > PET_FIELD_MAX);
     };
-    const setUnk = on => { unknown = on; if (on) names = []; };
-    const loadAn = async () => {
-      const my = ++anSeq, place = shel.value.trim();
-      let list = [];
-      if (place && DB.community && DB.community.animalsAt) {
-        try { list = (await DB.community.animalsAt(place)) || []; } catch (err) { }
-      }
-      if (my !== anSeq) return;
-      known = list.filter(a => !a.adopted).map(a => String(a.name || '').trim()).filter(Boolean).slice(0, 30);
-      paintAn();
-    };
-    /* 넘치면 하나도 안 넣고 칸에 그대로 둔다 — 몇 개를 지울지 사람이 고른다 */
-    const addAn = () => {
-      const add = cleanNames(anNew.value).filter(n => names.indexOf(n) < 0);
-      if (!add.length) { anNew.value = ''; return true; }
-      if (names.length + add.length > PET_COUNT) {
-        UI.toast(PET_OVER + ' (지금 ' + names.length + '개)', 'err');
-        return false;
-      }
-      add.forEach(n => names.push(n));
-      anNew.value = ''; setUnk(false); paintAn();
-      return true;
-    };
-    q('[data-ctadd]').onclick = addAn;
-    UI.onEnter ? UI.onEnter(anNew, addAn) : anNew.addEventListener('keydown', ev => {
-      if (ev.key === 'Enter' && !ev.isComposing && ev.keyCode !== 229) { ev.preventDefault(); addAn(); }
-    });
-    unk.onclick = () => { setUnk(!unknown); paintAn(); };
-    paintAn();
-    if (edit && e.shelter) loadAn();
+    petIn.addEventListener('input', petCount); petCount();
 
     /* ★ 미리보기면 save 가 없다 — 여기 아래(올리기·사진 업로드)로는 들어갈 수 없다 */
     if (save) save.onclick = async () => {
-      /* 적어 두고 「더하기」를 안 누른 이름도 담는다 */
-      if (anNew.value.trim() && !addAn()) return;
       const v = { id: edit ? e.id : undefined, title: t.value.trim(), body: b.value.trim(),
-        shelter: shel.value.trim(), pet_names: unknown ? [] : names.slice(),
-        volunteer_id: sel.value || null, media };
+        shelter: shelter, pet_names: cleanNames(petIn.value),
+        /* 「어느 봉사에서?」 는 안 묻는다 — 보호소만 고른다 */
+        volunteer_id: null, media };
       try {
         if (!edit && !media) throw new Error('사진이나 영상을 골라 주세요');
+        if (!v.shelter) throw new Error('어느 봉사지에서 찍었는지 골라 주세요');
+        if (chars(petIn.value) > PET_FIELD_MAX)
+          throw new Error('아이 이름은 ' + PET_FIELD_MAX + '자 안으로 적어 주세요');
         checkText(v);
-        if (!unknown && !v.pet_names.length) throw new Error('아이 이름을 적거나 「이름을 몰라요」를 눌러 주세요');
-        if (v.pet_names.length > PET_COUNT) throw new Error(PET_OVER);
       } catch (err) { return UI.toast(err.message, 'err'); }
       save.disabled = true;
       save.textContent = media ? '올리는 중…' : '저장하는 중…';
@@ -867,5 +823,5 @@
     ov.querySelector('[data-ctok]').onclick = () => UI.closeSheet();
   }
 
-  window.Contest = { open, sync, mountCard, info: () => load(), phaseOf, LIMITS: { MAX_ENTRIES, PET_COUNT, TITLE_MAX, BODY_MAX, PHOTO_SIDE, VIDEO_MAX_SEC, VIDEO_MAX_MB, DEFAULT_END } };
+  window.Contest = { open, sync, mountCard, info: () => load(), phaseOf, LIMITS: { MAX_ENTRIES, PET_COUNT, PET_FIELD_MAX, TITLE_MAX, BODY_MAX, PHOTO_SIDE, VIDEO_MAX_SEC, VIDEO_MAX_MB, DEFAULT_END } };
 })();

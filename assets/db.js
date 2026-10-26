@@ -2893,6 +2893,7 @@
       nomedia: '사진 한 장이나 영상 한 개를 올려 주세요',
       shelter: '어느 봉사지인지 적어 주세요',
       shelterlong: '봉사지는 ' + CONTEST.SHELTER_MAX + '자 안으로 적어 주세요',
+      shelterbad: '봉사지는 목록에 있는 보호소만 고를 수 있어요',
       pets: '아이 이름은 ' + CONTEST.PET_MAX + '개까지 적을 수 있어요',
       petlong: '아이 이름은 하나에 ' + CONTEST.PET_NAME_MAX + '자까지예요',
       vol: '내가 간 봉사에서만 고를 수 있어요',
