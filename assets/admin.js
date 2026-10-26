@@ -3903,7 +3903,9 @@
     const ph = CPHASE[c.phase || 'hidden'] || CPHASE.hidden;
     const n = Number(c.entry_count || 0);
 
-    const started = !!c.start_at;
+    /* 「열렸다」는 구성원이 **낼 수 있는** 때다 — 날짜만 정해 둔 「곧 시작」은 아직이다.
+       그때까지 「폼 열어보기」는 운영진 미리보기 폼을 연다 (contest.js 와 같은 기준) */
+    const started = c.phase === 'open' || c.phase === 'closed';
     const L = (window.Contest && Contest.LIMITS) || {};
     const max = Number(c.max_entries) || L.MAX_ENTRIES || 3;
     const url = contestURL();
@@ -3930,8 +3932,12 @@
       '<div class="mut sm" style="margin-top:8px">' +
       (started
         ? '「폼 열어보기」는 구성원에게 보이는 콘테스트 화면을 열어요.'
-        : '아직 날짜를 안 정했으니 구성원에게는 안 보여요. 「폼 열어보기」를 누르면 ' +
-          '운영진만 볼 수 있는 <b>작품 내기 폼 미리보기</b>가 열려요 — 낸 작품은 저장되지 않아요.') +
+        : (c.start_at
+            ? esc(fmtDateTime(c.start_at)) + '부터 구성원이 낼 수 있어요. 그때까지 ' +
+              '「폼 열어보기」는 운영진만 볼 수 있는 <b>작품 내기 폼 미리보기</b>를 열어요 — ' +
+              '낸 작품은 저장되지 않아요.'
+            : '아직 날짜를 안 정했으니 구성원에게는 안 보여요. 「폼 열어보기」를 누르면 ' +
+              '운영진만 볼 수 있는 <b>작품 내기 폼 미리보기</b>가 열려요 — 낸 작품은 저장되지 않아요.')) +
       '</div>' +
       '<div class="divider"></div>' +
       '<button class="btn ghost sm block" type="button" id="goAppContest">커뮤니티 설문 탭 열기</button>' +
