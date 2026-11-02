@@ -2480,6 +2480,8 @@
             return {
               id: e.id, date: e.date, title: e.title, place: e.place,
               start_time: e.start_time, capacity: e.capacity,
+              signup_open: e.signup_open !== false,
+              signup_open_at: e.signup_open_at || null,
               taken: (d.attendance || []).filter(a => a.event_id === e.id).length,
               mine: (d.attendance || []).some(a => a.event_id === e.id && a.member_id === me),
               wait_pos: idx >= 0 ? idx + 1 : null

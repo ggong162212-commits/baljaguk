@@ -5114,12 +5114,29 @@ window.Community = (function () {
       }).join('');
   }
 
+  /* 「11/2(일) 오후 7:00」 — 신청이 열리는 때를 짧게 */
+  function openAtLabel(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    const 요일 = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+    const h = d.getHours();
+    const 오전 = h < 12 ? '오전' : '오후';
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    const mm = d.getMinutes();
+    return (d.getMonth() + 1) + '/' + d.getDate() + '(' + 요일 + ') ' +
+      오전 + ' ' + h12 + (mm ? ':' + String(mm).padStart(2, '0') : '시');
+  }
+
   function volCard(e) {
     const taken = Number(e.taken) || 0;
     const cap = Number(e.capacity) || 0;
     const mine = !!e.mine;
     const wait = e.wait_pos ? { pos: e.wait_pos } : null;
     const full = cap > 0 && taken >= cap && !mine;
+    /* 신청 시작을 예약해 둔 봉사 — 그때까지는 누를 수 없다 (서버도 막는다) */
+    const openAt = e.signup_open_at ? Date.parse(e.signup_open_at) : 0;
+    const soonOpen = !!openAt && Date.now() < openAt && !mine;
+    const shut = e.signup_open === false && !mine;
 
     return '<div class="card" data-ev="' + esc(e.id) + '" style="margin-bottom:12px">' +
       '<div class="row between" style="align-items:flex-start;gap:10px">' +
@@ -5129,7 +5146,8 @@ window.Community = (function () {
       '<div class="mut sm" style="margin-top:3px">' + esc(e.place || '') +
       (e.title ? ' · ' + esc(e.title) : '') + '</div></div>' +
       (mine ? '<span class="badge approved">신청함</span>'
-        : (wait ? '<span class="badge pending">대기 ' + num(wait.pos) + '번째</span>' : '')) + '</div>' +
+        : (wait ? '<span class="badge pending">대기 ' + num(wait.pos) + '번째</span>'
+          : (soonOpen ? '<span class="badge pending">신청 예정</span>' : ''))) + '</div>' +
 
       '<div class="mut" style="font-size:12px;margin-top:8px">' +
       (cap ? '선착순 ' + num(taken) + ' / ' + num(cap) + '명' : num(taken) + '명 신청') + '</div>' +
@@ -5140,11 +5158,20 @@ window.Community = (function () {
         ? '<button class="btn ghost block" type="button" data-cancel="' + esc(e.id) + '">신청 취소</button>'
         : (wait
           ? '<button class="btn ghost block" type="button" data-wleave="' + esc(e.id) + '">대기 취소</button>'
-          : (full
-            ? '<button class="btn soft block" type="button" data-wjoin="' + esc(e.id) + '">' +
-              '대기 신청하기</button>'
-            : '<button class="btn primary block" type="button" data-signup="' + esc(e.id) + '">신청하기</button>'))) +
-      (full && !mine && !wait
+          : (soonOpen
+            ? '<button class="btn soft block" type="button" disabled>' +
+              esc(openAtLabel(e.signup_open_at)) + '부터 신청</button>'
+            : (shut
+              ? '<button class="btn soft block" type="button" disabled>신청이 닫혔어요</button>'
+              : (full
+                ? '<button class="btn soft block" type="button" data-wjoin="' + esc(e.id) + '">' +
+                  '대기 신청하기</button>'
+                : '<button class="btn primary block" type="button" data-signup="' + esc(e.id) + '">신청하기</button>'))))) +
+      (soonOpen
+        ? '<div class="mut xs" style="margin-top:7px;text-align:center">' +
+          '열리면 알림으로 알려 드려요</div>'
+        : '') +
+      (full && !mine && !wait && !soonOpen && !shut
         ? '<div class="mut xs" style="margin-top:7px;text-align:center">' +
           '자리가 나면 먼저 신청한 분부터 올라가요</div>'
         : '') +
@@ -5177,6 +5204,7 @@ window.Community = (function () {
     nomatch:  '먼저 이름 확인을 해주세요',
     noevent:  '없어진 봉사예요',
     closed:   '신청이 닫혔어요',
+    before:   '아직 신청 시작 전이에요',
     full:     '자리가 다 찼어요',
     dup:      '이미 신청했어요',
     notfull:  '아직 자리가 있어요. 그냥 신청하면 돼요',

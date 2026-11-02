@@ -951,6 +951,7 @@ select case when not is_member() then null else
     'soon', (select coalesce(json_agg(json_build_object(
                'id', id, 'date', date, 'title', title, 'place', place,
                'start_time', start_time, 'capacity', capacity,
+               'signup_open', signup_open, 'signup_open_at', signup_open_at,
                'taken', taken, 'mine', mine, 'wait_pos', wait_pos)
                order by date), '[]'::json) from soon),
     'past', (select coalesce(json_agg(json_build_object(
@@ -1747,14 +1748,21 @@ as $$
 begin
   if new.date < (now() at time zone 'Asia/Seoul')::date then return new; end if;
   insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
-  values (null, 'vol', '봉사 신청이 열렸어요',
+  values (null, 'vol',
+          case when new.signup_open_at is not null and new.signup_open_at > now()
+               then '봉사가 올라왔어요' else '봉사 신청이 열렸어요' end,
           to_char(new.date, 'MM/DD') || '(' ||
           case extract(dow from new.date)::int
             when 0 then '일' when 1 then '월' when 2 then '화' when 3 then '수'
             when 4 then '목' when 5 then '금' else '토' end || ') ' ||
           coalesce(nullif(btrim(new.start_time), '') || ' ', '') ||
           coalesce(new.place, '') ||
-          case when new.capacity > 0 then ' · 선착순 ' || new.capacity || '명' else '' end,
+          case when new.capacity > 0 then ' · 선착순 ' || new.capacity || '명' else '' end ||
+          /* 신청 시작을 예약했으면 언제부터인지 같이 알려 준다 */
+          case when new.signup_open_at is not null and new.signup_open_at > now()
+               then ' · ' || to_char(new.signup_open_at at time zone 'Asia/Seoul', 'MM/DD HH24:MI')
+                    || '부터 신청'
+               else '' end,
           'me.html#tab=vol', 'vol:' || new.id)
   on conflict (dedupe_key) do nothing;
   return new;
@@ -1826,6 +1834,31 @@ begin
             'me.html#tab=home', 'thanks:' || r.id || ':' || r.member_id)
     on conflict (dedupe_key) do nothing;
     n_thanks := n_thanks + 1;
+  end loop;
+
+  /* ---- 신청이 열리는 시각 ---- */
+  /* 예약해 둔 시각이 막 지난 봉사에 한 번만 (dedupe_key 로 두 번 안 간다).
+     두 시간 창을 둬서, 이 기능을 켠 날 옛날 것까지 쏟아지지 않게 한다. */
+  for r in
+    select e.*
+      from events e
+     where e.signup_open_at is not null
+       and e.signup_open_at <= kst
+       and e.signup_open_at > kst - interval '2 hours'
+       and coalesce(e.signup_open, true)
+       and e.date >= (now() at time zone 'Asia/Seoul')::date
+  loop
+    insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
+    values (null, 'vol', '지금부터 신청할 수 있어요',
+            to_char(r.date, 'MM/DD') || '(' ||
+            case extract(dow from r.date)::int
+              when 0 then '일' when 1 then '월' when 2 then '화' when 3 then '수'
+              when 4 then '목' when 5 then '금' else '토' end || ') ' ||
+            coalesce(nullif(btrim(r.start_time), '') || ' ', '') ||
+            coalesce(r.place, '') ||
+            case when r.capacity > 0 then ' · 선착순 ' || r.capacity || '명' else '' end,
+            'me.html#tab=vol', 'volopen:' || r.id)
+    on conflict (dedupe_key) do nothing;
   end loop;
 
   /* ---- 설문 마감 하루 전 — 아직 참여 안 한 사람에게만 ---- */
