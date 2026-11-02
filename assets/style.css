@@ -900,6 +900,8 @@ input[type="time"].input::-webkit-calendar-picker-indicator{margin-left:2px;opac
 .sheet{
   /* 화면과 시트의 좌우 여백을 같게 — 16px 하나로 */
   background:var(--surface);width:100%;max-width:560px;max-height:88vh;
+  /* 아이폰 주소·도구 막대를 뺀 실제로 보이는 높이 (지원하는 브라우저만) */
+  max-height:88dvh;
   border-radius:26px 26px 0 0;padding:22px 16px 16px;box-shadow:var(--shadow-pop);
   animation:up .28s cubic-bezier(.2,.9,.3,1);
   display:flex;flex-direction:column;min-height:0

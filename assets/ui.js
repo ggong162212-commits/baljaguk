@@ -84,15 +84,28 @@
          여백을 더하면 입력칸이 화면 밖으로 밀려난다.
          (「안드로이드에서 댓글 입력창이 이상해요」) */
       const gap = Math.max(0, innerHeight - vv.height - vv.offsetTop);
-      foot.style.transform = gap ? 'translateY(-' + gap + 'px)' : '';
+      /* ★ innerHeight 와 보이는 높이의 차이는 **키보드만이 아니다**.
+         아이폰 사파리는 아래 주소·도구 막대만으로도 100px 쯤 차이가 난다.
+         그걸 키보드로 알고 단추를 올리면, 글만 보는 시트인데도
+         단추가 화면 한가운데로 떠올랐다 (「UI 오류」 사진).
+         그래서 ① 이 시트 안 입력칸에 커서가 있고 ② 차이가 키보드만큼
+         클 때만 올린다. */
+      const 커서 = document.activeElement;
+      const 치는중 = !!(커서 && ov.contains(커서) &&
+        /^(INPUT|TEXTAREA|SELECT)$/.test(커서.tagName) && !커서.disabled);
+      foot.style.transform = (치는중 && gap > 120) ? 'translateY(-' + gap + 'px)' : '';
     };
     vv.addEventListener('resize', fit);
     vv.addEventListener('scroll', fit);
+    /* 커서가 들어오고 나갈 때도 다시 잰다 */
+    ov.addEventListener('focusin', fit);
+    ov.addEventListener('focusout', () => setTimeout(fit, 60));
     ov.__fit = fit;
     /* 시트를 닫을 때 떼어낸다 — 안 떼면 닫힌 시트를 계속 붙잡는다 */
     ov.__unfit = () => {
       vv.removeEventListener('resize', fit);
       vv.removeEventListener('scroll', fit);
+      ov.removeEventListener('focusin', fit);
     };
     fit();
   }
