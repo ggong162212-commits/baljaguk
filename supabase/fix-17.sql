@@ -38,7 +38,7 @@ begin
   insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
   values (new.member_id, 'promoted', '자리가 났어요!',
           to_char(e.date, 'MM/DD') || '(' || dow || ') ' ||
-          coalesce(to_char(e.start_time, 'HH24:MI') || ' ', '') ||
+          coalesce(nullif(btrim(e.start_time), '') || ' ', '') ||
           coalesce(e.place, '') || ' 봉사에 신청됐어요. 못 가면 꼭 취소해 주세요',
           'me.html#tab=vol', 'promoted:' || e.id || ':' || new.member_id)
   on conflict (dedupe_key) do nothing;

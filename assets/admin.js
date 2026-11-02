@@ -6,6 +6,16 @@
     fmtDate, fmtDateTime, weekday, relTime, hyphenPhone, normSid, avatar, downloadCSV,
     debounce, toLocalInput, fromLocalInput } = UI;
 
+  /* 서버가 보낸 말을 운영진에게는 원문까지 보여 준다.
+     「찾지 못했어요」만으로는 무엇이 없다는 것인지 알 수 없어서,
+     운영진 화면에서만 상태 번호와 원문을 붙인다 (구성원 화면은 그대로). */
+  function sayErr(e, 기본) {
+    const m = (e && e.message) || 기본 || '저장하지 못했어요';
+    const st = e && e.status ? ' [' + e.status + ']' : '';
+    const raw = e && e.raw ? ' · ' + String(e.raw).slice(0, 160) : '';
+    return m + st + raw;
+  }
+
   /* 긴 글을 줄여 보여 준다 */
   const cut = (t, n) => {
     const x = String(t || '').replace(/\s+/g, ' ').trim();
@@ -1824,7 +1834,8 @@
         }
       ],
       done: async v => {
-        const row = await DB.events.create({
+        const mk = o => DB.events.create(o).catch(err => { throw new Error(sayErr(err, '봉사모임을 만들지 못했어요')); });
+        const row = await mk({
           title: autoTitle(v.date.date, v.place.name, null),
           date: v.date.date,
           start_time: v.date.time || null,
@@ -2035,7 +2046,7 @@
         F.day = patch.date;
         await reload();
         toast(okMsg, 'ok');
-      } catch (e) { toast(e.message || '저장하지 못했어요', 'err'); }
+      } catch (e) { toast(sayErr(e, '저장하지 못했어요'), 'err'); }
     }
 
     ov.querySelector('[data-save]').onclick = () =>

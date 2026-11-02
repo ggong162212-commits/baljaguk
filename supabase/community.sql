@@ -1752,7 +1752,7 @@ begin
           case extract(dow from new.date)::int
             when 0 then '일' when 1 then '월' when 2 then '화' when 3 then '수'
             when 4 then '목' when 5 then '금' else '토' end || ') ' ||
-          coalesce(to_char(new.start_time, 'HH24:MI') || ' ', '') ||
+          coalesce(nullif(btrim(new.start_time), '') || ' ', '') ||
           coalesce(new.place, '') ||
           case when new.capacity > 0 then ' · 선착순 ' || new.capacity || '명' else '' end,
           'me.html#tab=vol', 'vol:' || new.id)
@@ -1798,7 +1798,7 @@ begin
     insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
     values (r.member_id, 'before',
             '내일(' || dow || ') ' ||
-            coalesce(to_char(r.start_time, 'HH24:MI') || ' ', '') ||
+            coalesce(nullif(btrim(r.start_time), '') || ' ', '') ||
             coalesce(r.place, '') || ' 봉사예요',
             case when coalesce(btrim(r.note), '') <> ''
                  then '준비물: ' || r.note
@@ -1931,7 +1931,7 @@ begin
   insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
   values (new.member_id, 'promoted', '자리가 났어요!',
           to_char(e.date, 'MM/DD') || '(' || dow || ') ' ||
-          coalesce(to_char(e.start_time, 'HH24:MI') || ' ', '') ||
+          coalesce(nullif(btrim(e.start_time), '') || ' ', '') ||
           coalesce(e.place, '') || ' 봉사에 신청됐어요. 못 가면 꼭 취소해 주세요',
           'me.html#tab=vol', 'promoted:' || e.id || ':' || new.member_id)
   on conflict (dedupe_key) do nothing;
