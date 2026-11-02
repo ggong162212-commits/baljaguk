@@ -3916,7 +3916,11 @@
       '<span class="mut sm">' + esc(ph[1]) + '</span></div>' +
       '<div class="kv"><span class="k">낸 작품</span><span class="v">' + n + '개</span></div>' +
       (c.start_at ? '<div class="kv"><span class="k">시작</span><span class="v">' + esc(fmtDateTime(c.start_at)) + '</span></div>' : '') +
-      (c.end_at ? '<div class="kv"><span class="k">마감</span><span class="v">' + esc(fmtDateTime(c.end_at)) + '</span></div>' : '');
+      (c.end_at ? '<div class="kv"><span class="k">마감</span><span class="v">' + esc(fmtDateTime(c.end_at)) + '</span></div>' : '') +
+      '<div class="sp"></div>' +
+      '<button class="btn soft sm block" type="button" id="cList">📷 낸 작품 보기 (' + n + ')</button>' +
+      '<div class="mut sm" style="margin-top:8px">사진·영상·낸 사람을 운영진만 볼 수 있어요. ' +
+      '작품을 누르면 크게 봐요.</div>';
 
     /* ① 링크 — 다른 폼의 주소 칸과 같은 모양 */
     $('#contestLink').innerHTML =
@@ -3970,11 +3974,10 @@
       '<input class="input" type="number" min="1" max="10" id="cMax" value="' +
       (Number(c.max_entries) || 3) + '"></label>' +
       '<button class="btn primary block" type="button" id="cSave">저장하기</button>' +
-      '<div class="row" style="gap:8px;margin-top:8px">' +
-      '<button class="btn ghost grow" type="button" id="cList">낸 작품 보기 (' + n + ')</button>' +
       (c.start_at
-        ? '<button class="btn ghost" type="button" id="cHide">다시 숨기기</button>'
-        : '') + '</div></div>';
+        ? '<button class="btn ghost block" type="button" id="cHide" ' +
+          'style="margin-top:8px">다시 숨기기</button>'
+        : '') + '</div>';
 
     /* 링크 카드 손가락 잇기 */
     $('#cCopy').onclick = () => copy(url, '콘테스트 주소를 복사했어요');
@@ -4019,34 +4022,108 @@
     $('#cList').onclick = contestSheet;
   }
 
+  /* 낸 작품 보기 — 사진·영상까지 운영진이 여기서 바로 본다.
+     보관함 contest/ 아래는 낸 사람과 운영진만 열 수 있다 (contest.sql 「community read」).
+     사진 주소는 한 시간짜리 서명이라 열 때마다 새로 받는다. */
   async function contestSheet() {
     let rows = [];
     try { rows = await DB.contest.all() || []; }
     catch (e) { return toast(e.message || '불러오지 못했어요', 'err'); }
 
-    const one = (e) => {
+    /* 목록에는 사진 한 장(영상은 첫 그림)만 — 주소는 한 번에 묶어 받는다 */
+    const thumbPath = e => (e.media_kind === 'video' ? e.poster_path : e.media_path) || '';
+    let urls = {};
+    try { urls = await DB.community.photoUrls(rows.map(thumbPath)) || {}; }
+    catch (e) { urls = {}; }
+
+    const whereLine = (e) => {
       const pets = (e.pet_names || []).filter(Boolean);
-      return '<div style="padding:11px 12px;background:var(--surface-2);border-radius:13px;' +
+      return '📍 ' + esc(e.shelter || '-') +
+        (pets.length ? ' · 🐾 ' + esc(pets.join(', ')) : ' · 🐾 이름 모름');
+    };
+    const whoLine = (e) => esc(e.author || '') + ' · ' + fmtDateTime(e.created_at) +
+      (e.updated_at ? ' (고침)' : '');
+
+    const one = (e, i) => {
+      const u = urls[thumbPath(e)] || '';
+      const vid = e.media_kind === 'video';
+      return '<button type="button" data-ce="' + i + '" ' +
+        'style="display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:none;' +
+        'cursor:pointer;padding:11px 12px;background:var(--surface-2);border-radius:13px;' +
         'margin-bottom:8px">' +
-        '<div class="row between" style="gap:8px">' +
-        '<b class="sm">' + esc(e.title || '') + '</b>' +
-        '<span class="mut xs">' + (e.media_kind === 'video' ? '영상' : '사진') + '</span></div>' +
-        '<div class="mut xs" style="margin-top:4px">📍 ' + esc(e.shelter || '-') +
-        (pets.length ? ' · 🐾 ' + esc(pets.join(', ')) : ' · 🐾 이름 모름') + '</div>' +
-        '<div class="sm" style="margin-top:6px;line-height:1.6">' + esc(cut(e.body, 120)) + '</div>' +
-        '<div class="mut xs" style="margin-top:6px">' + esc(e.author || '') + ' · ' +
-        fmtDateTime(e.created_at) + (e.updated_at ? ' (고침)' : '') + '</div>' +
-        '</div>';
+        '<span style="flex:0 0 64px;width:64px;height:64px;border-radius:12px;overflow:hidden;' +
+        'background:#000;display:grid;place-items:center;font-size:22px;position:relative">' +
+        (u ? '<img alt="" src="' + esc(u) + '" style="width:100%;height:100%;object-fit:cover;display:block">'
+           : (vid ? '🎬' : '📷')) +
+        (vid && u ? '<span style="position:absolute;right:3px;bottom:1px;font-size:12px">🎬</span>' : '') +
+        '</span>' +
+        '<span style="flex:1;min-width:0">' +
+        '<b class="sm" style="display:block">' + esc(cut(e.title, 20)) + '</b>' +
+        '<span class="mut xs" style="display:block;margin-top:3px">' + whereLine(e) + '</span>' +
+        '<span class="mut xs" style="display:block;margin-top:3px">' + whoLine(e) + '</span>' +
+        '</span></button>';
     };
 
     const ov = sheet({
       title: '낸 작품 ' + rows.length + '개',
-      body: rows.length
-        ? rows.map(one).join('')
-        : '<p class="mut sm" style="margin:0">아직 낸 작품이 없어요.</p>',
-      foot: '<button class="btn ghost block" type="button" data-x>닫기</button>'
+      body: (rows.length
+        ? '<p class="mut sm" style="margin:0 0 10px">작품을 누르면 사진·영상을 크게 봐요.</p>' +
+          rows.map(one).join('')
+        : '<p class="mut sm" style="margin:0">아직 낸 작품이 없어요.</p>'),
+      foot: '<button class="btn ghost block" type="button" data-x>닫기</button>',
+      noFocus: true
     });
     const x = ov.querySelector('[data-x]');
     if (x) x.onclick = closeSheet;
+    ov.querySelectorAll('[data-ce]').forEach(b => b.onclick = () =>
+      contestOneSheet(rows, Number(b.dataset.ce)));
+  }
+
+  /* 작품 하나 크게 보기 — 시트는 겹치지 않으니 「목록으로」로 돌아온다 */
+  async function contestOneSheet(rows, i) {
+    const e = rows[i] || {};
+    const vid = e.media_kind === 'video';
+    const pets = (e.pet_names || []).filter(Boolean);
+    let u = '', poster = '';
+    try {
+      u = await DB.contest.mediaUrl(e.media_path);
+      if (vid && e.poster_path) poster = await DB.contest.mediaUrl(e.poster_path);
+    } catch (err) { u = ''; }
+
+    const media = !u
+      ? '<div class="mut sm">사진을 불러오지 못했어요. 잠시 뒤 다시 열어 주세요.</div>'
+      : (vid
+        ? '<video src="' + esc(u) + '"' + (poster ? ' poster="' + esc(poster) + '"' : '') +
+          ' controls playsinline preload="metadata" ' +
+          'style="width:100%;max-height:58vh;border-radius:14px;background:#000;display:block"></video>'
+        : '<img alt="' + esc(e.title || '') + '" src="' + esc(u) + '" ' +
+          'style="width:100%;max-height:58vh;object-fit:contain;border-radius:14px;' +
+          'background:#000;display:block">');
+
+    const ov = sheet({
+      title: esc(cut(e.title, 18)) || '작품',
+      body: media +
+        '<div class="mut xs" style="margin-top:10px">📍 ' + esc(e.shelter || '-') +
+        ' · 🐾 ' + (pets.length ? esc(pets.join(', ')) : '이름 모름') + '</div>' +
+        ((e.place || e.date)
+          ? '<div class="mut xs" style="margin-top:3px">봉사 ' + esc(e.place || '') +
+            (e.date ? ' · ' + fmtDate(e.date) : '') + '</div>'
+          : '') +
+        '<div class="sm" style="margin-top:10px;line-height:1.7;white-space:pre-wrap">' +
+        esc(e.body || '') + '</div>' +
+        '<div class="mut xs" style="margin-top:10px">' + esc(e.author || '') + ' · ' +
+        fmtDateTime(e.created_at) + (e.updated_at ? ' (고침)' : '') +
+        ' · ' + (i + 1) + '/' + rows.length + '</div>',
+      foot: '<div class="row" style="gap:8px">' +
+        '<button class="btn ghost grow" type="button" data-back>목록으로</button>' +
+        (rows.length > 1
+          ? '<button class="btn soft grow" type="button" data-next>다음 작품</button>'
+          : '') + '</div>',
+      noFocus: true
+    });
+    const bk = ov.querySelector('[data-back]');
+    if (bk) bk.onclick = contestSheet;
+    const nx = ov.querySelector('[data-next]');
+    if (nx) nx.onclick = () => contestOneSheet(rows, (i + 1) % rows.length);
   }
 })();
