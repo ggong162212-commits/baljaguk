@@ -1814,9 +1814,11 @@ begin
       from events e join attendance a on a.event_id = e.id
      where e.date = (now() at time zone 'Asia/Seoul')::date
        and (now() at time zone 'Asia/Seoul')::time >=
-           case when e.start_time is null or e.start_time < time '12:00'
+           /* start_time 은 글자 칸('10:00')이다 — time 과 바로 견주면 터진다 */
+           case when coalesce(btrim(e.start_time), '') !~ '^[0-9]{1,2}:[0-9]{2}$'
+                     or btrim(e.start_time) < '12:00'
                 then time '13:00'
-                else e.start_time + interval '3 hours' end
+                else (btrim(e.start_time)::time + interval '3 hours')::time end
   loop
     insert into push_outbox (member_id, kind, title, body, url, dedupe_key)
     values (r.member_id, 'thanks', '오늘 와줘서 고맙다멍!',

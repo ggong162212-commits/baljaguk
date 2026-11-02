@@ -61,9 +61,39 @@ begin
     end if;
   end loop;
 
+  /* ----------------------------------------------------------
+     push_tick() 에는 한 군데가 더 있다 — 「봉사 당일 감사」 알림에서
+       case when e.start_time is null or e.start_time < time '12:00' …
+     로 글자 칸을 time 과 견준다 (operator does not exist: text < time).
+     그래서 5분마다 도는 알림이 통째로 멈춘다.
+     ---------------------------------------------------------- */
+  select pg_get_functiondef(p.oid) into src
+    from pg_proc p
+   where p.proname = 'push_tick' and p.pronamespace = 'public'::regnamespace
+   limit 1;
+  src := replace(src, chr(13) || chr(10), chr(10));
+
+  if position($chk$!~ '^[0-9]{1,2}:[0-9]{2}$'$chk$ in src) > 0 then
+    raise notice '   push_tick() 당일 조건 — 이미 고쳐져 있어요';
+  else
+    fixed := regexp_replace(
+      src,
+      $re$case\s+when\s+e\.start_time\s+is\s+null\s+or\s+e\.start_time\s*<\s*time\s*'12:00'\s*then\s+time\s*'13:00'\s*else\s+e\.start_time\s*\+\s*interval\s*'3 hours'\s+end$re$,
+      $rp$case when coalesce(btrim(e.start_time), '') !~ '^[0-9]{1,2}:[0-9]{2}$' or btrim(e.start_time) < '12:00' then time '13:00' else (btrim(e.start_time)::time + interval '3 hours')::time end$rp$,
+      'g');
+
+    if fixed = src then
+      raise exception 'push_tick() 안에서 「봉사 당일」 조건을 못 찾았어요 — 본문이 달라요. 아무것도 고치지 않고 멈췄어요';
+    end if;
+
+    execute fixed;
+    n := n + 1;
+    raise notice '   push_tick() 당일 조건 — 글자 시각을 바르게 견주도록 고쳤어요';
+  end if;
+
   if n = 0 then
     raise notice 'fix-25 — 바꾼 것이 없어요 (이미 다 고쳐져 있어요)';
   else
-    raise notice 'fix-25 — %개 함수를 고쳤어요. 이제 봉사모임을 만들 수 있어요', n;
+    raise notice 'fix-25 — %군데를 고쳤어요. 이제 봉사모임을 만들 수 있어요', n;
   end if;
 end $outer$;
