@@ -332,11 +332,17 @@
     '.ct-vote{border-radius:var(--r-md);padding:16px;background:var(--surface-2);text-align:center;font-size:14px;line-height:1.6;word-break:keep-all}' +
     '.ct-vote .big{font-size:30px}' +
     /* 내기 시트 */
-    '.ct-pick{position:relative;display:grid;place-items:center;width:100%;min-height:150px;border-radius:16px;border:2px dashed var(--line);' +
+    '.ct-shel{display:flex;flex-wrap:wrap;gap:8px;padding:2px 0 2px}' +
+    /* 작품 내기 폼 — 한 화면에 다 들어오게 칸 사이를 좁힌다 */
+    '.ct-form .field{margin-bottom:11px}' +
+    '.ct-form .field .lb{margin-bottom:5px}' +
+    /* 설명 칸은 짧게 시작하고 쓰는 대로 늘어난다 (ui.js initGrow) */
+    '.ct-form textarea.input{min-height:74px}' +
+    '.ct-pick{position:relative;display:grid;place-items:center;width:100%;min-height:118px;border-radius:16px;border:2px dashed var(--line);' +
     'background:var(--surface-2);color:var(--ink-2);cursor:pointer;overflow:hidden;padding:0;font-family:inherit}' +
     '.ct-pick.has{border-style:solid;border-color:transparent;background:#000}' +
     '.ct-pick img{width:100%;max-height:260px;object-fit:contain;display:block}' +
-    '.ct-pick .idle{display:grid;gap:4px;justify-items:center;padding:20px;font-size:14px;font-weight:700}' +
+    '.ct-pick .idle{display:grid;gap:4px;justify-items:center;padding:14px;font-size:14px;font-weight:700}' +
     '.ct-pick .idle .svg,.ct-pick .idle svg{width:30px;height:30px}' +
     '.ct-pick .idle .mut{font-size:12px;font-weight:500;color:var(--ink-3)}' +
     '.ct-pick .vid{color:#fff;font-size:15px;font-weight:700;padding:30px}' +
@@ -514,7 +520,7 @@
     const steps = '<div class="section-title">' + ic('clipboard') + '<span>참여 방법</span></div>' +
       '<div class="ct-steps">' +
       step(1, '<b>봉사에서 찍은 사진 1장</b>이나 <b>영상 1개</b>를 골라요', '영상은 ' + VIDEO_MAX_SEC + '초 · ' + VIDEO_MAX_MB + 'MB 이하') +
-      step(2, '<b>제목</b>·<b>설명</b>을 쓰고 <b>봉사지</b>를 고르고 <b>아이 이름</b>을 적어요', '제목 ' + TITLE_MAX + '자 · 설명 ' + BODY_MAX + '자까지 · 봉사지는 고르기만 하면 돼요 · 아이가 여럿이면 쉼표로') +
+      step(2, '<b>제목</b>·<b>설명</b>을 쓰고 <b>봉사지</b>와 <b>아이 이름</b>을 적어요', '봉사지는 고르기만 하면 돼요') +
       step(3, '한 사람 <b>' + max + '작품</b>까지, 마감 전엔 고치고 지울 수 있어요', '마감 뒤 익명 투표로 상을 정해요') +
       '</div>';
 
@@ -543,9 +549,11 @@
 
     const slots = [];
     mine.forEach(x => slots.push(entryRow(x, canEdit)));
-    if (canEdit) for (let n = mine.length; n < max; n++) {
+    /* 빈 자리는 **하나만** 보여 준다 — 셋을 늘어놓으면 화면만 길어진다 */
+    if (canEdit && mine.length < max) {
       slots.push('<button class="ct-empty" type="button" data-ctnew>' + ic('plus') +
-        (n === 0 ? '첫 작품을 내 보세요' : '한 장 더 낼 수 있어요') + '</button>');
+        (mine.length === 0 ? '첫 작품을 내 보세요'
+          : '한 장 더 낼 수 있어요 (' + (max - mine.length) + '자리 남음)') + '</button>');
     }
     const mineBox = '<div class="section-title">' + ic('image') + '<span>내 작품</span>' +
       '<span class="mut xs" style="margin-left:auto;font-family:var(--font-body);font-weight:700">' + mine.length + ' / ' + max + '</span></div>' +
@@ -666,23 +674,27 @@
           ? '<div class="ct-pre" style="margin:0 0 12px">📝 <b>미리보기예요</b> · ' +
             '낸 작품은 저장되지 않아요. 눌러 보고 적어 봐도 아무것도 올라가지 않아요.</div>'
           : '') +
+        '<div class="ct-form">' +
         '<button class="ct-pick" type="button" data-ctpick aria-label="사진이나 영상 고르기"></button>' +
         '<input type="file" data-ctfile accept="image/*,video/mp4,video/quicktime" hidden>' +
-        '<p class="mut xs" style="margin:6px 2px 14px">사진 1장 또는 영상 1개 (' + VIDEO_MAX_SEC + '초·' + VIDEO_MAX_MB + 'MB 이하)</p>' +
+        '<p class="mut xs" style="margin:6px 2px 14px">사진 1장 또는 영상 1개 · 영상은 ' +
+        VIDEO_MAX_SEC + '초 · ' + VIDEO_MAX_MB + 'MB까지</p>' +
         '<label class="field"><span class="lb">제목 <span class="req">*</span><span class="ct-cnt" data-ctc="t"></span></span>' +
         '<input class="input" data-ctt maxlength="' + (TITLE_MAX * 2) + '" placeholder="예) 산책 첫날 웃는 봄이" autocomplete="off" enterkeyhint="next"></label>' +
         '<label class="field"><span class="lb">설명 <span class="req">*</span><span class="ct-cnt" data-ctc="b"></span></span>' +
-        '<textarea class="input" data-ctb rows="4" maxlength="' + (BODY_MAX * 2) + '" placeholder="어떤 순간이었는지 자랑해 주세요"></textarea></label>' +
+        '<textarea class="input" data-ctb rows="2" maxlength="' + (BODY_MAX * 2) + '" placeholder="어떤 순간이었는지 자랑해 주세요"></textarea></label>' +
         /* 봉사지 — 설정에 적힌 보호소 중 **하나만** 고른다 (직접 적기 없음) */
         '<div class="field"><span class="lb">어느 봉사지에서? <span class="req">*</span></span>' +
-        '<div class="chips" data-ctshel></div></div>' +
+        '<div class="ct-shel" data-ctshel></div></div>' +
         /* 아이 이름 — 칸 하나. 칩·더하기·「이름을 몰라요」 는 없앴다 (너무 번거로웠다) */
         '<label class="field"><span class="lb">사진·영상 속 아이 이름 <span class="req">*</span>' +
         '<span class="ct-cnt" data-ctc="p"></span></span>' +
         '<input class="input" data-ctpet maxlength="' + PET_FIELD_MAX + '" ' +
         'placeholder="예) 열무 · 여럿이면 쉼표로" autocomplete="off" enterkeyhint="done" ' +
         'aria-label="아이 이름"></label>' +
-        (edit ? '<button class="btn danger block" type="button" data-ctdel style="margin-top:4px">' + ic('trash') + ' 이 작품 지우기</button>' : ''),
+        (edit ? '<button class="btn danger block" type="button" data-ctdel style="margin-top:4px">' + ic('trash') + ' 이 작품 지우기</button>' : '') +
+        /* 맨 아래 칸이 고정된 「작품 내기」 단추에 가리지 않게 */
+        '<div style="height:10px"></div></div>',
       foot: preview
         ? '<button class="btn soft lg" type="button" disabled>미리보기라 낼 수 없어요</button>'
         : '<button class="btn primary lg" type="button" data-ctsave>' + (edit ? '고친 것 저장' : '작품 내기') + '</button>'
@@ -695,7 +707,8 @@
     const count = () => {
       [[t, 't', TITLE_MAX], [b, 'b', BODY_MAX]].forEach(([el, k, mx]) => {
         const n = chars(el.value), c = q('[data-ctc="' + k + '"]');
-        c.textContent = n + ' / ' + mx; c.classList.toggle('over', n > mx);
+        c.textContent = n ? n + ' / ' + mx : '';
+        c.classList.toggle('over', n > mx);
       });
     };
     t.addEventListener('input', count); b.addEventListener('input', count); count();
@@ -704,8 +717,7 @@
       const kind = media ? media.kind : (edit ? e.media_kind : null);
       if (!kind) {
         pick.classList.remove('has');
-        pick.innerHTML = '<span class="idle">' + ic('image') + '<span>눌러서 사진·영상 고르기</span>' +
-          '<span class="mut">사진은 크게(긴 변 ' + PHOTO_SIDE + 'px) 올려요</span></span>';
+        pick.innerHTML = '<span class="idle">' + ic('image') + '<span>눌러서 사진·영상 고르기</span></span>';
         return;
       }
       pick.classList.add('has');
@@ -760,7 +772,7 @@
     if (edit) petIn.value = cleanNames(e.pet_names).join(', ');
     const petCount = () => {
       const n = chars(petIn.value), c = q('[data-ctc="p"]');
-      c.textContent = n + ' / ' + PET_FIELD_MAX;
+      c.textContent = n ? n + ' / ' + PET_FIELD_MAX : '';
       c.classList.toggle('over', n > PET_FIELD_MAX);
     };
     petIn.addEventListener('input', petCount); petCount();
