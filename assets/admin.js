@@ -3532,11 +3532,69 @@
     return Math.round(n / 1024) + 'KB';
   };
 
+  /* 몇 분·몇 시간 전인지 */
+  function agoText(iso) {
+    const t = Date.parse(iso || '');
+    if (!t) return '';
+    const m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return '방금';
+    if (m < 60) return m + '분 전';
+    const h = Math.round(m / 60);
+    if (h < 24) return h + '시간 전';
+    return Math.round(h / 24) + '일 전';
+  }
+
+  /* 알림이 나가고 있나 — 안 나가면 바로 눈에 띄게.
+     push_tick 이 터져서 봉사 알림이 몇 주 동안 안 나갔는데
+     화면에 표시가 없어 아무도 몰랐던 일을 다시 겪지 않으려고 둔다. */
+  function pushBlock(ph) {
+    const head = '<div class="divider"></div>' +
+      '<div class="lb" style="margin-bottom:8px">알림</div>';
+
+    if (!ph) {
+      return head + '<div class="kv"><span class="k">상태</span>' +
+        '<span class="v mut">알 수 없어요</span></div>' +
+        '<p class="mut xs" style="margin-top:6px">' +
+        '알림 기록을 읽지 못했어요. 로그인이 풀렸는지 확인해 주세요.</p>';
+    }
+    if (ph.demo) {
+      return head + '<div class="kv"><span class="k">상태</span>' +
+        '<span class="v mut">체험 모드 — 실제로는 안 보내요</span></div>';
+    }
+
+    const wait = Number(ph.waiting) || 0;
+    const old = ph.oldest_at ? Date.parse(ph.oldest_at) : 0;
+    /* 1분마다 보내므로, 안 보낸 게 30분 넘게 묵어 있으면 막힌 것이다 */
+    const stuckMin = old ? Math.round((Date.now() - old) / 60000) : 0;
+    const stuck = wait > 0 && stuckMin >= 30;
+
+    return head +
+      '<div class="kv"><span class="k">마지막으로 보낸 때</span><span class="v">' +
+      (ph.last_sent_at ? esc(agoText(ph.last_sent_at)) : '없어요') + '</span></div>' +
+      '<div class="kv"><span class="k">하루 동안 보냄</span><span class="v">' +
+      num(ph.sent_day) + (ph.sent_day_capped ? '건 넘음' : '건') + '</span></div>' +
+      '<div class="kv"><span class="k">아직 안 보냄</span><span class="v">' +
+      num(wait) + (ph.waiting_capped ? '건 넘음' : '건') +
+      (wait && stuckMin ? ' · 가장 오래된 것 ' + esc(agoText(ph.oldest_at)) : '') +
+      '</span></div>' +
+      (stuck
+        ? '<p class="pill-note warn" style="margin-top:10px;line-height:1.65">' +
+          '<b>알림이 ' + stuckMin + '분째 안 나가고 있어요.</b><br>' +
+          '보내는 일(baljaguk_send)이 멈췄거나 알림 키가 바뀐 걸 수 있어요. ' +
+          'Supabase 에서 cron.job 과 Edge Function 기록을 봐 주세요.</p>'
+        : '') +
+      (!wait && !ph.last_sent_at
+        ? '<p class="mut xs" style="margin-top:6px">보낸 기록이 없어요. 아직 한 번도 안 나갔을 수 있어요.</p>'
+        : '');
+  }
+
   async function paintUsage() {
     const box = $('#usageBox');
     if (!box) return;
-    let u = null;
+    let u = null, ph = null;
     try { u = await DB.usageStats(); } catch (e) { }
+    /* 알림 상태는 따로 — 못 읽어도 나머지 화면은 그대로 나온다 */
+    try { ph = DB.pushHealth ? await DB.pushHealth() : null; } catch (e) { }
     if (!u) { box.innerHTML = '<div class="mut sm">불러오지 못했어요</div>'; return; }
 
     const pct = Math.min(100, Math.round((Number(u.bytes) || 0) / FREE.storage * 100));
@@ -3555,6 +3613,8 @@
       num(u.reviews_week) + '개</span></div>' +
       '<div class="kv"><span class="k">이번 주 댓글</span><span class="v">' +
       num(u.comments_week) + '개</span></div>' +
+
+      pushBlock(ph) +
 
       '<div class="divider"></div>' +
       '<div class="lb" style="margin-bottom:8px">저장 공간 (사진·영상)</div>' +
@@ -3686,6 +3746,19 @@
 
   function renderSettings() {
     const s = S.settings;
+    /* ★ 동아리 정보가 아직 안 왔을 때 톱니를 누르면 여기서 터지면서
+       설정 화면이 통째로 흰 화면이 됐다 (느린 연결·조회 실패).
+       그때는 안내만 띄우고, 들어오는 대로 다시 그린다. */
+    if (!s) {
+      $('#settingsPanel').innerHTML =
+        '<div class="card center" style="padding:26px 20px">' +
+        '<div class="mut sm">동아리 정보를 불러오는 중이에요…</div>' +
+        '<button class="btn ghost sm" type="button" id="setRetry" ' +
+        'style="margin-top:12px">다시 불러오기</button></div>';
+      const rb = $('#setRetry');
+      if (rb) rb.onclick = () => location.reload();
+      return;
+    }
     $('#settingsPanel').innerHTML =
       /* 할 일이 0이면 할 일 카드가 숨어서 지난 의견·신고를 볼 곳이 없었다 */
       '<div class="card"><h3>받은 것들</h3>' +

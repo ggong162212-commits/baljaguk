@@ -22,6 +22,9 @@ const FILES = [
   'assets/community.js', 'assets/admin.js', 'assets/me.js', 'assets/volunteer.js',
   'assets/fund.js', 'assets/survey.js', 'assets/public.js', 'assets/id1365.js',
   'assets/ui.js', 'assets/db.js', 'assets/push.js', 'assets/moved.js',
+  /* ★ 아래는 빠져 있었다 — 가장 새로 쓴 contest.js 가 검사 밖에 있었다 */
+  'assets/contest.js', 'assets/story.js', 'assets/praise.js', 'assets/pastvol.js',
+  'assets/volwho.js', 'assets/fame.js', 'assets/avatarview.js', 'assets/theme.js',
 ];
 
 /* 브라우저가 이미 갖고 있는 것들 — 우리가 만들지 않는다 */
@@ -139,10 +142,42 @@ function definedNames(code) {
 
 /* db.js 를 실제로 읽어 DB 의 생김새를 얻는다 */
 function loadDB() {
+  /* ★ 흉내만 내던 window 에 addEventListener 가 없어서 db.js 가 읽히는 중에
+     터졌고, 그러면 아래 「DB.… 경로」 검사가 통째로 건너뛰어졌다.
+     「없는 것을 부르는 곳 0곳」 이 거짓 안심이 된다.
+     그래서 db.js 가 읽히는 데 필요한 만큼은 갖춰 준다. */
+  const noop = () => { };
+  const el = () => ({
+    addEventListener: noop, removeEventListener: noop, appendChild: noop,
+    setAttribute: noop, style: {}, dataset: {}, children: [], remove: noop,
+    classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
+    querySelector: () => null, querySelectorAll: () => []
+  });
+  const doc = {
+    addEventListener: noop, removeEventListener: noop,
+    createElement: el, head: el(), body: el(), documentElement: el(),
+    querySelector: () => null, querySelectorAll: () => [], getElementById: () => null,
+    visibilityState: 'visible', cookie: ''
+  };
   const g = {
-    window: {}, document: {}, navigator: { userAgent: '' },
-    localStorage: { getItem: () => null, setItem: () => { }, removeItem: () => { } },
-    fetch: () => { }, CONFIG: {},
+    window: {
+      addEventListener: noop, removeEventListener: noop, document: doc,
+      location: { href: '', search: '', hash: '', origin: '' },
+      setTimeout: setTimeout, clearTimeout: clearTimeout,
+      setInterval: () => 0, clearInterval: noop,
+      matchMedia: () => ({ matches: false, addEventListener: noop, addListener: noop }),
+      crypto: { getRandomValues: a => a, randomUUID: () => 'x' },
+      Image: function () { return el(); },
+      visualViewport: { addEventListener: noop, removeEventListener: noop, height: 800, offsetTop: 0 },
+      innerHeight: 800, innerWidth: 400, CONFIG: {}
+    },
+    document: doc,
+    navigator: { userAgent: '', onLine: true, serviceWorker: { addEventListener: noop, ready: Promise.resolve({}) } },
+    localStorage: { getItem: () => null, setItem: noop, removeItem: noop, key: () => null, length: 0 },
+    sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
+    location: { href: '', search: '', hash: '', origin: '' },
+    fetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }),
+    CONFIG: {},
   };
   const saved = {};
   for (const k of Object.keys(g)) { saved[k] = global[k]; global[k] = g[k]; }
@@ -150,7 +185,10 @@ function loadDB() {
     delete require.cache[require.resolve(path.join(ROOT, 'assets/db.js'))];
     require(path.join(ROOT, 'assets/db.js'));
   } catch (e) {
-    console.log('  (db.js 를 읽지 못했어요: ' + e.message.slice(0, 60) + ')');
+    /* ★ 조용히 넘어가면 아래 검사가 건너뛰어져 「0곳」 이라고 안심시킨다 */
+    console.log('  ✗ db.js 를 읽지 못했어요: ' + e.message);
+    console.log('     → 「DB.… 경로」 검사를 할 수 없어요. 위 흉내 환경을 손봐 주세요.');
+    process.exit(1);
   }
   const DB = g.window.DB;
   for (const k of Object.keys(saved)) { if (saved[k] === undefined) delete global[k]; else global[k] = saved[k]; }
@@ -158,6 +196,10 @@ function loadDB() {
 }
 
 const DB = loadDB();
+if (!DB) {
+  console.log('  ✗ db.js 는 읽혔는데 window.DB 가 비어 있어요 — 검사를 할 수 없어요.');
+  process.exit(1);
+}
 const dig = (o, p) => p.split('.').reduce((a, k) => (a == null ? a : a[k]), o);
 
 /* UI 가 내보내는 이름 */

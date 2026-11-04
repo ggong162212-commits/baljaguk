@@ -1560,6 +1560,38 @@
     return await rest('rpc/push_who', { method: 'POST', body: {} }) || [];
   };
 
+  /* 알림이 실제로 나가고 있나 — 운영진만 (push_outbox 는 운영진만 읽힌다).
+     ★ 왜 두는가:
+       알림을 쌓는 push_tick 이 글자 시각을 time 처럼 다뤄서 돌 때마다 터졌고
+       (fix-25), 그동안 봉사 전날·당일 알림이 하나도 안 나갔다. 그런데
+       화면 어디에도 표시가 없어서 몇 주 동안 아무도 몰랐다.
+       그래서 「안 보낸 게 몇 건이고 마지막으로 보낸 게 언제인지」를
+       운영진 화면에 그냥 보이게 둔다. 새 SQL 은 필요 없다. */
+  DB.pushHealth = async function () {
+    const CAP = 200;
+    if (!HAS_SB) {
+      /* 체험 모드는 보낼 곳이 없다 — 「체험」 으로만 알린다 */
+      return { demo: true, waiting: 0, oldest_at: null, sent_day: 0, last_sent_at: null };
+    }
+    const q = s => rest('push_outbox?' + s).catch(() => null);
+    const since = new Date(Date.now() - 86400000).toISOString();
+    const [wait, last, day] = await Promise.all([
+      q('select=created_at&sent_at=is.null&order=created_at.asc&limit=' + CAP),
+      q('select=sent_at&sent_at=not.is.null&order=sent_at.desc&limit=1'),
+      q('select=id&sent_at=gte.' + encodeURIComponent(since) + '&limit=' + CAP)
+    ]);
+    /* 하나도 못 읽었으면 「모름」 — 0 건이라고 안심시키지 않는다 */
+    if (!wait && !last && !day) return null;
+    return {
+      waiting: (wait || []).length,
+      waiting_capped: (wait || []).length >= CAP,
+      oldest_at: (wait && wait[0] && wait[0].created_at) || null,
+      last_sent_at: (last && last[0] && last[0].sent_at) || null,
+      sent_day: (day || []).length,
+      sent_day_capped: (day || []).length >= CAP
+    };
+  };
+
   DB.adminTodo = async function () {
     if (!HAS_SB) {
       const d = cdemo();
