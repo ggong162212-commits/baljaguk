@@ -1132,6 +1132,13 @@ window.Community = (function () {
           '<button class="btn primary" type="button" data-retry>다시 시도</button></div></div>';
         const rb = $('#list').querySelector('[data-retry]');
         if (rb) rb.onclick = () => renderHome(true);
+      } else {
+        /* ★ 「더 보기」 를 누른 길.
+           예전에는 여기서 아무것도 안 하고 돌아갔다. 그래서 그 단추가
+           「불러오는 중…」 에 눌린 채로 **영영 죽어 있었다** —
+           새로고침하기 전에는 다음 글을 볼 길이 없었다. */
+        toast('잠깐 연결이 엉켰어요. 다시 눌러 주세요', 'err');
+        paintMoreButton();
       }
       return;
     }
@@ -2995,16 +3002,21 @@ window.Community = (function () {
       title: '좋아요 누른 사람',
       body: '<div id="whoList" class="mut sm">불러오는 중…</div>'
     });
-    let names = [];
+    /* ★ 못 불러온 것과 「정말 아무도 없는 것」 은 다르다.
+       예전에는 조회가 터져도 「아직 아무도 없어요」 라고 해서,
+       하트가 열 개 찍힌 글에서도 아무도 없다고 나왔다. */
+    let names = [], 못불러옴 = false;
     try { names = await DB.community.reactionWho(id, 'heart') || []; }
-    catch (e) { console.warn('[발자국] 누른 사람을 못 받아왔어요:', e); }
+    catch (e) { 못불러옴 = true; console.warn('[발자국] 누른 사람을 못 받아왔어요:', e); }
     ov.querySelector('#whoList').innerHTML = names.length
       ? '<div class="faces2">' + names.map(x => {
           const who2 = (typeof x === 'string') ? { name: x } : x;
           return '<span class="face">' + avatar(who2) +
             '<span class="sm">' + esc(who2.name) + '</span></span>';
         }).join('') + '</div>'
-      : '<div class="mut sm">아직 아무도 없어요</div>';
+      : (못불러옴
+        ? '<div class="mut sm">불러오지 못했어요</div>'
+        : '<div class="mut sm">아직 아무도 없어요</div>');
     loadAvatars(ov);
   }
 
@@ -3320,10 +3332,15 @@ window.Community = (function () {
       const r = await DB.community.feed({ limit: 50 });
       rows = (r && r.rows || []).filter(p =>
         (p.animals || []).some(a => String(a.id) === String(id)));
-    } catch (e) { }
+    } catch (e) { rows = null; }
 
     const box = ov.querySelector('#anBox');
     if (!box) return;
+    /* ★ 못 불러온 것과 「정말 후기가 없는 것」 은 다르다 */
+    if (rows === null) {
+      box.innerHTML = '<div class="mut sm">후기를 불러오지 못했어요</div>';
+      return;
+    }
     if (!rows.length) {
       box.innerHTML = '<div class="mut sm">아직 이 친구가 나온 후기가 없어요</div>';
       return;

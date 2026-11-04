@@ -709,10 +709,23 @@
   /* 신고 목록 — 운영진만 본다 */
   async function reportsSheet() {
     const ov = sheet({ title: '신고', body: '<div id="rpList" class="mut sm">불러오는 중…</div>' });
-    let list = [];
-    try { list = await DB.reportsOpen(); } catch (e) { }
+    /* ★ 못 불러온 것을 「신고가 없어요」 라고 하면 안 된다.
+       신고가 쌓여 있는데 없다고 보이면 그냥 지나친다. */
+    let list = null;
+    try { list = (await DB.reportsOpen()) || []; }
+    catch (e) { console.warn('[발자국] 신고를 못 받아왔어요:', e); }
     const box = ov.querySelector('#rpList');
     if (!box) return;
+    if (list === null) {
+      box.innerHTML = '<div class="card center" style="padding:22px 18px">' +
+        '<div class="sm">신고를 불러오지 못했어요</div>' +
+        '<button class="btn soft sm" type="button" id="rpRetry" ' +
+        'style="margin-top:10px">다시 시도</button></div>';
+      const rr = box.querySelector('#rpRetry');
+      if (rr) rr.onclick = () => { closeSheet(); reportsSheet(); };
+      toast('신고를 불러오지 못했어요', 'err');
+      return;
+    }
     if (!list.length) {
       box.innerHTML = '<div class="mut sm">처리할 신고가 없어요</div>';
       return;
@@ -3654,8 +3667,11 @@
 
   /* ── 오래된 영상부터 정리 — 영상만 지우고 글은 남는다 */
   async function oldVideoSheet() {
-    let list = [];
-    try { list = (await DB.oldVideos(20)) || []; } catch (e) { }
+    /* ★ 못 불러온 것과 「정말 없는 것」 을 가려 말한다 */
+    let list = null;
+    try { list = (await DB.oldVideos(20)) || []; }
+    catch (e) { console.warn('[발자국] 영상 목록을 못 받아왔어요:', e); }
+    if (list === null) return toast('영상 목록을 불러오지 못했어요', 'err');
     if (!list.length) return toast('정리할 영상이 없어요', 'ok');
 
     const mb2 = n => (Number(n) || 0) >= 1048576

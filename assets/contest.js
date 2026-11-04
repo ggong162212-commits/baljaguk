@@ -467,8 +467,13 @@
   async function render() {
     const my = ++seq;
     const st = await load();
-    let mine = [];
-    if (st.phase !== 'hidden' || st.admin) { try { mine = (await api().mine()) || []; } catch (e) { } }
+    let mine = [], mineFail = false;
+    if (st.phase !== 'hidden' || st.admin) {
+      /* ★ 못 불러왔는데 빈 목록으로 두면, 세 작품을 이미 낸 사람에게도
+         「첫 작품을 내 보세요」 가 보인다. 가려서 말한다. */
+      try { mine = (await api().mine()) || []; }
+      catch (e) { mineFail = true; console.warn('[발자국] 내 작품을 못 받아왔어요:', e); }
+    }
     if (my !== seq || !ROOT) return;
     PHASE = st.phase;
     const i = st.info || { end_at: DEFAULT_END, max_entries: MAX_ENTRIES, entry_count: 0 };
@@ -532,7 +537,8 @@
       : '';
 
     const left = Math.max(0, max - mine.length);
-    const cta = st.phase === 'open'
+    const cta = mineFail ? ''
+      : st.phase === 'open'
       ? (left
         ? '<button class="btn primary block lg" type="button" data-ctnew style="margin-top:18px">' + ic('plus') + ' 내 작품 내기</button>'
         : '<div class="pill-note" style="margin-top:18px">' + max + '작품을 다 냈어요. 마감 전까지 고치기만 할 수 있어요.</div>')
@@ -548,18 +554,23 @@
         : '');
 
     const slots = [];
-    mine.forEach(x => slots.push(entryRow(x, canEdit)));
+    if (!mineFail) mine.forEach(x => slots.push(entryRow(x, canEdit)));
     /* 빈 자리는 **하나만** 보여 준다 — 셋을 늘어놓으면 화면만 길어진다 */
-    if (canEdit && mine.length < max) {
+    if (!mineFail && canEdit && mine.length < max) {
       slots.push('<button class="ct-empty" type="button" data-ctnew>' + ic('plus') +
         (mine.length === 0 ? '첫 작품을 내 보세요'
           : '한 장 더 낼 수 있어요 (' + (max - mine.length) + '자리 남음)') + '</button>');
     }
     const mineBox = '<div class="section-title">' + ic('image') + '<span>내 작품</span>' +
-      '<span class="mut xs" style="margin-left:auto;font-family:var(--font-body);font-weight:700">' + mine.length + ' / ' + max + '</span></div>' +
-      (slots.length ? '<div class="ct-mine">' + slots.join('') + '</div>'
-        : '<div class="ct-empty" style="cursor:default" role="note">' +
-          (st.phase === 'closed' ? '낸 작품이 없어요' : '아직 낸 작품이 없어요') + '</div>') +
+      '<span class="mut xs" style="margin-left:auto;font-family:var(--font-body);font-weight:700">' +
+      (mineFail ? '— / ' + max : mine.length + ' / ' + max) + '</span></div>' +
+      (mineFail
+        ? '<div class="ct-empty" style="cursor:default" role="note">내 작품을 불러오지 못했어요' +
+          '<button class="btn soft sm" type="button" data-ctretry ' +
+          'style="display:block;margin-top:10px">다시 시도</button></div>'
+        : slots.length ? '<div class="ct-mine">' + slots.join('') + '</div>'
+          : '<div class="ct-empty" style="cursor:default" role="note">' +
+            (st.phase === 'closed' ? '낸 작품이 없어요' : '아직 낸 작품이 없어요') + '</div>') +
       '<p class="ct-note">🔒 작품은 투표 전까지 <b>나와 운영진만</b> 볼 수 있어요. 다른 사람에게는 도착한 작품 수만 보여요.</p>';
 
     ROOT.innerHTML = back + pre + hero + cta + vote + mineBox + prizes + steps +
@@ -623,6 +634,8 @@
     const b = ROOT.querySelector('[data-ctback]');
     if (b) b.onclick = () => OPTS.onBack();
     $$('[data-ctnew]').forEach(x => x.onclick = () => form(null));
+    /* 내 작품을 못 불러왔을 때의 「다시 시도」 */
+    $$('[data-ctretry]').forEach(x => x.onclick = () => render());
     /* 시작 전 — 운영진 폼 미리보기 (저장하는 길이 없는 폼) */
     $$('[data-ctpreview]').forEach(x => x.onclick = () => form(null, true));
     $$('[data-ctopen]').forEach(x => x.onclick = () => {

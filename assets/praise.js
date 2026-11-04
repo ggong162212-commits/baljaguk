@@ -128,19 +128,33 @@
       after: r => {
         const q = r.querySelector('#prQ'), list = r.querySelector('#prList');
         let seq = 0, rows = [];
+        /* ★ 못 불러온 것과 「정말 없는 것」 은 다르다.
+           예전에는 조회가 터져도 「찾는 이름이 없어요」 라고 해서,
+           이름을 아무리 바르게 적어도 없다고만 나왔다. */
+        let 못불러옴 = false;
         const draw = () => {
           list.innerHTML = rows.length ? rows.map(rowHtml).join('')
-            : '<div class="mut sm" style="padding:10px 4px">찾는 이름이 없어요</div>';
+            : (못불러옴
+              ? '<div class="mut sm" style="padding:10px 4px">이름을 불러오지 못했어요' +
+                '<button class="btn soft sm" type="button" data-prretry ' +
+                'style="display:block;margin-top:8px">다시 시도</button></div>'
+              : '<div class="mut sm" style="padding:10px 4px">찾는 이름이 없어요</div>');
           list.querySelectorAll('[data-pr]').forEach(b => b.onclick = () => {
             pick = rows.find(x => x.id === b.dataset.pr) || null;
             draw();
           });
+          const rt = list.querySelector('[data-prretry]');
+          if (rt) rt.onclick = () => load();
           fill(list);
         };
         const load = async () => {
           const my = ++seq;
-          try { const r2 = await people(q.value.trim()); if (my !== seq) return; rows = r2 || []; }
-          catch (e) { if (my !== seq) return; rows = []; }
+          try {
+            const r2 = await people(q.value.trim());
+            if (my !== seq) return;
+            rows = r2 || []; 못불러옴 = false;
+          }
+          catch (e) { if (my !== seq) return; rows = []; 못불러옴 = true; }
           /* 고른 사람은 검색어가 바뀌어도 맨 위에 남긴다 */
           if (pick && !rows.some(x => x.id === pick.id)) rows.unshift(pick);
           draw();
