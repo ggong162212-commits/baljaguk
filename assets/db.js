@@ -1592,6 +1592,24 @@
     };
   };
 
+  /* 봉사 전날 알림이 **실제로 쌓였나** — 운영진만.
+     push_tick 이 봉사마다 dedupe_key 'before:<봉사id>:<구성원id>' 로 넣는다.
+     그 줄이 하나도 없으면 쌓는 쪽(push_tick)이 그 봉사를 그냥 지나친 것이다.
+     이게 몇 주 동안 아무도 모른 채 벌어졌다 (fix-25).
+       돌려주는 값 — { <봉사id>: true 쌓임 | false 안 쌓임 | null 못 봄 } */
+  DB.pushRemindCheck = async function (ids) {
+    const out = {};
+    if (!HAS_SB || !ids || !ids.length) return out;
+    for (const id of ids.slice(0, 5)) {
+      try {
+        const r = await rest('push_outbox?select=dedupe_key&limit=1&dedupe_key=like.' +
+          encodeURIComponent('before:' + id + ':*'));
+        out[id] = !!(r && r.length);
+      } catch (e) { out[id] = null; }
+    }
+    return out;
+  };
+
   DB.adminTodo = async function () {
     if (!HAS_SB) {
       const d = cdemo();

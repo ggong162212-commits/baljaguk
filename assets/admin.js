@@ -3557,10 +3557,71 @@
     return Math.round(h / 24) + '일 전';
   }
 
+  /* 「전날 알림이 쌓였어야 하는 봉사」 를 고른다.
+     ------------------------------------------------------------
+     push_tick 은 **봉사 전날 저녁 8시가 지나야** 줄을 넣는다.
+     그리고 **신청한 사람이 있어야** 넣는다 (attendance 와 이어 본다).
+     그러니 그 두 가지를 만족하는 봉사만 검사한다 — 아니면 거짓 경고가 된다.
+     (폰 시계가 한국 시간이라고 보고 센다) */
+  function remindTargets() {
+    const now = new Date();
+    const 쌓였어야 = dateStr => {
+      const d = new Date(dateStr + 'T00:00:00');
+      if (isNaN(d)) return false;
+      d.setDate(d.getDate() - 1);
+      d.setHours(20, 0, 0, 0);           /* 전날 저녁 8시 */
+      return now >= d;
+    };
+    const 너무옛날 = dateStr => {
+      const d = new Date(dateStr + 'T00:00:00');
+      return isNaN(d) || (now - d) > 30 * 86400000;
+    };
+    const 신청자 = {};
+    (S.att || []).forEach(a => { if (a.event_id) 신청자[a.event_id] = true; });
+    return (S.events || [])
+      .filter(e => e.date && 신청자[e.id] && 쌓였어야(e.date) && !너무옛날(e.date))
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .slice(0, 3);
+  }
+
+  async function remindState() {
+    const list = remindTargets();
+    if (!list.length) return { 없음: true };
+    const got = (DB.pushRemindCheck ? await DB.pushRemindCheck(list.map(e => e.id)) : {}) || {};
+    return { list, got };
+  }
+
   /* 알림이 나가고 있나 — 안 나가면 바로 눈에 띄게.
      push_tick 이 터져서 봉사 알림이 몇 주 동안 안 나갔는데
      화면에 표시가 없어 아무도 몰랐던 일을 다시 겪지 않으려고 둔다. */
-  function pushBlock(ph) {
+  /* 봉사 전날 알림 줄 — 쌓였나 안 쌓였나 */
+  function remindLine(rem) {
+    if (!rem) return '';
+    if (rem.없음) {
+      return '<div class="kv"><span class="k">봉사 전날 알림</span>' +
+        '<span class="v mut">볼 봉사가 없어요</span></div>';
+    }
+    const 빠진 = rem.list.filter(e => rem.got[e.id] === false);
+    const 못봄 = rem.list.filter(e => rem.got[e.id] == null);
+    if (빠진.length) {
+      return '<div class="kv"><span class="k">봉사 전날 알림</span>' +
+        '<span class="v">' + num(빠진.length) + '개 안 쌓였어요</span></div>' +
+        '<p class="pill-note warn" style="margin-top:10px;line-height:1.65">' +
+        '<b>' + esc(빠진.map(e => fmtDate(e.date) + ' ' + (e.place || e.title || '')).join(', ')) +
+        ' — 전날 알림이 한 건도 안 쌓였어요.</b><br>' +
+        '쌓는 일(push_tick)이 터지고 있을 수 있어요. ' +
+        'Supabase 에서 cron.job_run_details 를 봐 주세요.</p>';
+    }
+    if (못봄.length === rem.list.length) {
+      return '<div class="kv"><span class="k">봉사 전날 알림</span>' +
+        '<span class="v mut">알 수 없어요</span></div>';
+    }
+    const 최근 = rem.list[0];
+    return '<div class="kv"><span class="k">봉사 전날 알림</span><span class="v">' +
+      esc(fmtDate(최근.date)) + ' 봉사까지 잘 쌓였어요</span></div>';
+  }
+
+  function pushBlock(ph, rem) {
     const head = '<div class="divider"></div>' +
       '<div class="lb" style="margin-bottom:8px">알림</div>';
 
@@ -3598,16 +3659,18 @@
         : '') +
       (!wait && !ph.last_sent_at
         ? '<p class="mut xs" style="margin-top:6px">보낸 기록이 없어요. 아직 한 번도 안 나갔을 수 있어요.</p>'
-        : '');
+        : '') +
+      remindLine(rem);
   }
 
   async function paintUsage() {
     const box = $('#usageBox');
     if (!box) return;
-    let u = null, ph = null;
+    let u = null, ph = null, rem = null;
     try { u = await DB.usageStats(); } catch (e) { }
     /* 알림 상태는 따로 — 못 읽어도 나머지 화면은 그대로 나온다 */
     try { ph = DB.pushHealth ? await DB.pushHealth() : null; } catch (e) { }
+    try { rem = await remindState(); } catch (e) { }
     if (!u) { box.innerHTML = '<div class="mut sm">불러오지 못했어요</div>'; return; }
 
     const pct = Math.min(100, Math.round((Number(u.bytes) || 0) / FREE.storage * 100));
@@ -3627,7 +3690,7 @@
       '<div class="kv"><span class="k">이번 주 댓글</span><span class="v">' +
       num(u.comments_week) + '개</span></div>' +
 
-      pushBlock(ph) +
+      pushBlock(ph, rem) +
 
       '<div class="divider"></div>' +
       '<div class="lb" style="margin-bottom:8px">저장 공간 (사진·영상)</div>' +
