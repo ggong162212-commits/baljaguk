@@ -351,6 +351,11 @@
     if (/JWT|not authenticated/i.test(m) || status === 401) return '다시 로그인해 주세요';
     if (/foreign key/i.test(m)) return '없어진 것 같아요. 새로고침 해주세요';
     if (/check constraint|violates/i.test(m)) return '넣을 수 없는 값이에요';
+    /* 한 번에 넣는 줄들의 칸 이름이 다를 때 — 다시 눌러도 똑같다.
+       예전에는 「잠시 뒤 다시 해 주세요」 라고 해서 열두 번 다시 눌렀다. */
+    if (/object keys must match/i.test(m)) {
+      return '사진·영상을 붙이지 못했어요. 운영진에게 알려 주세요';
+    }
     if (status === 404) return '찾지 못했어요';
     return '잠시 뒤 다시 해 주세요';
   }
@@ -1744,7 +1749,20 @@
           praised_member_id: v.praised_member_id || null
         };
         d.posts.push(p);
-        photos.forEach((src, i) => d.post_photos.push({ id: uid(), post_id: p.id, path: src, sort: i }));
+        photos.forEach((src, i) => d.post_photos.push({
+          id: uid(), post_id: p.id, path: src, sort: i, kind: 'photo', poster: null
+        }));
+        /* ★ 체험 모드에서도 영상이 글에 붙게 한다.
+           예전에는 영상 줄을 아예 안 만들어서, 체험으로 올려 보면
+           영상이 조용히 사라졌다 — 그래서 사진+영상 글을 시험할 길이 없었다. */
+        if (v.video && v.video.file) {
+          let url = '';
+          try { url = URL.createObjectURL(v.video.file); } catch (e) { url = 'video-' + uid(); }
+          d.post_photos.push({
+            id: uid(), post_id: p.id, path: url, sort: photos.length,
+            kind: 'video', poster: (v.video && v.video.poster) || null
+          });
+        }
         (v.animals || []).forEach(aid =>
           d.post_animals.push({ post_id: p.id, animal_id: aid }));
         if (v.poll) {
@@ -1836,10 +1854,18 @@
         }
       });
       if (!(rows && rows[0] && rows[0].id)) throw new Error('글을 올리지 못했어요');
-      /* paths 에는 작은 것도 섞여 있다 — 줄은 큰 것 기준으로 만든다 */
+      /* paths 에는 작은 것도 섞여 있다 — 줄은 큰 것 기준으로 만든다.
+         ★ 한 번에 여러 줄을 넣을 때는 **줄마다 칸 이름이 똑같아야 한다.**
+           사진 줄에는 poster 가 없고 영상 줄에만 있었다. 그래서 서버가
+           「All object keys must match」(PGRST102) 로 통째로 물리쳤고,
+           **사진과 영상을 같이 올린 글은 글만 생기고 사진이 하나도
+           안 붙었다.** 화면은 「잠시 뒤 다시 해 주세요」 라고 해서
+           같은 글이 열두 개까지 쌓였다 (2026-11-09).
+           사진 줄에도 poster: null 을 넣어 칸을 맞춘다. */
       const bigs = paths.filter(x => !/-s\.jpg$/.test(x));
       const rows2 = bigs.map((pth, i) => ({
-        post_id: id, path: pth, thumb: thumbs[i] || null, sort: i, kind: 'photo'
+        post_id: id, path: pth, thumb: thumbs[i] || null, sort: i,
+        kind: 'photo', poster: null
       }));
       if (vpath) {
         rows2.push({
@@ -1847,38 +1873,61 @@
           kind: 'video', poster: (v.video && v.video.poster) || null
         });
       }
-      if (rows2.length) {
-        await rest('post_photos', { method: 'POST', prefer: 'return=minimal', body: rows2 });
-      }
-      if ((v.animals || []).length) {
-        await rest('post_animals', {
-          method: 'POST', prefer: 'return=minimal,resolution=ignore-duplicates',
-          body: v.animals.map(aid => ({ post_id: id, animal_id: aid }))
-        });
-      }
-      if (v.poll) {
-        await rest('polls', {
-          method: 'POST', prefer: 'return=minimal',
-          body: {
-            post_id: id, question: v.poll.question, multi: !!v.poll.multi,
-            anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null,
-            reveal_at: v.poll.reveal_at || null
-          }
-        });
-        /* 선택지를 먼저 넣고, 그 중 몇 번째가 정답인지 뒤에 이어 붙인다.
-           정답 칸은 선택지 id 를 가리키기 때문이다. */
-        const opts = await rest('poll_options', {
-          method: 'POST', prefer: 'return=representation',
-          body: (v.poll.options || []).map((lb, i) => ({ post_id: id, label: lb, sort: i }))
-        });
-        if (v.poll.answer_index != null && opts && opts.length) {
-          const sorted = opts.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
-          const ans = sorted[v.poll.answer_index];
-          if (ans) await rest('polls?post_id=eq.' + encodeURIComponent(id), {
-            method: 'PATCH', prefer: 'return=minimal',
-            body: { answer_option_id: ans.id }
+
+      /* ★ 여기서부터는 글이 **이미 생긴 뒤**다 (알림도 이미 나갔다).
+         도중에 터지면 사진 없는 글이 남고, 화면은 다시 누르라고 한다 —
+         그렇게 같은 글이 겹겹이 쌓였다. 터지면 글을 도로 지운다.
+         줄은 외래키가 따라 지우고, 올려 둔 파일도 치운다.
+         그래야 다시 눌러도 겹치지 않는다. */
+      try {
+        if (rows2.length) {
+          await rest('post_photos', { method: 'POST', prefer: 'return=minimal', body: rows2 });
+        }
+        if ((v.animals || []).length) {
+          await rest('post_animals', {
+            method: 'POST', prefer: 'return=minimal,resolution=ignore-duplicates',
+            body: v.animals.map(aid => ({ post_id: id, animal_id: aid }))
           });
         }
+        if (v.poll) {
+          await rest('polls', {
+            method: 'POST', prefer: 'return=minimal',
+            body: {
+              post_id: id, question: v.poll.question, multi: !!v.poll.multi,
+              anonymous: !!v.poll.anonymous, closes_at: v.poll.closes_at || null,
+              reveal_at: v.poll.reveal_at || null
+            }
+          });
+          /* 선택지를 먼저 넣고, 그 중 몇 번째가 정답인지 뒤에 이어 붙인다.
+             정답 칸은 선택지 id 를 가리키기 때문이다. */
+          const opts = await rest('poll_options', {
+            method: 'POST', prefer: 'return=representation',
+            body: (v.poll.options || []).map((lb, i) => ({ post_id: id, label: lb, sort: i }))
+          });
+          if (v.poll.answer_index != null && opts && opts.length) {
+            const sorted = opts.slice().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+            const ans = sorted[v.poll.answer_index];
+            if (ans) await rest('polls?post_id=eq.' + encodeURIComponent(id), {
+              method: 'PATCH', prefer: 'return=minimal',
+              body: { answer_option_id: ans.id }
+            });
+          }
+        }
+      } catch (e) {
+        try {
+          await rest('posts?id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+        } catch (e2) { console.warn('[발자국] 반쯤 생긴 글을 못 지웠어요:', e2); }
+        const trash = paths.concat(vpath ? [vpath] : []);
+        if (trash.length) {
+          try {
+            await storageFetch(C.SUPABASE_URL + '/storage/v1/object/community', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prefixes: trash })
+            });
+          } catch (e2) { }
+        }
+        throw e;
       }
       return { id };
     },
@@ -1913,10 +1962,15 @@
 
       if (photos) {
         /* 지금 올라가 있는 것 */
-        const now = await rest('post_photos?select=id,path,thumb,sort&post_id=eq.' + enc(id)) || [];
+        const now = await rest('post_photos?select=id,path,thumb,sort,kind,poster&post_id=eq.' + enc(id)) || [];
+        /* ★ 영상 줄은 건드리지 않는다.
+           예전에는 줄을 통째로 지우고 **사진만** 다시 넣어서,
+           글을 한 번 고치면 영상이 조용히 사라졌다 (파일까지 지웠다). */
+        const vid = now.filter(f => f.kind === 'video');
         const keep = photos.filter(x => !/^data:/.test(x));
         const gone = [];
         now.forEach(f => {
+          if (f.kind === 'video') return;
           if (keep.indexOf(f.path) >= 0) return;
           gone.push(f.path);
           if (f.thumb) gone.push(f.thumb);   /* 작은 것도 같이 치운다 */
@@ -1937,14 +1991,22 @@
         }
         const paths = rows3.map(r => r.path);
 
-        await rest('post_photos?post_id=eq.' + enc(id), { method: 'DELETE', prefer: 'return=minimal' });
+        await rest('post_photos?post_id=eq.' + enc(id) + '&kind=neq.video',
+          { method: 'DELETE', prefer: 'return=minimal' });
         if (rows3.length) {
           await rest('post_photos', {
             method: 'POST', prefer: 'return=minimal',
+            /* 칸 이름은 줄마다 똑같이 — 다르면 통째로 물리쳐진다 (PGRST102) */
             body: rows3.map((r, i) => ({
-              post_id: id, path: r.path, thumb: r.thumb, sort: i, kind: 'photo'
+              post_id: id, path: r.path, thumb: r.thumb, sort: i,
+              kind: 'photo', poster: null
             }))
           });
+        }
+        /* 영상이 있으면 사진 뒤로 자리만 다시 잡아 준다 */
+        if (vid.length) {
+          await rest('post_photos?post_id=eq.' + enc(id) + '&kind=eq.video',
+            { method: 'PATCH', prefer: 'return=minimal', body: { sort: rows3.length } });
         }
         /* 뺀 사진은 파일도 지운다 */
         if (gone.length) {

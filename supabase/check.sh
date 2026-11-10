@@ -165,6 +165,15 @@ else
 fi
 
 echo ""
+echo "── 한 번에 넣는 줄들의 칸 이름이 같은가 (사진+영상 글이 겹치던 버그)"
+if node "$HERE/check-postbody.js"; then
+  :
+else
+  docker rm -f "$NAME" >/dev/null 2>&1 || true
+  exit 1
+fi
+
+echo ""
 echo "── 화면 안 <script> 가 아직 안 읽힌 것을 쓰나 (defer 사고)"
 if node "$HERE/check-pages.js"; then
   :
