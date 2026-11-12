@@ -5074,6 +5074,9 @@ window.Community = (function () {
             : '<span class="rt">후기 ' + e.reviews + '개</span>') + '</button>').join('') +
         '</div>'
       : '';
+    /* 「내 캘린더에 추가」가 쓸 봉사·보호소를 알려 둔다 (volcal.js).
+       카드에는 봉사 id 만 싣고, 날짜·장소·주소는 여기서 꺼내 쓴다 */
+    if (window.VolCal) VolCal.remember(soon, placeInfo());
     if (window.VolWho) VolWho.mount($('#soon'));  /* 신청자 얼굴 · 신청자 시트 (volwho.js) */
     if (window.PastVol) PastVol.mount($('#past'), { mine: false });  /* 지난 봉사 최근 3개 + 전체 보기 (pastvol.js) */
 
@@ -5172,7 +5175,14 @@ window.Community = (function () {
 
       '<div style="margin-top:11px">' +
       (mine
-        ? '<button class="btn ghost block" type="button" data-cancel="' + esc(e.id) + '">신청 취소</button>'
+        /* 신청한 봉사에만 캘린더 단추를 둔다 — 신청 전 카드에는 없다.
+           두 단추를 한 줄에 — 좁은 화면(360)에서도 한 줄에 들어간다 */
+        ? '<div class="row" style="gap:8px">' +
+          (window.VolCal
+            ? VolCal.btn(e.id, { style: 'flex:1;min-width:0' })
+            : '') +
+          '<button class="btn ghost" type="button" style="flex:none" data-cancel="' +
+          esc(e.id) + '">신청 취소</button></div>'
         : (wait
           ? '<button class="btn ghost block" type="button" data-wleave="' + esc(e.id) + '">대기 취소</button>'
           : (soonOpen

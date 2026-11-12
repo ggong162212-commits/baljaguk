@@ -25,6 +25,7 @@ const FILES = [
   /* ★ 아래는 빠져 있었다 — 가장 새로 쓴 contest.js 가 검사 밖에 있었다 */
   'assets/contest.js', 'assets/story.js', 'assets/praise.js', 'assets/pastvol.js',
   'assets/volwho.js', 'assets/fame.js', 'assets/avatarview.js', 'assets/theme.js',
+  'assets/volcal.js',
 ];
 
 /* 브라우저가 이미 갖고 있는 것들 — 우리가 만들지 않는다 */

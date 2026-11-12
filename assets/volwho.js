@@ -106,8 +106,14 @@
     const row = (p, i) => '<div class="vw-row"><span class="no">' + (i + 1) + '</span>' + face(p) +
       '<span class="grow"><span class="nm">' + esc(p.name) + '</span>' +
       (genOf(p) ? '<span class="gen">' + esc(genOf(p)) + '</span>' : '') + '</span></div>';
+    /* 내가 신청한 봉사일 때만 캘린더 단추를 둔다.
+       카드에 「신청 취소」가 있으면 내가 신청한 봉사다 (volcal.js) */
+    const 내봉사 = !!card.querySelector('[data-cancel]');
+    const evId = card.getAttribute('data-ev');
     const ov = UI.sheet({
       title: '신청한 사람',
+      foot: (내봉사 && window.VolCal && evId)
+        ? VolCal.btn(evId, { block: true }) : '',
       body: (title ? '<div class="mut sm" style="margin:-6px 0 12px">' + esc(title) + '</div>' : '') +
         '<div class="vw-h">신청 ' + going.length + '명 · 신청한 순서</div>' +
         (going.length ? '<div class="vw-list">' + going.map(row).join('') + '</div>'
