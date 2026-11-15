@@ -767,7 +767,8 @@
      ------------------------------------------------------------
      구성원이 답하는 폼은 assets/meetup.js 에 있고, 여기서는 **읽기만** 한다.
        · 폼(엠티·벙개)을 골라 그 응답을 한 줄씩 본다
-       · 차량 지원 가능 인원은 따로 한 줄로 센다 — 배차할 때 이것만 보면 된다
+       · 차량 지원 가능 인원과 태울 수 있는 자리(seats) 합계를 한 줄로 센다 —
+         배차는 「차가 몇 대」 가 아니라 「몇 명이 탈 수 있나」 로 짜서 둘을 같이 적는다
        · 연락처·학번은 서버(meetup_all)가 주지도 않고 여기서도 쓰지 않는다
 
      폼의 글을 여기에 또 적어 둔 까닭:
@@ -785,6 +786,18 @@
   ];
   const meetupCfg = () => MEETUP_FORMS.find(m => m.form === F.meetup) || MEETUP_FORMS[0];
 
+  /* 탑승 인원(seats) — 차량 「예」 인 사람만 1~9 의 값이 있고 나머지는 null 이다.
+     서버는 정수로 주지만 체험 모드에는 사람이 고른 값('3')이나 seats 가 아예 없던
+     옛 답이 섞일 수 있어, 숫자로 깎는 일을 이 한 곳에서만 한다.
+     1~9 를 벗어나거나 비어 있으면 null — 「인원 미기재」 와 똑같이 본다.
+     0 으로 섞어 세면 자리가 모자란 줄 알고 차를 더 구하게 되니 더 위험하다. */
+  function meetupSeats(r) {
+    const n = Number(r && r.seats);
+    if (!isFinite(n)) return null;
+    const i = Math.round(n);
+    return (i >= 1 && i <= 9) ? i : null;
+  }
+
   /* 체험 모드는 서버가 없다 — localStorage 의 답과 명부를 이어 붙여
      meetup_all 과 **같은 모양**으로 만든다 (assets/meetup.js 의 demo 함수와 같은 방식).
      읽다가 깨졌으면 [] 가 아니라 null 을 돌려준다 — 「0건」 과 섞으면 안 된다. */
@@ -797,7 +810,11 @@
     (d.members || []).forEach(m => { nameOf[m.id] = m.name; });
     return (d.meetup_answers || []).filter(a => a.form === form).map(a => ({
       name: nameOf[a.member_id] || '(명부에 없는 사람)',
-      attend: a.attend, car: a.car || null, area: a.area || null, at: a.at
+      attend: a.attend, car: a.car || null,
+      /* 서버(meetup_all)와 같은 모양을 맞춘다 — seats 가 없던 옛 답도 그대로 담고,
+         숫자로 만드는 일은 meetupSeats() 한 곳에 맡긴다 */
+      seats: (a.seats === undefined ? null : a.seats),
+      area: a.area || null, at: a.at
     }));
   }
 
@@ -822,6 +839,7 @@
      폰(360~430)에서 다섯 칸을 한 줄에 늘어놓으면 넘치니 두 칸으로 접는다. */
   function meetupRow(cfg, r) {
     const 참석 = r.attend === 'yes';
+    const 좌석 = meetupSeats(r);
     const 밑줄 = [
       cfg.area ? (r.area || '사는 곳 미기입') : '',
       r.at ? fmtDateTime(r.at) : ''
@@ -835,24 +853,40 @@
       '<div style="flex:none;text-align:right">' +
       '<span class="badge ' + (참석 ? 'approved' : 'rejected') + '">' +
       esc(참석 ? cfg.yes : cfg.no) + '</span>' +
+      /* 차량·탑승은 오른쪽 칸에 한 줄씩 쌓는다 — 360px 에서 한 줄에 늘어놓으면 이름을 밀어낸다.
+         탑승은 차량 「예」 인 사람만 적고 나머지는 비워 둔다(배차할 때 눈이 거기서 멈추지 않게).
+         「예」 라면서 인원을 안 적은 사람은 빈칸이 아니라 「미기재」 로 드러낸다 — 합계에서 빠진 사람이라서. */
       (cfg.car && 참석
         ? '<div class="mut xs" style="margin-top:4px">차량 ' +
-          (r.car === 'yes' ? '가능' : '없음') + '</div>'
+          (r.car === 'yes' ? '가능' : '없음') + '</div>' +
+          (r.car === 'yes'
+            ? '<div class="mut xs" style="margin-top:2px">탑승 ' +
+              (좌석 === null ? '미기재' : 좌석 + '명') + '</div>'
+            : '')
         : '') +
       '</div></div>';
   }
 
   function meetupCSV(cfg, rows) {
     const head = ['이름', '참석여부']
-      .concat(cfg.car ? ['차량 지원'] : [])
+      .concat(cfg.car ? ['차량 지원', '탑승 인원'] : [])
       .concat(cfg.area ? ['사는 곳'] : [])
       .concat(['낸 시각']);
     downloadCSV('발자국_' + cfg.tab.replace(/\s+/g, '') + '_' + dkey(new Date()) + '.csv',
       head,
-      rows.map(r => [r.name, r.attend === 'yes' ? cfg.yes : cfg.no]
-        .concat(cfg.car ? [r.attend === 'yes' ? (r.car === 'yes' ? '가능' : '없음') : ''] : [])
-        .concat(cfg.area ? [r.area || ''] : [])
-        .concat([r.at ? fmtDateTime(r.at) : ''])));
+      rows.map(r => {
+        const 참석 = r.attend === 'yes';
+        const 좌석 = meetupSeats(r);
+        return [r.name, 참석 ? cfg.yes : cfg.no]
+          /* 탑승 칸에는 숫자만 넣는다 — 「미기재」 같은 글자를 섞으면 엑셀에서 합계가 안 된다.
+             빈칸이면 세지 않는다는 뜻이고, 몇 명이 비었는지는 화면 요약 줄이 알려 준다. */
+          .concat(cfg.car
+            ? [참석 ? (r.car === 'yes' ? '가능' : '없음') : '',
+              (참석 && r.car === 'yes' && 좌석 !== null) ? String(좌석) : '']
+            : [])
+          .concat(cfg.area ? [r.area || ''] : [])
+          .concat([r.at ? fmtDateTime(r.at) : '']);
+      }));
   }
 
   async function meetupSheet() {
@@ -918,7 +952,12 @@
     const list = meetupSort(rows);
     const yes = list.filter(r => r.attend === 'yes');
     const no = list.filter(r => r.attend === 'no');
-    const cars = yes.filter(r => r.car === 'yes').length;
+    /* 배차는 자리 수로 짠다 — 차량 「예」 인 사람 수만으로는 몇 명이 탈 수 있는지 모른다.
+       인원을 안 적은 사람은 합계에서 빼고 몇 명인지 따로 알린다(0 으로 세면 자리가
+       모자란 줄 알고, 그냥 빼면 왜 합계가 작은지 알 수 없다). */
+    const cars = yes.filter(r => r.car === 'yes');
+    const seatSum = cars.reduce((n, r) => n + (meetupSeats(r) || 0), 0);
+    const seatGap = cars.filter(r => meetupSeats(r) === null).length;
     const live = S.members.filter(m => m.status !== 'left').length;
 
     box.innerHTML = head +
@@ -934,13 +973,19 @@
       '</div>' +
       /* 배차용 — 엠티처럼 차량을 묻는 폼에서만 */
       (cfg.car
-        ? '<div class="pill-note" style="margin-top:11px">차량 지원 가능 <b>' + cars +
-          '명</b> · 배차할 때 이 숫자를 보세요</div>'
+        ? '<div class="pill-note" style="margin-top:11px">차량 지원 가능 <b>' + cars.length +
+          '명</b> · 태울 수 있는 자리 <b>' + seatSum + '석</b>' +
+          (seatGap ? ' (' + seatGap + '명은 인원 미기재)' : '') +
+          ' · 배차할 때 이 숫자를 보세요</div>'
         : '') +
       '<div class="card" style="margin-top:12px">' +
-      '<div class="row between" style="gap:10px">' +
-      '<span class="mut xs">이름' + (cfg.area ? ' · 사는 곳' : '') + ' · 낸 시각</span>' +
-      '<span class="mut xs">참석여부' + (cfg.car ? ' · 차량' : '') + '</span></div>' +
+      /* 칸 이름 — 「· 탑승」 이 붙으면 360px 에서 한 줄에 다 안 들어간다.
+         왼쪽만 줄바꿈되게 두고(min-width:0) 오른쪽은 붙여 둔다 — 아래 줄들과 오른끝이 맞아야 읽힌다 */
+      '<div class="row between" style="gap:10px;align-items:flex-start">' +
+      '<span class="mut xs" style="min-width:0">이름' +
+      (cfg.area ? ' · 사는 곳' : '') + ' · 낸 시각</span>' +
+      '<span class="mut xs" style="flex:none;text-align:right">참석여부' +
+      (cfg.car ? ' · 차량 · 탑승' : '') + '</span></div>' +
       list.map(r => meetupRow(cfg, r)).join('') +
       '</div>' +
       '<button class="btn ghost block" type="button" id="muCSV" style="margin-top:12px">' +

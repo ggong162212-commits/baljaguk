@@ -46,10 +46,22 @@ create table if not exists meetup_answers (
   member_id  uuid not null references members(id) on delete cascade,
   attend     text not null check (attend in ('yes', 'no')),
   car        text check (car in ('yes', 'no')),   -- 참석일 때만
+  /* 차량 지원이 「예」일 때만 — 운전자 빼고 몇 명 태울 수 있나 (1~9) */
+  seats      int check (seats is null or (seats between 1 and 9)),
   area       text,                                -- 참석일 때만 (사는 곳)
   note       text,                                -- 운영진 메모
   unique (form, member_id)
 );
+/* 이미 만들어진 표에는 create table 이 건너뛴다 — 칸을 따로 더해 준다 */
+alter table meetup_answers add column if not exists seats int;
+do $seat$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'meetup_seats_ck') then
+    alter table meetup_answers add constraint meetup_seats_ck
+      check (seats is null or (seats between 1 and 9));
+  end if;
+end
+$seat$;
 create index if not exists meetup_form_idx on meetup_answers (form, created_at desc);
 
 -- ------------------------------------------------------------
@@ -95,14 +107,18 @@ as $$
       'why',       case when not m.open then 'manual'
                         when m.closes_at is not null and now() > m.closes_at then 'closed'
                    end,
-      'yes',       (select count(*)::int from meetup_answers a
-                     where a.form = m.form and a.attend = 'yes'),
-      'no',        (select count(*)::int from meetup_answers a
-                     where a.form = m.form and a.attend = 'no'),
+      /* ★ 참석·불참 인원은 **운영진만** 본다.
+         구성원끼리 서로 눈치 보지 않게, 화면에서 가리는 것이 아니라
+         서버가 아예 안 준다 */
+      'yes',       case when is_admin() then (select count(*)::int from meetup_answers a
+                     where a.form = m.form and a.attend = 'yes') end,
+      'no',        case when is_admin() then (select count(*)::int from meetup_answers a
+                     where a.form = m.form and a.attend = 'no') end,
       'members',   (select count(*)::int from members
                      where coalesce(status, 'active') <> 'left'),
       'mine',      (select json_build_object(
-                      'attend', a.attend, 'car', a.car, 'area', a.area,
+                      'attend', a.attend, 'car', a.car, 'seats', a.seats,
+                      'area', a.area,
                       'at', coalesce(a.updated_at, a.created_at))
                       from meetup_answers a
                      where a.form = m.form and a.member_id = my_member_id()))
@@ -118,13 +134,17 @@ grant execute on function meetup_list() to authenticated;
 --    · 참석이면 그 조사가 묻는 것(차량·사는 곳)을 꼭 채워야 한다
 --    · 불참이면 차량·사는 곳은 **지운다** — 안 물어본 것을 남기지 않는다
 -- ------------------------------------------------------------
+/* 칸이 하나 늘어서 예전 것을 먼저 치운다 — 안 그러면 4칸짜리가 남아
+   화면이 옛 길로 불렀을 때 탑승 인원이 조용히 빠진다 */
+drop function if exists meetup_save(text, text, text, text);
+
 create or replace function meetup_save(p_form text, p_attend text,
-                                       p_car text, p_area text)
+                                       p_car text, p_seats int, p_area text)
 returns json
 language plpgsql security definer
 set search_path = public
 as $fn$
-declare me uuid; m meetups%rowtype; v_car text; v_area text;
+declare me uuid; m meetups%rowtype; v_car text; v_area text; v_seats int;
 begin
   me := my_member_id();
   if me is null then return json_build_object('ok', false, 'why', 'member'); end if;
@@ -145,8 +165,19 @@ begin
       if v_car is null or v_car not in ('yes', 'no') then
         return json_build_object('ok', false, 'why', 'car');
       end if;
+      /* 차를 가져와 주실 때만 몇 자리인지 받는다.
+         「아니오」면 적혀 있어도 지운다 — 안 물어본 것을 남기지 않는다 */
+      if v_car = 'yes' then
+        v_seats := p_seats;
+        if v_seats is null then return json_build_object('ok', false, 'why', 'seats'); end if;
+        if v_seats < 1 or v_seats > 9 then
+          return json_build_object('ok', false, 'why', 'seatsrange');
+        end if;
+      else
+        v_seats := null;
+      end if;
     else
-      v_car := null;
+      v_car := null; v_seats := null;
     end if;
     if m.ask_area then
       if v_area is null then return json_build_object('ok', false, 'why', 'area'); end if;
@@ -155,22 +186,23 @@ begin
       v_area := null;
     end if;
   else
-    v_car := null; v_area := null;
+    v_car := null; v_seats := null; v_area := null;
   end if;
 
-  insert into meetup_answers (form, member_id, attend, car, area)
-  values (p_form, me, p_attend, v_car, v_area)
+  insert into meetup_answers (form, member_id, attend, car, seats, area)
+  values (p_form, me, p_attend, v_car, v_seats, v_area)
   on conflict (form, member_id) do update
     set attend = excluded.attend,
         car    = excluded.car,
+        seats  = excluded.seats,
         area   = excluded.area,
         updated_at = now();
 
   return json_build_object('ok', true);
 end;
 $fn$;
-revoke all on function meetup_save(text, text, text, text) from public, anon;
-grant execute on function meetup_save(text, text, text, text) to authenticated;
+revoke all on function meetup_save(text, text, text, int, text) from public, anon;
+grant execute on function meetup_save(text, text, text, int, text) to authenticated;
 
 -- ------------------------------------------------------------
 -- 6) 운영진 모아보기 — 이름과 함께. 운영진이 아니면 null
@@ -186,6 +218,7 @@ as $$
         'name',   mb.name,
         'attend', a.attend,
         'car',    a.car,
+        'seats',  a.seats,
         'area',   a.area,
         'at',     coalesce(a.updated_at, a.created_at))
         order by a.attend, mb.name)
