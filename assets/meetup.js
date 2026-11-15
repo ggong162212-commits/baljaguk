@@ -188,7 +188,7 @@
 
   /* ---------- 설문 탭 카드 ----------
      조사가 둘이어도 카드는 **하나**다. 같이 공지하니 한 번에 들어가
-     두 개를 한 화면에서 답한다. */
+     두 개를 한 화면에서 답하고 **한 번에** 보낸다. */
   function cards(rows) {
     const live = (rows || []).filter(r => FORMS[r.form]);
     if (!live.length) return '';
@@ -220,26 +220,28 @@
       '<span>' + (끝
         ? '결과 보기'
         : (낸수 >= list.length
-          ? '둘 다 답했어요 · 고치기'
-          : (낸수 ? list.length + '개 중 ' + 낸수 + '개 답했어요 · 마저 답하기' : '답하러 가기'))) +
+          ? '답했어요 · 고치기'
+          : (낸수 ? '마저 답하기' : '답하러 가기'))) +
       '</span>' + window.ic('chevron') + '</div></button>';
   }
 
   /* ---------- 폼 화면 ----------
-     ★ 두 조사를 **한 화면에** 둔다. 같이 공지하기 때문에 한 번 들어와서
-       두 개를 다 답하고 나가는 것이 자연스럽다.
-       보내기는 조사마다 따로다 — 하나를 보내도 다른 하나는 적던 그대로 남는다. */
-  let BOX = null, ROWS = null, FOCUS = null;
+     ★ 두 조사를 한 화면에 두고, **보내기도 한 번**이다.
+       따로따로 누르게 했더니 하나만 보내고 나가는 일이 생긴다.
+       한 번 눌러 둘 다 보낸다 — 덜 채운 것이 있으면 그 자리로 데려간다. */
+  let BOX = null, ROWS = null, FOCUS = null, 보냈다 = false;
   let backFn = null;                /* 「‹ 설문으로」 를 누르면 부를 것 */
   function goBack() { if (typeof backFn === 'function') backFn(); }
-  const 보낸것 = {};                /* form → 방금 보냈나 (고마워요 화면) */
+
+  /* 지금 답할 수 있는 것들 — 마감된 것은 묻지도 보내지도 않는다 */
+  const 열린것 = () => (ROWS || []).filter(r => r.open);
 
   async function open(box, form, opts) {
     BOX = box; backFn = (opts && opts.onBack) || null;
     /* 옛 주소(#meetup=mt2701)로 들어와도 두 개를 다 보여 주고,
        그 조사 자리로 내려 준다 — 링크가 가리키던 곳을 잃지 않게 */
     FOCUS = (form && form !== 'all' && FORMS[form]) ? form : null;
-    Object.keys(보낸것).forEach(k => { delete 보낸것[k]; });
+    보냈다 = false;
     box.innerHTML = '<div class="card center" style="padding:28px">' +
       '<div class="mut sm">불러오는 중…</div></div>';
     let rows = null;
@@ -268,16 +270,48 @@
     '<button class="btn ghost sm" type="button" data-mback>‹ 설문으로</button></div>';
 
   function paint() {
-    const 남은 = ROWS.filter(r => r.open && !(r.mine && r.mine.attend)).length;
+    if (보냈다) return 보낸화면();
+    const 열린 = 열린것();
+    const 남은 = 열린.filter(r => !(r.mine && r.mine.attend)).length;
+    const 고치는중 = 열린.length && !남은;
     BOX.innerHTML = backRow() +
       '<section class="card" style="margin-bottom:12px">' +
       '<h3 style="font-size:19px">모임 참석 조사</h3>' +
       '<p class="mut sm" style="margin-top:5px">' +
-      (남은
-        ? '아래 ' + ROWS.length + '개를 한 번에 답해 주세요. 1분이면 끝나요.'
-        : '다 답하셨어요. 마감 전까지 언제든 고칠 수 있어요.') +
+      (열린.length
+        ? (고치는중
+          ? '답하신 내용이에요. 고치고 아래 「보내기」를 눌러 주세요.'
+          : '아래 ' + 열린.length + '개를 답하고 맨 아래 「보내기」를 한 번만 눌러 주세요.')
+        : '지금은 답하는 기간이 아니에요.') +
       '</p></section>' +
-      ROWS.map(섹션).join('');
+      ROWS.map(섹션).join('') +
+      (열린.length
+        ? '<div class="card" style="position:sticky;bottom:12px;padding:12px">' +
+          '<button class="btn primary lg block" type="button" data-msendall>' +
+          (고치는중 ? '고쳐서 보내기' : '보내기') + '</button>' +
+          '<p class="mut xs center" style="margin:9px 0 0">' +
+          '한 번 누르면 ' + 열린.length + '개가 같이 보내져요</p></div>'
+        : '');
+    bind();
+  }
+
+  function 보낸화면() {
+    const 줄 = ROWS.filter(r => r.mine && r.mine.attend).map(r =>
+      '<div class="kv"><span class="k">' + esc(FORMS[r.form].kicker) + '</span>' +
+      '<span class="v">' + esc(label(r.form, r.mine.attend)) + '</span></div>').join('');
+    BOX.innerHTML = backRow() +
+      '<div class="card center" style="padding:30px 20px">' +
+      '<div style="display:flex;justify-content:center;color:var(--brand)">' +
+      '<span style="width:56px;height:56px;border-radius:50%;background:var(--brand-soft);' +
+      'display:grid;place-items:center">' + window.ic('check') + '</span></div>' +
+      '<h3 style="margin-top:12px;font-size:21px">답해 주셔서 고마워요</h3>' +
+      '<p class="mut sm" style="margin-top:6px">마감 전까지 언제든 고칠 수 있어요.</p>' +
+      '<div class="sp"></div>' +
+      '<div style="text-align:left">' + 줄 + '</div>' +
+      '<div class="sp"></div>' +
+      '<button class="btn ghost block" type="button" data-medit>고치기</button></div>' +
+      '<p class="mut xs" style="margin:12px 4px 0;line-height:1.6">' +
+      esc(FORMS[ROWS[0].form].privacy) + '</p>';
     bind();
   }
 
@@ -285,7 +319,6 @@
     const F = FORMS[r.form];
     const mine = r.mine || null;
     const 끝 = !r.open;
-    const 보냄 = !!보낸것[r.form];
 
     return '<div data-mu="' + esc(r.form) + '" style="margin-bottom:18px">' +
       /* 머리 */
@@ -311,22 +344,9 @@
           '<h3 style="font-size:15px">지금은 답하는 기간이 아니에요</h3>' +
           '<p class="mut sm" style="margin-top:6px">' +
           (r.why === 'manual' ? '운영진이 잠시 닫아 뒀어요.' : '마감됐어요.') + '</p></div>'
-        : (보냄 && mine ? 고마워요(r, mine) : 폼(r, F, mine))) +
+        : 폼(r, F, mine)) +
 
       안내줄(F) + '</div>';
-  }
-
-  function 고마워요(r, mine) {
-    return '<div class="card center" style="padding:26px 20px">' +
-      '<div style="display:flex;justify-content:center;color:var(--brand)">' +
-      '<span style="width:52px;height:52px;border-radius:50%;background:var(--brand-soft);' +
-      'display:grid;place-items:center">' + window.ic('check') + '</span></div>' +
-      '<h3 style="margin-top:11px;font-size:18px">답해 주셔서 고마워요</h3>' +
-      '<p class="mut sm" style="margin-top:6px">' +
-      esc(label(r.form, mine.attend)) + '(으)로 보냈어요. 마감 전까지 고칠 수 있어요.</p>' +
-      '<div class="sp"></div>' +
-      '<button class="btn ghost block" type="button" data-medit="' + esc(r.form) + '">고치기</button>' +
-      '</div>';
   }
 
   /* ★ 참석·불참 인원은 **구성원에게 보여 주지 않는다** (선고은님 요청).
@@ -351,7 +371,9 @@
     const 참석 = mine ? mine.attend : '';
     const 보임 = 참석 === 'yes';
     const 차예 = 보임 && mine && mine.car === 'yes';
-    return '<form class="card" data-muform="' + esc(r.form) + '" novalidate>' +
+    /* 보내기는 맨 아래 하나뿐이라 <form> 을 쓰지 않는다 —
+       엔터로 한쪽만 보내지는 길을 아예 없앤다 */
+    return '<div class="card" data-muform="' + esc(r.form) + '">' +
       '<div class="field">' +
       '<span class="lb">' + esc(F.attend.label) + ' <span class="req">*</span></span>' +
       고르기(r.form, 'attend', F.attend.options, 참석) +
@@ -380,11 +402,7 @@
           esc(F.area.placeholder) + '" value="' + esc((mine && mine.area) || '') + '">' +
           '<span class="hint hintline">' + esc(F.area.hint) + '</span></label>'
         : '') +
-
-      '<div class="sp"></div>' +
-      '<button class="btn primary lg block" type="submit" data-msend>' +
-      (mine ? '고쳐서 보내기' : '보내기') + '</button>' +
-      '</form>';
+      '</div>';
   }
 
   /* ---------- 손짓 ---------- */
@@ -393,13 +411,12 @@
     if (b) b.onclick = goBack;
     const rt = BOX.querySelector('[data-mretry]');
     if (rt) rt.onclick = () => open(BOX, FOCUS || 'all', { onBack: backFn });
-
-    BOX.querySelectorAll('[data-medit]').forEach(e => {
-      e.onclick = () => { delete 보낸것[e.getAttribute('data-medit')]; paint(); };
-    });
+    const ed = BOX.querySelector('[data-medit]');
+    if (ed) ed.onclick = () => { 보냈다 = false; paint(); };
+    const 보내기 = BOX.querySelector('[data-msendall]');
+    if (보내기) 보내기.onclick = 모두보내기;
 
     BOX.querySelectorAll('[data-mu]').forEach(칸 => {
-      const form = 칸.getAttribute('data-mu');
       칸.querySelectorAll('[data-pickgroup]').forEach(g => {
         g.querySelectorAll('.check').forEach(c => {
           c.onclick = e => {
@@ -415,8 +432,6 @@
           };
         });
       });
-      const f = 칸.querySelector('[data-muform]');
-      if (f) f.onsubmit = e => { e.preventDefault(); send(form); };
     });
   }
 
@@ -438,87 +453,78 @@
     return on ? on.getAttribute('data-pick') : '';
   }
 
-  async function send(form) {
-    const r = ROWS.filter(x => x.form === form)[0];
-    const 칸 = BOX.querySelector('[data-mu="' + form + '"]');
-    if (!r || !칸) return;
-    const 값 = el => (칸.querySelector(el) || {}).value || '';
+  /* 한 조사에서 적은 것을 모은다 — 모자라면 why 를 함께 돌려준다 */
+  function 읽기(r) {
+    const 칸 = BOX.querySelector('[data-mu="' + r.form + '"]');
+    if (!칸) return { why: 'noform' };
+    const 값 = sel => (칸.querySelector(sel) || {}).value || '';
     const v = {
       attend: 고른값(칸, 'attend'),
       car: 고른값(칸, 'car'),
       seats: 값('[name="seats"]'),
       area: 값('[name="area"]')
     };
-    if (!v.attend) return toast('참석 여부를 골라 주세요', 'err');
-    if (v.attend === 'yes' && r.ask_car && !v.car) return toast(WHY.car, 'err');
-    if (v.attend === 'yes' && v.car === 'yes') {
-      const n = parseInt(String(v.seats).trim(), 10);
-      if (!n) return toast(WHY.seats, 'err');
-      if (n < 1 || n > 9) return toast(WHY.seatsrange, 'err');
+    if (!v.attend) return { why: 'attend', v };
+    if (v.attend === 'yes') {
+      if (r.ask_car && !v.car) return { why: 'car', v };
+      if (v.car === 'yes') {
+        const n = parseInt(String(v.seats).trim(), 10);
+        if (!n) return { why: 'seats', v };
+        if (n < 1 || n > 9) return { why: 'seatsrange', v };
+      }
+      if (r.ask_area && !String(v.area).trim()) return { why: 'area', v };
     }
-    if (v.attend === 'yes' && r.ask_area && !String(v.area).trim()) return toast(WHY.area, 'err');
+    return { v };
+  }
 
-    const btn = 칸.querySelector('[data-msend]');
+  async function 모두보내기() {
+    const 열린 = 열린것();
+    if (!열린.length) return;
+
+    /* 먼저 다 채웠는지 본다 — 하나라도 모자라면 **보내지 않고** 그 자리로 */
+    const 짐 = [];
+    for (const r of 열린) {
+      const got = 읽기(r);
+      if (got.why) {
+        자리로(r.form);
+        return toast(FORMS[r.form].kicker + ' — ' + (WHY[got.why] || '덜 채워졌어요'), 'err');
+      }
+      짐.push({ r, v: got.v });
+    }
+
+    const btn = BOX.querySelector('[data-msendall]');
     if (btn) { btn.disabled = true; btn.textContent = '보내는 중…'; }
-    let res = null;
-    try { res = await save(form, v); } catch (e) { res = null; }
-    if (!res || !res.ok) {
-      if (btn) { btn.disabled = false; btn.textContent = '보내기'; }
-      return toast((res && WHY[res.why]) || '보내지 못했어요. 잠시 뒤 다시 해 주세요', 'err');
+
+    /* 하나씩 보낸다. 중간에 걸리면 **어느 것이** 안 갔는지 말해 준다 */
+    for (const { r, v } of 짐) {
+      let res = null;
+      try { res = await save(r.form, v); } catch (e) { res = null; }
+      if (!res || !res.ok) {
+        if (btn) { btn.disabled = false; btn.textContent = '보내기'; }
+        자리로(r.form);
+        return toast(FORMS[r.form].kicker + ' — ' +
+          ((res && WHY[res.why]) || '보내지 못했어요. 잠시 뒤 다시 해 주세요'), 'err');
+      }
     }
 
-    /* 숫자와 내 답을 다시 받아 온다.
-       ★ 다시 그릴 때 **다른 조사에 적던 것이 날아가지 않게** 먼저 적어 둔다 */
-    const 적던것 = 담아두기();
+    /* 내 답을 다시 받아 온다. 못 받아 와도 방금 보낸 것으로 채운다 */
     try {
       const rows = await list();
       if (rows && rows.length) ROWS = rows.filter(x => FORMS[x.form]);
     } catch (e) {
-      const me = ROWS.filter(x => x.form === form)[0];
-      if (me) me.mine = {
-        attend: v.attend, car: v.car || null,
-        seats: v.seats ? parseInt(String(v.seats).trim(), 10) : null,
-        area: v.area || null
-      };
-    }
-    보낸것[form] = true;
-    paint();
-    되살리기(적던것);
-    자리로(form);
-    if (window.UI && UI.cheer) { try { UI.cheer(); } catch (e) { } }
-  }
-
-  /* 다시 그리기 전에 **보내지 않은** 조사에 적던 것을 담아 둔다 */
-  function 담아두기() {
-    const 짐 = {};
-    BOX.querySelectorAll('[data-mu]').forEach(칸 => {
-      짐[칸.getAttribute('data-mu')] = {
-        attend: 고른값(칸, 'attend'),
-        car: 고른값(칸, 'car'),
-        seats: (칸.querySelector('[name="seats"]') || {}).value || '',
-        area: (칸.querySelector('[name="area"]') || {}).value || ''
-      };
-    });
-    return 짐;
-  }
-
-  function 되살리기(짐) {
-    Object.keys(짐 || {}).forEach(form => {
-      if (보낸것[form]) return;                 /* 보낸 것은 고마워요 화면이다 */
-      const 칸 = BOX.querySelector('[data-mu="' + form + '"]');
-      if (!칸) return;
-      const v = 짐[form];
-      ['attend', 'car'].forEach(name => {
-        if (!v[name]) return;
-        const g = 칸.querySelector('[data-pickgroup="' + name + '"]');
-        if (!g) return;
-        g.querySelectorAll('.check').forEach(x =>
-          x.classList.toggle('on', x.getAttribute('data-pick') === v[name]));
+      짐.forEach(({ r, v }) => {
+        const me = ROWS.filter(x => x.form === r.form)[0];
+        if (me) me.mine = {
+          attend: v.attend, car: v.car || null,
+          seats: v.seats ? parseInt(String(v.seats).trim(), 10) : null,
+          area: v.area || null
+        };
       });
-      const se = 칸.querySelector('[name="seats"]'); if (se && v.seats) se.value = v.seats;
-      const ar = 칸.querySelector('[name="area"]'); if (ar && v.area) ar.value = v.area;
-      뒷질문(칸, 고른값(칸, 'attend'));
-    });
+    }
+    보냈다 = true;
+    paint();
+    try { window.scrollTo(0, 0); } catch (e) { }
+    if (window.UI && UI.cheer) { try { UI.cheer(); } catch (e) { } }
   }
 
   window.Meetup = { FORMS, list, save, cards, card, open };
