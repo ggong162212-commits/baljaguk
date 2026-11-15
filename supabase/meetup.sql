@@ -231,3 +231,31 @@ grant execute on function meetup_all(text) to authenticated;
 
 -- 잘 들어갔는지 보기 (읽기 조회)
 -- select form, title, closes_at, open, ask_car, ask_area from meetups order by sort;
+
+-- ------------------------------------------------------------
+-- 7) 운영진이 켜고 끄고 마감을 고친다 (폼 관리 화면)
+--    · p_clear_close 가 참이면 마감을 **없앤다** (언제까지나 받음)
+--    · 안 보낸 값은 그대로 둔다
+-- ------------------------------------------------------------
+create or replace function meetup_set(p_form text, p_open boolean,
+                                      p_closes_at timestamptz,
+                                      p_clear_close boolean default false)
+returns json
+language plpgsql security definer
+set search_path = public
+as $fn$
+begin
+  if not is_admin() then return json_build_object('ok', false, 'why', 'admin'); end if;
+  if not exists (select 1 from meetups where form = p_form) then
+    return json_build_object('ok', false, 'why', 'noform');
+  end if;
+  update meetups
+     set open = coalesce(p_open, open),
+         closes_at = case when coalesce(p_clear_close, false) then null
+                          else coalesce(p_closes_at, closes_at) end
+   where form = p_form;
+  return json_build_object('ok', true);
+end;
+$fn$;
+revoke all on function meetup_set(text, boolean, timestamptz, boolean) from public, anon;
+grant execute on function meetup_set(text, boolean, timestamptz, boolean) to authenticated;

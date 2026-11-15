@@ -25,7 +25,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 </noscript>
-<link rel="stylesheet" href="assets/style.css?v=202611152150">
+<link rel="stylesheet" href="assets/style.css?v=202611152219">
 </head>
 <body>
 
@@ -80,7 +80,8 @@
       <h1>폼 관리</h1>
       <p id="formLead">신청 접수를 켜고 끄거나 마감 시각을 예약할 수 있어요.</p>
     </div>
-    <div class="seg" id="formPick" style="margin-bottom:10px"></div>
+    <!-- 단추가 4개라 360px 에서는 한 줄에 안 들어간다 — .seg 는 접히지 않으니 여기서만 접게 한다 -->
+    <div class="seg" id="formPick" style="margin-bottom:10px;flex-wrap:wrap"></div>
     <div class="sm mut" id="formMoved" style="margin:0 4px 14px"></div>
 
     <!-- ① 2학기 활동의견 및 개파 -->
@@ -109,6 +110,9 @@
 
     <!-- ③ 사진 콘테스트 -->
     <div id="contestPanel" class="stack" hidden></div>
+
+    <!-- ④ 모임 참석 조사 (엠티·벙개) -->
+    <div id="meetupPanel" class="stack" hidden></div>
   </section>
 
   <!-- 가입 신청 -->
@@ -208,15 +212,15 @@
 
 <nav class="tabbar" id="tabbar" hidden aria-label="관리 메뉴"></nav>
 
-<script defer src="assets/config.js?v=202611152150"></script>
-<script defer src="assets/icons.js?v=202611152150"></script>
-<script defer src="assets/ui.js?v=202611152150"></script>
-<script defer src="assets/avatarview.js?v=202611152150"></script>
-<script defer src="assets/theme.js?v=202611152150"></script>
-<script defer src="assets/db.js?v=202611152150"></script>
+<script defer src="assets/config.js?v=202611152219"></script>
+<script defer src="assets/icons.js?v=202611152219"></script>
+<script defer src="assets/ui.js?v=202611152219"></script>
+<script defer src="assets/avatarview.js?v=202611152219"></script>
+<script defer src="assets/theme.js?v=202611152219"></script>
+<script defer src="assets/db.js?v=202611152219"></script>
 <!-- 콘테스트 폼 칸·제한 숫자를 폼 관리에서 그대로 쓰려고 함께 읽는다 (Contest.LIMITS) -->
-<script defer src="assets/contest.js?v=202611152150"></script>
-<script defer src="assets/push.js?v=202611152150"></script>
-<script defer src="assets/admin.js?v=202611152150"></script>
+<script defer src="assets/contest.js?v=202611152219"></script>
+<script defer src="assets/push.js?v=202611152219"></script>
+<script defer src="assets/admin.js?v=202611152219"></script>
 </body>
 </html>

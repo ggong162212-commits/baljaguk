@@ -829,6 +829,70 @@
     return Array.isArray(r) ? r : null;
   }
 
+  /* ------------------------------------------------------------
+     조사 설정(meetups 표) — 폼 관리 탭의 「모임 참석 조사」 칸이 쓴다.
+     meetup_list 는 구성원도 부르지만, 참석·불참 **인원은 운영진에게만** 숫자로 온다.
+     ------------------------------------------------------------ */
+
+  /* 체험 모드 마감 시각 — assets/meetup.js 의 DEMO_CFG 와 **같은 값**이어야 한다.
+     여기에 또 적어 둔 까닭: admin.html 은 meetup.js 를 읽지 않아(구성원 화면 전용 파일)
+     그 값을 가져올 수 없다. 어긋나면 구성원 화면과 운영진 화면이 다른 마감을 보여 준다. */
+  const MEETUP_DEMO_CLOSES = '2026-11-30T14:59:59.000Z';
+
+  /* 체험 모드는 서버가 없다 — meetup_list 와 **같은 모양**으로 만든다.
+     읽다가 깨졌으면 [] 가 아니라 null 을 돌려준다 — 「조사가 없다」 와 섞으면 안 된다. */
+  function meetupDemoList() {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem('baljaguk.demo') || '{}'); }
+    catch (e) { return null; }
+    if (!d) return null;
+    const ans = d.meetup_answers || [];
+    const live = S.members.filter(m => m.status !== 'left').length;
+    const past = Date.now() > Date.parse(MEETUP_DEMO_CLOSES);
+    return MEETUP_FORMS.map(m => ({
+      form: m.form, title: m.title, closes_at: MEETUP_DEMO_CLOSES,
+      ask_car: m.car, ask_area: m.area,
+      open: !past, why: past ? 'closed' : null,
+      yes: ans.filter(a => a.form === m.form && a.attend === 'yes').length,
+      no: ans.filter(a => a.form === m.form && a.attend === 'no').length,
+      members: live, mine: null
+    }));
+  }
+
+  /* 못 불러온 것은 null, 등록된 조사가 하나도 없는 것은 [] — 이 둘을 섞지 않는다.
+     meetup_list 는 구성원이 아니면 null 을 주는데, 그것도 못 불러온 것으로 본다
+     (운영진 화면에 들어와 있으니 정상이라면 배열이 온다). */
+  async function meetupCfgLoad() {
+    if (DB.isDemo && DB.isDemo()) return meetupDemoList();
+    let r = null;
+    try { r = await DB.rpc('meetup_list'); }
+    catch (e) { console.warn('[발자국] 모임 조사 설정을 못 받아왔어요:', e); return null; }
+    return Array.isArray(r) ? r : null;
+  }
+
+  /* 설정 바꾸기 — 안 보낸 값(null)은 서버가 그대로 둔다.
+     그래서 「마감 없애기」는 null 로는 안 되고 p_clear_close 로 따로 말해야 한다. */
+  const MEETUP_SET_WHY = { admin: '운영진만 바꿀 수 있어요', noform: '없는 조사예요' };
+  async function meetupSet(form, patch) {
+    /* 체험 모드는 meetup.js 의 고정값을 쓴다 — 바꿀 데가 없다.
+       조용히 넘기면 바뀐 줄 알게 되니 못 바꾼다고 분명히 말한다. */
+    if (DB.isDemo && DB.isDemo()) { toast('체험 모드에서는 바꿀 수 없어요'); return false; }
+    let r = null;
+    try {
+      r = await DB.rpc('meetup_set', {
+        p_form: form,
+        p_open: (patch.open === undefined ? null : patch.open),
+        p_closes_at: (patch.closes_at === undefined ? null : patch.closes_at),
+        p_clear_close: !!patch.clear_close
+      });
+    } catch (e) { toast(sayErr(e, '바꾸지 못했어요'), 'err'); return false; }
+    if (!r || r.ok !== true) {
+      toast(MEETUP_SET_WHY[(r || {}).why] || '바꾸지 못했어요', 'err');
+      return false;
+    }
+    return true;
+  }
+
   /* 참석을 먼저, 그 안에서 이름순 — 서버는 attend 글자순(no→yes)이라 여기서 다시 맞춘다.
      체험 모드와 실제 서버가 같은 순서로 보이게 하려는 것이기도 하다. */
   const meetupSort = rows => rows.slice().sort((a, b) =>
@@ -1000,10 +1064,13 @@
      ============================================================ */
   function renderForm() {
     const picks = [['survey', '활동의견 · 개파'], ['id1365', '1365 명부'],
-      ['contest', '📸 사진 콘테스트']];
-    if (['id1365', 'contest'].indexOf(F.formPick) < 0) F.formPick = 'survey';
+      ['contest', '📸 사진 콘테스트'], ['meetup', '모임 참석 조사']];
+    if (['id1365', 'contest', 'meetup'].indexOf(F.formPick) < 0) F.formPick = 'survey';
+    /* flex:1 1 auto — .seg 의 기본값(flex:1 1 0)이면 글자가 넘쳐도 접히지 않는다.
+       min-height:44px — 폰에서 손가락으로 누를 칸 */
     $('#formPick').innerHTML = picks.map(([k, l]) =>
-      '<button type="button" class="' + (F.formPick === k ? 'on' : '') + '" data-fp="' + k + '">' + l + '</button>').join('');
+      '<button type="button" style="flex:1 1 auto;min-height:44px" class="' +
+      (F.formPick === k ? 'on' : '') + '" data-fp="' + k + '">' + l + '</button>').join('');
     $$('#formPick [data-fp]').forEach(b => b.addEventListener('click', () => {
       F.formPick = b.dataset.fp; renderForm(); window.scrollTo({ top: 0 });
     }));
@@ -1012,16 +1079,22 @@
 
     const onIds = F.formPick === 'id1365';
     const onContest = F.formPick === 'contest';
-    $('#surveyPanel').hidden = onIds || onContest;
+    const onMeetup = F.formPick === 'meetup';
+    $('#surveyPanel').hidden = onIds || onContest || onMeetup;
     $('#id1365Panel').hidden = !onIds;
     $('#contestPanel').hidden = !onContest;
-    $('#formMoved').hidden = onContest;
+    $('#meetupPanel').hidden = !onMeetup;
+    /* 「가입 접수는 가입 탭으로 옮겼어요」 는 설문 칸에 대한 말이라 다른 폼에서는 감춘다 */
+    $('#formMoved').hidden = onContest || onMeetup;
     $('#formLead').textContent = onContest
       ? '구성원이 봉사 사진·영상을 「작품」으로 내는 곳이에요.'
-      : (onIds
-        ? '자원봉사센터에 낼 회원 명부를 모으는 곳이에요.'
-        : '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.');
+      : (onMeetup
+        ? '엠티·벙개에 올 사람을 세는 곳이에요. 상태를 보고 마감 시각을 고쳐요.'
+        : (onIds
+          ? '자원봉사센터에 낼 회원 명부를 모으는 곳이에요.'
+          : '설문 주소를 나눠주고, 들어온 응답을 여기서 확인해요.'));
     if (onContest) return renderContest();
+    if (onMeetup) return renderMeetupForm();
     return onIds ? renderId1365() : renderSurvey();
   }
 
@@ -1066,6 +1139,193 @@
       '🥇 1등 · 🥈 2등 · 🥉 3등 · ❤️ 인기상\n' +
       '(마감 뒤 익명 투표로 정해요)\n\n' +
       '참여: ' + contestURL();
+  }
+
+  /* 폼 관리 → 모임 참석 조사
+     구성원이 답하는 폼은 assets/meetup.js 에 있고, 여기서는 **상태를 보고 설정만** 바꾼다.
+     다른 폼(활동의견·1365·콘테스트)과 같은 차례로 — 상태 → 링크 → 설정 */
+  function renderMeetupForm() {
+    $('#meetupPanel').innerHTML =
+      '<div class="card"><h3>모임 참석 조사</h3>' +
+      '<div class="sub">엠티·벙개처럼 「올 사람만 세는」 폼이에요. ' +
+      '구성원은 한 화면에서 조사 두 개를 같이 답하고 한 번에 보내요.</div>' +
+      '<div class="sp"></div><div id="muFormBox" class="mut sm">불러오는 중…</div></div>' +
+      '<div id="muFormLink"></div>' +
+      '<div id="muFormSet"></div>';
+    return paintMeetupForm();
+  }
+
+  /* 조사 주소 — 구성원 화면의 참석 조사로 바로 가는 길.
+     ★ 해시가 꼭 있어야 한다. 운영진은 side='admin' 이라서 해시 없는
+       me.html 은 곧바로 admin.html 로 되돌아간다 (me.js). contestURL 과 같은 까닭이다.
+     #meetup=all 이면 조사 두 개를 다 보여 준다 (meetup.js 의 open). */
+  const meetupURL = () => new URL('me.html', location.href).href + '#meetup=all';
+
+  /* 단톡방에 바로 붙일 공지 문구 — 마감이 지난 조사는 그렇다고 적는다.
+     「마감: 」 만 적어 두면 이미 닫힌 조사를 아직 받는 줄 알고 올리게 된다. */
+  function meetupNotice(rows) {
+    const 줄 = (rows || []).map(r => {
+      const cfg = MEETUP_FORMS.find(m => m.form === r.form) || {};
+      const 때 = r.closes_at
+        ? (r.open ? '마감: ' + fmtDateTime(r.closes_at)
+          : '마감됐어요 (' + fmtDateTime(r.closes_at) + ')')
+        : (r.open ? '마감 없음' : '지금은 닫혀 있어요');
+      return '· ' + (r.title || cfg.tab || r.form) + '\n' +
+        (cfg.when ? '  ' + cfg.when + '\n' : '') + '  ' + 때;
+    }).join('\n');
+    return '발자국 모임 참석 조사\n\n' + 줄 + '\n\n' +
+      '한 번 들어가서 두 개를 같이 답하고 「보내기」를 한 번만 누르면 돼요.\n' +
+      '참석을 고르면 차량 지원·사는 곳을 더 물어요 (배차에만 써요).\n' +
+      '답한 내용은 운영진만 보고, 누가 몇 명 오는지는 서로 안 보여요.\n\n' +
+      '참여: ' + meetupURL();
+  }
+
+  /* 왜 닫혀 있는지 — 서버(meetup_list)가 주는 why 를 사람 말로 */
+  const MEETUP_WHY = { manual: '운영진이 답 받기를 꺼둔 상태예요', closed: '마감 시각이 지났어요' };
+
+  async function paintMeetupForm() {
+    const box = $('#muFormBox');
+    if (!box) return;
+    const rows = await meetupCfgLoad();
+    /* 그 사이 다른 폼으로 옮겨 칸이 사라졌으면 그리지 않는다 */
+    if (!box.isConnected) return;
+    const link = $('#muFormLink'), set = $('#muFormSet');
+
+    /* ① 못 불러온 것 — 「조사가 없다」 고 하면 안 된다. 서버에 있는데 없는 줄 안다 */
+    if (rows === null) {
+      box.innerHTML = '<div class="center" style="padding:6px 0">' +
+        '<div class="sm">조사 설정을 불러오지 못했어요</div>' +
+        '<div class="sm mut" style="margin-top:5px">잠시 뒤 다시 해 주세요</div>' +
+        '<button class="btn soft sm" type="button" id="muFormRetry" ' +
+        'style="margin-top:12px;min-height:44px">다시 시도</button></div>';
+      const rb = $('#muFormRetry');
+      if (rb) rb.onclick = () => paintMeetupForm();
+      link.innerHTML = ''; set.innerHTML = '';
+      return;
+    }
+
+    /* ② 등록된 조사가 0건 — 이것은 못 불러온 것과 **다르다**
+       (supabase/meetup.sql 을 아직 안 올렸거나 표를 비운 때) */
+    if (!rows.length) {
+      box.innerHTML = '<div class="sm">등록된 조사가 없어요</div>' +
+        '<div class="sm mut" style="margin-top:5px">' +
+        'supabase/meetup.sql 을 올리면 조사가 여기 보여요. 못 불러온 것이 아니라 0건이에요.</div>';
+      link.innerHTML = ''; set.innerHTML = '';
+      return;
+    }
+
+    /* ③ 상태 — 조사마다 한 칸. 서버에만 있는 새 조사도 빠뜨리지 않게 rows 를 그대로 돈다
+       (MEETUP_FORMS 에 없으면 제목만 보이고 일정 줄은 비워 둔다) */
+    box.innerHTML = rows.map(r => {
+      const cfg = MEETUP_FORMS.find(m => m.form === r.form) || {};
+      /* 인원은 운영진에게만 숫자로 온다 — 안 왔으면 「0명」 이 아니라 못 셌다고 적는다 */
+      const 셌다 = typeof r.yes === 'number' && typeof r.no === 'number';
+      const 응답 = 셌다 ? r.yes + r.no : 0;
+      const live = Number(r.members) || 0;
+      return '<div class="card flat" style="margin-bottom:10px">' +
+        '<div class="row between" style="gap:10px;align-items:flex-start">' +
+        '<div style="min-width:0">' +
+        '<div class="sm" style="font-weight:800;word-break:break-all">' +
+        esc(r.title || cfg.tab || r.form) + '</div>' +
+        (cfg.when ? '<div class="mut xs" style="margin-top:3px">' + esc(cfg.when) + '</div>' : '') +
+        '</div>' +
+        '<span class="badge ' + (r.open ? 'approved' : 'rejected') + '" style="flex:none">' +
+        (r.open ? '열림' : '마감') + '</span></div>' +
+        (r.open ? '' : '<div class="mut xs" style="margin-top:6px">' +
+          esc(MEETUP_WHY[r.why] || '지금은 답을 받지 않아요') + '</div>') +
+        '<div class="sp"></div>' +
+        '<div class="kv"><span class="k">마감 시각</span><span class="v">' +
+        (r.closes_at ? esc(fmtDateTime(r.closes_at)) : '없음 (스스로 닫히지 않아요)') +
+        '</span></div>' +
+        (셌다
+          ? '<div class="kv"><span class="k">' + esc(cfg.yes || '참석') + '</span>' +
+            '<span class="v">' + r.yes + '명</span></div>' +
+            '<div class="kv"><span class="k">' + esc(cfg.no || '불참') + '</span>' +
+            '<span class="v">' + r.no + '명</span></div>' +
+            '<div class="kv"><span class="k">응답</span><span class="v">' + 응답 + '건' +
+            (live ? ' · 구성원 ' + live + '명 중 ' + Math.round(응답 / live * 100) + '%' : '') +
+            '</span></div>'
+          : '<div class="mut xs" style="margin-top:6px">참석·불참 인원을 받지 못했어요 ' +
+            '(0명이라는 뜻이 아니에요). 운영진으로 로그인했는지 확인해 주세요.</div>') +
+        '</div>';
+    }).join('') +
+      '<button class="btn soft block" type="button" id="muFormSheet" style="min-height:44px">' +
+      ic('calendar') + '<span>응답 보기</span></button>' +
+      '<div class="mut sm" style="margin-top:8px">누가 어떻게 답했는지, 차량·사는 곳까지 한 줄씩 봐요. ' +
+      '설정 탭 → 받은 것들 → 「모임 참석 조사 보기」 와 같은 화면이에요.</div>';
+
+    const sh = $('#muFormSheet');
+    if (sh) sh.onclick = meetupSheet;
+
+    /* ④ 링크 — 다른 폼의 주소 칸과 같은 모양 */
+    const url = meetupURL();
+    link.innerHTML =
+      '<div class="card"><h3>조사 링크</h3>' +
+      '<div class="sub">단톡방에 이 주소를 올리면 참석 조사 화면이 바로 열려요. ' +
+      '로그인 전이면 카카오 로그인 뒤에 그 화면으로 가요.</div>' +
+      '<div class="acct" style="margin-top:12px"><div class="sm" style="word-break:break-all">' +
+      esc(url) + '</div></div>' +
+      '<div class="row" style="gap:8px;margin-top:10px">' +
+      '<button class="btn soft sm grow" type="button" id="muCopy" ' +
+      'style="min-height:44px">링크 복사</button>' +
+      '<button class="btn ghost sm grow" type="button" id="muOpen" ' +
+      'style="min-height:44px">폼 열어보기</button></div>' +
+      '<button class="btn ghost sm block" type="button" id="muNotice" ' +
+      'style="margin-top:8px;min-height:44px">공지 문구 복사</button>' +
+      '<div class="mut sm" style="margin-top:8px">주소 끝의 <b>#meetup=all</b> 을 지우면 안 돼요 — ' +
+      '운영진은 해시 없는 me.html 에 들어가면 이 운영진 화면으로 되돌아와요.</div></div>';
+
+    $('#muCopy').onclick = () => copy(url, '조사 주소를 복사했어요');
+    $('#muOpen').onclick = () => window.open(url, '_blank', 'noopener');
+    $('#muNotice').onclick = () => copy(meetupNotice(rows), '공지 문구를 복사했어요');
+
+    /* ⑤ 설정 — 조사마다 ① 답 받기 켜고 끄기 ② 마감 시각 고치기 */
+    set.innerHTML =
+      '<div class="card"><h3>설정</h3>' +
+      '<div class="sub">조사마다 답 받기를 켜고 끄거나, 마감 시각을 고쳐요.</div>' +
+      rows.map((r, i) => {
+        const cfg = MEETUP_FORMS.find(m => m.form === r.form) || {};
+        /* dtField 는 id 로 칸을 찾는다 — 조사가 여럿이라 번호를 붙여 겹치지 않게 한다 */
+        const id = 'muClose' + i;
+        return '<div class="divider"></div>' +
+          '<div class="sm" style="font-weight:800">' + esc(r.title || cfg.tab || r.form) + '</div>' +
+          '<label class="switch" style="min-height:44px;margin-top:6px">' +
+          '<input type="checkbox" data-muopen="' + esc(r.form) + '"' + (r.open ? ' checked' : '') + '>' +
+          '<span class="track"></span>' +
+          '<span class="sm">' + (r.open ? '지금 답을 받는 중' : '지금은 닫혀 있어요') + '</span></label>' +
+          '<div class="field" style="margin-top:12px"><span class="lb">마감 시각</span>' +
+          dtField(id, r.closes_at || null) +
+          '<span class="hint">시각을 안 적으면 23:59 로 둬요. ' +
+          '날짜를 비우고 저장하면 마감이 없어져요(스스로 닫히지 않아요).</span></div>' +
+          '<button class="btn primary block" type="button" data-musave="' + esc(r.form) + '" ' +
+          'data-muid="' + id + '" style="min-height:44px">마감 시각 저장</button>';
+      }).join('') + '</div>';
+
+    $$('#muFormSet [data-muopen]').forEach(el => el.addEventListener('change', async () => {
+      const form = el.dataset.muopen;
+      const row = rows.find(r => r.form === form) || {};
+      const on = el.checked;
+      /* 지난 마감 시각이 남아 있으면 켜도 안 열린다 — 서버는 open AND 마감 전 으로 본다.
+         가입 폼 스위치와 같은 처리로, 켜면서 지난 마감은 같이 지운다. */
+      const stale = !!(on && row.closes_at && Date.parse(row.closes_at) <= Date.now());
+      const ok = await meetupSet(form, { open: on, clear_close: stale });
+      /* 못 바꿨으면 스위치를 되돌린다 — 안 바뀌었는데 바뀐 것처럼 보이면 안 된다 */
+      if (!ok) { el.checked = !on; return; }
+      toast(on ? (stale ? '지난 마감을 지우고 다시 열었어요' : '답을 받기 시작했어요')
+        : '답 받기를 닫았어요', 'ok');
+      paintMeetupForm();
+    }));
+
+    $$('#muFormSet [data-musave]').forEach(b => b.addEventListener('click', async () => {
+      const iso = readDt(b.dataset.muid, '23:59');
+      b.disabled = true;
+      /* 비우고 저장하면 마감을 없앤다 — closes_at:null 만 보내면 서버가 「그대로 두기」 로 읽는다 */
+      const ok = await meetupSet(b.dataset.musave,
+        iso ? { closes_at: iso } : { clear_close: true });
+      if (!ok) { b.disabled = false; return; }
+      toast(iso ? '마감 시각을 저장했어요' : '마감을 없앴어요', 'ok');
+      paintMeetupForm();
+    }));
   }
 
   /* ------------------------------------------------------------
