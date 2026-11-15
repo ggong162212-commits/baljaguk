@@ -132,7 +132,7 @@ window.Community = (function () {
         const i = str.indexOf('#');
         if (i >= 0) to = str.slice(i + 1);
         else {
-          const q = /[?&](post|vol|poll|news|contest)=([^&]+)/.exec(str);
+          const q = /[?&](post|vol|poll|news|contest|meetup)=([^&]+)/.exec(str);
           if (q) to = q[1] + '=' + q[2];
         }
         if (!to) return;
@@ -164,7 +164,7 @@ window.Community = (function () {
 
   function openFromHash() {
     const h = String(location.hash || '').replace(/^#/, '');
-    if (h && /^(post|vol|poll|news|contest)=(.+)$/.test(h)) {
+    if (h && /^(post|vol|poll|news|contest|meetup)=(.+)$/.test(h)) {
       deepTo = h;
       /* 주소는 바로 지운다 (새로고침해도 또 열리지 않게) —
          대신 목적지는 deepTo 가 들고 있는다 */
@@ -185,7 +185,7 @@ window.Community = (function () {
       return;
     }
     deepBusy = true;
-    const m = /^(post|vol|poll|news|contest)=(.+)$/.exec(deepTo);
+    const m = /^(post|vol|poll|news|contest|meetup)=(.+)$/.exec(deepTo);
     const [, what, rawId] = m;
 
     try {
@@ -198,6 +198,13 @@ window.Community = (function () {
         deepTo = null;
         await go('poll');
         openContest(rawId === 'preview');
+        return;
+      }
+      /* me.html#meetup=mt2701 — 단톡방에 붙이는 주소 */
+      if (what === 'meetup') {
+        deepTo = null;
+        await go('poll');
+        openMeetup(decodeURIComponent(rawId));
         return;
       }
       if (what === 'news') { go('me'); deepTo = null; return; }
@@ -789,12 +796,15 @@ window.Community = (function () {
   let warm = false;        /* 지금 화면에 보여 줄 것이 이미 있나 */
   /* 콘테스트 화면이 설문 탭 자리(#view)를 빌려 쓰고 있나 — softRefresh 가 덮어쓰지 않게 */
   let contestOn = false;
+  /* 모임 참석 조사(meetup.js)도 같은 자리를 빌려 쓴다 */
+  let meetupOn = false;
 
   function go(tab) {
     /* 떠나기 전 지금 화면을 적어 둔다 */
     if (cur && $('#view')) viewCache[cur] = $('#view').innerHTML;
     cur = tab;
     contestOn = false;
+    meetupOn = false;
     if (tab !== 'home') { const np = $('#newPill'); if (np) np.remove(); }
     /* 돌아온 탭이면 곧바로 보여 준다 — 비었다가 채워지지 않게 */
     warm = false;
@@ -2586,6 +2596,7 @@ window.Community = (function () {
       if ((b = hit('data-wjoin'))) return doWait(b.dataset.wjoin, false);
       if ((b = hit('data-wleave'))) return doWait(b.dataset.wleave, true);
       if ((b = hit('data-past'))) return openPast(b.dataset.past);
+      if ((b = hit('data-meetup'))) return openMeetup(b.dataset.meetup);
       if ((b = hit('data-seen'))) {
         if (b.dataset.at > newsSeen()) { markNewsSeen(b.dataset.at); paintTabDot(); loadNews(); }
         return;
@@ -2878,6 +2889,11 @@ window.Community = (function () {
          예전에는 7초마다(그리고 다른 앱에 갔다 오면 바로) renderPolls() 가
          콘테스트 화면을 설문 목록으로 덮어썼다.
          대신 숫자만 조용히 맞춘다 (Contest.sync — 도착한 작품 수·남은 날). */
+      /* 모임 조사 폼이 떠 있으면 덮어쓰지 않는다 — 적다 만 답이 날아간다 */
+      if (meetupOn) {
+        if (document.querySelector('#view [data-mback]')) return;
+        meetupOn = false;
+      }
       if (contestOn) {
         if (document.querySelector('#view .ct-hero')) {
           if (window.Contest && Contest.sync) { try { await Contest.sync(); } catch (e) { } }
@@ -4765,6 +4781,16 @@ window.Community = (function () {
     Contest.open($('#view'), { onBack: () => go('poll'), preview: !!preview });
   }
 
+  /* 모임 참석 조사 폼 — 설문 탭 자리(#view)를 빌려 쓴다 (meetup.js) */
+  function openMeetup(form) {
+    if (!(window.Meetup && Meetup.open))
+      return toast('조사 화면을 준비하고 있어요', 'warn');
+    delete viewCache.poll;
+    meetupOn = true;
+    const fab = $('#fab'); if (fab) fab.hidden = true;
+    Meetup.open($('#view'), form, { onBack: () => go('poll') });
+  }
+
   async function renderPolls() {
     $('#headTitle').textContent = '설문';
     $('#headLead').textContent = '모두의 생각을 모아요.';
@@ -4777,10 +4803,14 @@ window.Community = (function () {
        null = 올라가 있지만 운영진이 날짜를 안 정했다 → 운영진에게만 미리보기 */
     const cInfoP = (DB.contest ? DB.contest.info() : Promise.resolve('err'))
       .catch(() => 'err');
+    /* 모임 참석 조사도 같이 받아 온다 — 못 받아 와도 설문은 그대로 보여 준다 */
+    const muP = (window.Meetup ? Meetup.list() : Promise.resolve([])).catch(() => null);
     try { res = await DB.community.feed({ type: 'poll', limit: 30 }); }
     catch (e) { return paint('<div class="card center" style="padding:28px"><div class="mut sm">불러오지 못했어요</div></div>'); }
     const ci = await cInfoP;
-    const top = ci === 'err' ? '' : contestCard(ci);
+    const mu = await muP;
+    const top = (ci === 'err' ? '' : contestCard(ci)) +
+      (mu && window.Meetup ? Meetup.cards(mu) : '');
     const rows = res.rows || [];
     /* 카드의 동작(설문·반응·댓글)이 F.rows 를 보고 돌아간다 */
     F.rows = rows;

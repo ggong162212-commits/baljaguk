@@ -21,7 +21,7 @@
      그래서 로그인 화면을 그릴 때 적어 두고, 로그인한 뒤에 되살린다.
      ============================================================ */
   const DEEP = 'baljaguk.deep';
-  const DEEPRE = /^(post|vol|poll|news|contest)=/;
+  const DEEPRE = /^(post|vol|poll|news|contest|meetup)=/;
   function keepDeep() {
     try {
       const h = String(location.hash || '').replace(/^#/, '');
