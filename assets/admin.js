@@ -23,7 +23,7 @@
   };
 
   const S = { settings: null, apps: [], members: [], events: [], att: [], fin: [], camps: [], dons: [], srv: [], ids: [], pays: [] };
-  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'survey', q4: '', idSeg: 'done', rankAll: false };
+  const F = { apply: 'pending', member: 'all', sort: 'name', fin: 'all', finMonth: 'all', q1: '', q2: '', q3: '', day: null, month: null, party: 'all', station: '', geo: (localStorage.getItem('baljaguk.geo') || 'station'), formPick: 'survey', q4: '', idSeg: 'done', rankAll: false, meetup: 'mt2701' };
   let cur = 'form';
 
   const TABS = [
@@ -760,6 +760,194 @@
         toast('지웠어요', 'ok'); closeSheet(); render();
       } catch (e) { toast(e.message || '지우지 못했어요', 'err'); }
     });
+  }
+
+  /* ============================================================
+     모임 참석 조사 모아보기 — 운영진만
+     ------------------------------------------------------------
+     구성원이 답하는 폼은 assets/meetup.js 에 있고, 여기서는 **읽기만** 한다.
+       · 폼(엠티·벙개)을 골라 그 응답을 한 줄씩 본다
+       · 차량 지원 가능 인원은 따로 한 줄로 센다 — 배차할 때 이것만 보면 된다
+       · 연락처·학번은 서버(meetup_all)가 주지도 않고 여기서도 쓰지 않는다
+
+     폼의 글을 여기에 또 적어 둔 까닭:
+     admin.html 은 meetup.js 를 읽지 않는다(구성원 화면 전용 파일이라서).
+     그래서 Meetup.FORMS 를 쓸 수 없고, 운영진 화면에 보여 줄 말만 따로 둔다.
+     폼을 새로 만들면 supabase/meetup.sql · assets/meetup.js 와 함께 이것도 늘린다.
+     ============================================================ */
+  const MEETUP_FORMS = [
+    { form: 'mt2701', tab: '1월 엠티', title: '1월 엠티 참석 조사',
+      when: '1/9(토)~1/10(일) · 양평 (예정)',
+      yes: '참석', no: '불참', car: true, area: true },
+    { form: 'bungae2612', tab: '12월 벙개', title: '12월 벙개모임',
+      when: '12/5(토) 저녁 7:00',
+      yes: '참석', no: '미참석', car: false, area: false }
+  ];
+  const meetupCfg = () => MEETUP_FORMS.find(m => m.form === F.meetup) || MEETUP_FORMS[0];
+
+  /* 체험 모드는 서버가 없다 — localStorage 의 답과 명부를 이어 붙여
+     meetup_all 과 **같은 모양**으로 만든다 (assets/meetup.js 의 demo 함수와 같은 방식).
+     읽다가 깨졌으면 [] 가 아니라 null 을 돌려준다 — 「0건」 과 섞으면 안 된다. */
+  function meetupDemoRows(form) {
+    let d = null;
+    try { d = JSON.parse(localStorage.getItem('baljaguk.demo') || '{}'); }
+    catch (e) { return null; }
+    if (!d) return null;
+    const nameOf = {};
+    (d.members || []).forEach(m => { nameOf[m.id] = m.name; });
+    return (d.meetup_answers || []).filter(a => a.form === form).map(a => ({
+      name: nameOf[a.member_id] || '(명부에 없는 사람)',
+      attend: a.attend, car: a.car || null, area: a.area || null, at: a.at
+    }));
+  }
+
+  /* 못 불러온 것은 null, 아무도 안 낸 것은 [] — 이 둘을 섞지 않는다.
+     meetup_all 은 운영진이 아니면 null 을 주는데, 그것도 못 불러온 것으로 본다
+     (운영진 화면에 들어와 있으니 정상이라면 배열이 온다). */
+  async function meetupLoad(form) {
+    if (DB.isDemo && DB.isDemo()) return meetupDemoRows(form);
+    let r = null;
+    try { r = await DB.rpc('meetup_all', { p_form: form }); }
+    catch (e) { console.warn('[발자국] 모임 응답을 못 받아왔어요:', e); return null; }
+    return Array.isArray(r) ? r : null;
+  }
+
+  /* 참석을 먼저, 그 안에서 이름순 — 서버는 attend 글자순(no→yes)이라 여기서 다시 맞춘다.
+     체험 모드와 실제 서버가 같은 순서로 보이게 하려는 것이기도 하다. */
+  const meetupSort = rows => rows.slice().sort((a, b) =>
+    (a.attend === 'yes' ? 0 : 1) - (b.attend === 'yes' ? 0 : 1) ||
+    String(a.name || '').localeCompare(String(b.name || '')));
+
+  /* 응답 한 줄 — 왼쪽은 이름·사는 곳·낸 시각, 오른쪽은 참석여부·차량.
+     폰(360~430)에서 다섯 칸을 한 줄에 늘어놓으면 넘치니 두 칸으로 접는다. */
+  function meetupRow(cfg, r) {
+    const 참석 = r.attend === 'yes';
+    const 밑줄 = [
+      cfg.area ? (r.area || '사는 곳 미기입') : '',
+      r.at ? fmtDateTime(r.at) : ''
+    ].filter(Boolean).join(' · ');
+    return '<div class="row between" style="gap:10px;align-items:flex-start;' +
+      'padding:11px 2px;border-top:1px solid var(--line)">' +
+      '<div style="min-width:0">' +
+      '<div class="sm" style="font-weight:700;word-break:break-all">' + esc(r.name) + '</div>' +
+      (밑줄 ? '<div class="mut xs" style="margin-top:3px">' + esc(밑줄) + '</div>' : '') +
+      '</div>' +
+      '<div style="flex:none;text-align:right">' +
+      '<span class="badge ' + (참석 ? 'approved' : 'rejected') + '">' +
+      esc(참석 ? cfg.yes : cfg.no) + '</span>' +
+      (cfg.car && 참석
+        ? '<div class="mut xs" style="margin-top:4px">차량 ' +
+          (r.car === 'yes' ? '가능' : '없음') + '</div>'
+        : '') +
+      '</div></div>';
+  }
+
+  function meetupCSV(cfg, rows) {
+    const head = ['이름', '참석여부']
+      .concat(cfg.car ? ['차량 지원'] : [])
+      .concat(cfg.area ? ['사는 곳'] : [])
+      .concat(['낸 시각']);
+    downloadCSV('발자국_' + cfg.tab.replace(/\s+/g, '') + '_' + dkey(new Date()) + '.csv',
+      head,
+      rows.map(r => [r.name, r.attend === 'yes' ? cfg.yes : cfg.no]
+        .concat(cfg.car ? [r.attend === 'yes' ? (r.car === 'yes' ? '가능' : '없음') : ''] : [])
+        .concat(cfg.area ? [r.area || ''] : [])
+        .concat([r.at ? fmtDateTime(r.at) : ''])));
+  }
+
+  async function meetupSheet() {
+    const ov = sheet({
+      title: '모임 참석 조사',
+      /* 열자마자 세그 단추에 초점이 가면 이미 누른 것처럼 보인다 */
+      noFocus: true,
+      body: '<div class="seg" id="muSeg"></div>' +
+        '<div class="sp"></div>' +
+        '<div id="muBox" class="mut sm">불러오는 중…</div>'
+    });
+    const seg = ov.querySelector('#muSeg');
+    /* 폼 고르기 — 마지막으로 본 폼은 F.meetup 에 남아 다시 열 때 그대로 보인다 */
+    seg.innerHTML = MEETUP_FORMS.map(m =>
+      '<button type="button" class="' + (F.meetup === m.form ? 'on' : '') + '"' +
+      ' style="min-height:44px" data-mu="' + esc(m.form) + '">' + esc(m.tab) + '</button>').join('');
+    seg.querySelectorAll('[data-mu]').forEach(b => b.onclick = () => {
+      if (F.meetup === b.dataset.mu) return;
+      F.meetup = b.dataset.mu;
+      seg.querySelectorAll('[data-mu]').forEach(x =>
+        x.classList.toggle('on', x.dataset.mu === F.meetup));
+      meetupPaint(ov);
+    });
+    meetupPaint(ov);
+  }
+
+  /* 폼을 바꾸면 먼저 부른 것이 늦게 돌아와 화면을 덮을 수 있다.
+     번호를 달아 **마지막으로 부른 것**만 그린다. */
+  let muSeq = 0;
+  async function meetupPaint(ov) {
+    const my = ++muSeq;
+    const cfg = meetupCfg();
+    const box = ov.querySelector('#muBox');
+    if (!box) return;
+    box.innerHTML = '<div class="mut sm">불러오는 중…</div>';
+
+    const rows = await meetupLoad(cfg.form);
+    if (my !== muSeq || !ov.isConnected) return;   /* 그 사이 폼을 바꾸거나 닫았다 */
+
+    const head = '<div class="card tight" style="margin-bottom:12px">' +
+      '<div class="sm" style="font-weight:800">' + esc(cfg.title) + '</div>' +
+      '<div class="mut xs" style="margin-top:3px">' + esc(cfg.when) + '</div></div>';
+
+    /* ① 못 불러온 것 — 「응답이 없다」 고 하면 안 된다. 쌓여 있는데 없는 줄 안다 */
+    if (rows === null) {
+      box.innerHTML = head +
+        '<div class="card center" style="padding:22px 18px">' +
+        '<div class="sm">응답을 불러오지 못했어요</div>' +
+        '<div class="sm mut" style="margin-top:5px">잠시 뒤 다시 해 주세요</div>' +
+        '<button class="btn soft sm" type="button" id="muRetry" ' +
+        'style="margin-top:12px">다시 시도</button></div>';
+      const rb = box.querySelector('#muRetry');
+      if (rb) rb.onclick = () => meetupPaint(ov);
+      return;
+    }
+
+    /* ② 아직 아무도 안 낸 것 — 이것은 정상이다 */
+    if (!rows.length) {
+      box.innerHTML = head + empty('clipboard', '아직 응답이 없어요');
+      return;
+    }
+
+    const list = meetupSort(rows);
+    const yes = list.filter(r => r.attend === 'yes');
+    const no = list.filter(r => r.attend === 'no');
+    const cars = yes.filter(r => r.car === 'yes').length;
+    const live = S.members.filter(m => m.status !== 'left').length;
+
+    box.innerHTML = head +
+      '<div class="statcard">' +
+      stat('green', 'check', cfg.yes, yes.length + '명') +
+      stat('pink', 'x', cfg.no, no.length + '명') +
+      '</div>' +
+      '<div class="sm mut center" style="margin-top:9px">' +
+      (live
+        ? '구성원 ' + live + '명 중 <b>' + list.length + '명</b> 응답' +
+          ' (' + Math.round(list.length / live * 100) + '%)'
+        : '응답 <b>' + list.length + '건</b>') +
+      '</div>' +
+      /* 배차용 — 엠티처럼 차량을 묻는 폼에서만 */
+      (cfg.car
+        ? '<div class="pill-note" style="margin-top:11px">차량 지원 가능 <b>' + cars +
+          '명</b> · 배차할 때 이 숫자를 보세요</div>'
+        : '') +
+      '<div class="card" style="margin-top:12px">' +
+      '<div class="row between" style="gap:10px">' +
+      '<span class="mut xs">이름' + (cfg.area ? ' · 사는 곳' : '') + ' · 낸 시각</span>' +
+      '<span class="mut xs">참석여부' + (cfg.car ? ' · 차량' : '') + '</span></div>' +
+      list.map(r => meetupRow(cfg, r)).join('') +
+      '</div>' +
+      '<button class="btn ghost block" type="button" id="muCSV" style="margin-top:12px">' +
+      ic('download') + '<span>CSV 로 내려받기</span></button>';
+
+    const cb = box.querySelector('#muCSV');
+    if (cb) cb.onclick = () => meetupCSV(cfg, list);
   }
 
   /* ============================================================
@@ -3847,7 +4035,11 @@
       '<button class="btn ghost block" type="button" id="goReports" style="margin-top:8px">' +
       ic('alert') + '<span>신고 보기</span></button>' +
       '<button class="btn ghost block" type="button" id="goStaff" style="margin-top:8px">' +
-      ic('star') + '<span>운영진 지원 보기</span></button></div>' +
+      ic('star') + '<span>운영진 지원 보기</span></button>' +
+      /* 모임 참석 조사도 구성원이 보낸 것이라 여기에 같이 둔다 —
+         차량·사는 곳은 운영진만 보는 것이라 설정 안쪽이 자리로 맞다 */
+      '<button class="btn ghost block" type="button" id="goMeetup" style="margin-top:8px">' +
+      ic('calendar') + '<span>모임 참석 조사 보기</span></button></div>' +
 
       '<div class="card"><h3>사용 현황</h3>' +
       '<div class="sub">이번 주 움직임과 남은 저장 공간이에요.</div><div class="sp"></div>' +
@@ -3926,6 +4118,7 @@
     const gf = $('#goFeedback'); if (gf) gf.onclick = feedbackSheet;
     const gr = $('#goReports');  if (gr) gr.onclick = reportsSheet;
     const gs = $('#goStaff');    if (gs) gs.onclick = staffSheet;
+    const gm = $('#goMeetup');   if (gm) gm.onclick = meetupSheet;
     function paintPlaces() {
       const list = volPlaces();
       $('#placeList').innerHTML = list.map((pl, i) =>

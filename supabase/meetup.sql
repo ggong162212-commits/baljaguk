@@ -106,7 +106,8 @@ as $$
                       'at', coalesce(a.updated_at, a.created_at))
                       from meetup_answers a
                      where a.form = m.form and a.member_id = my_member_id()))
-      order by m.sort, m.form), '[]'::json) from meetups m) end;
+      order by m.sort, m.form)
+      from meetups m), '[]'::json) end;
 $$;
 revoke all on function meetup_list() from public, anon;
 grant execute on function meetup_list() to authenticated;
