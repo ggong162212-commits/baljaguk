@@ -33,6 +33,7 @@ window.Install = (function () {
   let deferred = null;
   let installedNow = false;
   window.addEventListener('beforeinstallprompt', e => {
+    if (isIOS) return;                     /* 아이폰은 이 길이 없다 — 흉내 내는 브라우저에서도 무시 */
     e.preventDefault();
     deferred = e;
     paintCards();
@@ -68,8 +69,9 @@ window.Install = (function () {
         const ch = await ev.userChoice;
         if (ch && ch.outcome === 'accepted') {
           installedNow = true; paintCards();
-          toast('홈 화면에 발자국이 생겼어요', 'ok');
-          setTimeout(offerNotify, 700);
+          /* 알림까지 이어 가면 알림 창 제목에 「설치했어요」를 담는다 — 토스트가 창을 가렸다 */
+          if (!canAskNotify()) toast('홈 화면에 발자국이 생겼어요', 'ok');
+          else setTimeout(offerNotify, 500);
           return 'accepted';
         }
         paintCards();
@@ -83,10 +85,11 @@ window.Install = (function () {
   }
 
   /* 설치 직후 — 알림이 아직이면 이어서 켜게 한다 */
+  const canAskNotify = () => { const P = window.Push; return !!(P && P.hasKey && P.state() === 'ask'); };
   async function offerNotify() {
     const P = window.Push;
-    if (!P || !P.hasKey || P.state() !== 'ask') return;
-    const ok = await UI.confirmSheet('알림도 켤까요?',
+    if (!canAskNotify()) return;
+    const ok = await UI.confirmSheet('설치했어요! 알림도 켤까요?',
       '봉사 안내와 공지, 내 글에 달린 댓글을 바로 받아볼 수 있어요. 휴대폰이 물으면 「허용」을 눌러 주세요.',
       '알림 켜기');
     if (!ok) return;
@@ -210,8 +213,8 @@ window.Install = (function () {
     box.innerHTML =
       '<div class="ins-bar">' +
       '<div class="ins-bic">' + ic('paw') + '</div>' +
-      '<div class="ins-bt"><b>홈 화면에 발자국 추가</b>' +
-      '<span>' + (st === 'prompt' ? '한 번 누르면 앱처럼 열려요' : '앱처럼 열리고 알림도 받을 수 있어요') + '</span></div>' +
+      '<div class="ins-bt"><b>홈 화면에 추가</b>' +
+      '<span>' + (st === 'prompt' ? '누르면 앱처럼 열려요' : '앱처럼 열고 알림도 받아요') + '</span></div>' +
       '<button class="btn primary sm" type="button" data-insgo>' + btn + '</button>' +
       '<button class="iconbtn ins-later" type="button" data-inslater aria-label="나중에">' + ic('x') + '</button>' +
       '</div>';
@@ -236,7 +239,7 @@ window.Install = (function () {
       '.ins-bt b{font-size:14px;color:var(--ink)}.ins-bt span{font-size:12px;opacity:.7}' +
       '.ins-bar .btn{flex:none;min-height:40px;white-space:nowrap}' +
       '.ins-later{flex:none;width:36px;height:40px;opacity:.55}' +
-      '.ins-ov{position:fixed;inset:0;z-index:300;background:rgba(15,20,12,.55);display:grid;place-items:center;' +
+      '.ins-ov{position:fixed;inset:0;z-index:300;background:rgba(15,20,12,.62);display:grid;place-items:center;' +
       'padding:16px;padding-bottom:max(96px,calc(env(safe-area-inset-bottom) + 96px));animation:insIn .18s ease}' +
       '.ins-card{position:relative;width:100%;max-width:380px;background:var(--surface);color:var(--ink);' +
       'border-radius:var(--r-xl);padding:24px 20px 20px;box-shadow:var(--shadow-pop);text-align:center}' +
