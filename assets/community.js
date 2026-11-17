@@ -497,6 +497,8 @@ window.Community = (function () {
     /* 받을 수 없는 경우 — 왜 그런지와 어떻게 하면 되는지만 */
     if (st !== 'granted') {
       box.innerHTML = notifyGuide(st);
+      const ig = box.querySelector('[data-nHome]');
+      if (ig) ig.onclick = () => { closeSheet(); setTimeout(() => Install.start(), 180); };
       const go = box.querySelector('[data-nOn]');
       if (go) go.onclick = async () => {
         go.disabled = true; go.textContent = '여는 중…';
@@ -613,7 +615,9 @@ window.Community = (function () {
       return card('download', '먼저 홈 화면에 추가해주세요',
         '아이폰은 홈 화면에 추가한 뒤에만 알림을 받을 수 있어요.<br><br>' +
         '아래 <b>공유</b> 버튼 → <b>홈 화면에 추가</b> → ' +
-        '생긴 발바닥 아이콘으로 다시 들어와주세요.');
+        '생긴 발바닥 아이콘으로 다시 들어와주세요.',
+        (window.Install ? '<button class="btn primary lg block" type="button" data-nHome style="margin-top:16px">' +
+          '홈 화면에 추가하는 법</button>' : ''));
     }
     if (st === 'denied') {
       return card('alert', '알림이 꺼져 있어요',
@@ -663,6 +667,10 @@ window.Community = (function () {
 
         '<div class="divider"></div>' +
         '<div style="display:grid;gap:8px">' +
+        (window.Install && Install.show()
+          ? '<button class="btn ghost block" type="button" id="pfInstall">' +
+            ic('download') + '<span>홈 화면에 추가</span></button>'
+          : '') +
         (Push.hasKey
           ? '<button class="btn ghost block" type="button" id="pfBell">' +
             ic('alert') + '<span>알림 설정</span></button>'
@@ -681,6 +689,8 @@ window.Community = (function () {
 
     const bell = ov.querySelector('#pfBell');
     if (bell) bell.onclick = () => { closeSheet(); setTimeout(notifySheet, 180); };
+    const inst = ov.querySelector('#pfInstall');
+    if (inst) inst.onclick = () => { closeSheet(); setTimeout(() => Install.start(), 180); };
 
     /* 운영진 지원 줄 — 상태에 따라 글이 달라진다 */
     (async () => {
@@ -970,6 +980,7 @@ window.Community = (function () {
        #list 가 새 칸이 돼 「같은 글인가」를 견줄 수조차 없었다.
        (다른 탭은 ①에서 이미 이렇게 고쳤는데 홈만 남아 있었다) */
     shell(
+      '<div id="insCard"></div>' +
       '<div id="pin"></div>' +
       '<div id="ask"></div>' +
       '<div class="titlerow">' +
@@ -978,7 +989,8 @@ window.Community = (function () {
       ic('grid') + '</button></div>' +
       '<div id="list">' + loading() + '</div>' +
       '<div id="more"></div>',
-      ['pin', 'ask', 'chips', 'list', 'more']);
+      ['insCard', 'pin', 'ask', 'chips', 'list', 'more']);
+    if (window.Install) Install.mountCard($('#insCard'));
     /* 손잡이는 늘 다시 매단다 — 적어 둔 화면에는 글자만 들어 있다 */
     $('#wallBtn').onclick = photoWall;
 
