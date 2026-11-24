@@ -5392,6 +5392,9 @@ window.Community = (function () {
           (n.detail ? ' — ' + esc(cut(n.detail, 28)) : '');
       if (n.kind === 'fame')
         return '🏆 <b>' + esc(cut(n.detail || '명예의 전당에 올랐어요', 30)) + '</b>';
+      /* 기록 배지 — 서버가 배지를 준 순간 한 줄 (fix-27) */
+      if (n.kind === 'badge')
+        return '<b>' + esc(cut(n.detail || '새 기록 배지를 받았어요', 30)) + '</b>';
       return esc(n.detail || '새 소식이 있어요');
     };
 
